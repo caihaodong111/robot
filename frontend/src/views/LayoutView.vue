@@ -21,7 +21,7 @@
         </el-menu-item>
         <el-menu-item index="/monitoring">
           <el-icon><TrendCharts /></el-icon>
-          <span>运行监控</span>
+          <span>关键轨迹检查</span>
         </el-menu-item>
         <el-menu-item index="/alerts">
           <el-icon><Bell /></el-icon>
@@ -89,7 +89,7 @@ const currentPageName = computed(() => {
   const names = {
     '/dashboard': '平台概览',
     '/devices': '机器人状态',
-    '/monitoring': '运行监控',
+    '/monitoring': '关键轨迹检查',
     '/alerts': '可视化BI'
   }
   return names[route.path] || '首页'

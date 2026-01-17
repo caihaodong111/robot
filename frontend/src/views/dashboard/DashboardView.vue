@@ -58,42 +58,74 @@
 
     <!-- 图表区域 -->
     <el-row :gutter="20" class="charts-row">
-      <el-col :span="12">
-        <el-card>
+      <el-col :span="24">
+        <el-card v-loading="loading">
           <template #header>
-            <span>近24小时风险事件</span>
+            <span>组别风险占比</span>
           </template>
-          <div ref="tempChartRef" style="height: 300px"></div>
-        </el-card>
-      </el-col>
-      <el-col :span="12">
-        <el-card>
-          <template #header>
-            <span>A1-A7 异常分布</span>
-          </template>
-          <div ref="humidityChartRef" style="height: 300px"></div>
+          <div v-if="groupRows.length" class="group-pie-grid">
+            <div
+              v-for="row in groupRows"
+              :key="row.key || row.name"
+              class="group-pie-item"
+              :class="{ 'is-active': activeGroupKey && (row.key || row.name) === activeGroupKey }"
+              @click="activateGroup(row.key || row.name)"
+            >
+              <div class="group-pie-title">{{ row.name }}</div>
+              <div class="group-pie-chart" :ref="(el) => setGroupPieRef(row.key || row.name, el)"></div>
+              <div class="group-pie-meta">
+                高风险 {{ row.highRisk }} / {{ row.total }}
+              </div>
+            </div>
+          </div>
+          <el-empty v-else description="暂无组别数据" />
         </el-card>
       </el-col>
     </el-row>
 
-    <!-- 最新数据表格 -->
+    <!-- 各组高风险设备板块（与饼图联动） -->
     <el-row :gutter="20" class="data-row">
-      <el-col :span="12">
-        <el-card>
+      <el-col :span="24">
+        <el-card v-loading="loading">
           <template #header>
-            <span>组别明细</span>
+            <div class="card-header">
+              <span>高风险设备（按组）</span>
+              <span class="card-header-hint">点击上方饼图或组卡片可联动定位</span>
+            </div>
           </template>
-          <el-table :data="groupRows" stripe v-loading="loading" height="360">
-            <el-table-column prop="name" label="Plant" width="140" />
-            <el-table-column prop="expected_total" label="预期" width="90" />
-            <el-table-column prop="total" label="当前" width="90" />
-            <el-table-column prop="highRisk" label="高风险(H)" width="110" />
-            <el-table-column prop="historyHighRisk" label="历史高风险" width="120" />
-            <el-table-column prop="marked" label="标记" width="90" />
-          </el-table>
+          <div v-if="groupHighRiskRows.length" class="group-risk-board">
+            <div
+              v-for="row in groupHighRiskRows"
+              :key="row.key || row.name"
+              class="group-risk-card"
+              :class="{ 'is-active': activeGroupKey && (row.key || row.name) === activeGroupKey }"
+              :ref="(el) => setGroupCardRef(row.key || row.name, el)"
+              @click="activateGroup(row.key || row.name)"
+            >
+              <div class="group-risk-card-header">
+                <div class="group-risk-title">{{ row.name }}</div>
+                <div class="group-risk-meta">
+                  <span class="group-risk-meta-item">当前 {{ row.total ?? 0 }}</span>
+                  <span class="group-risk-meta-item danger">高风险 {{ row.highRisk ?? 0 }}</span>
+                </div>
+              </div>
+              <div class="group-risk-card-body">
+                <el-empty v-if="!row.highRiskDevices?.length" description="暂无高风险设备" />
+                <el-table v-else :data="row.highRiskDevices" stripe size="small" class="group-risk-table" height="260">
+                  <el-table-column type="index" label="#" width="56" align="center" />
+                  <el-table-column prop="name" label="设备名称" min-width="220" show-overflow-tooltip />
+                </el-table>
+              </div>
+            </div>
+          </div>
+          <el-empty v-else description="暂无组别数据" />
         </el-card>
       </el-col>
-      <el-col :span="12">
+    </el-row>
+
+    <!-- 最近更新部件 -->
+    <el-row :gutter="20" class="data-row">
+      <el-col :span="24">
         <el-card>
           <template #header>
             <span>最近更新部件</span>
@@ -113,22 +145,45 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import * as echarts from 'echarts'
 import { DEMO_MODE } from '@/config/appConfig'
 import { getRobotsDashboard } from '@/api/robots'
-import { createRiskEvents, getAllRobots } from '@/mock/robots'
+import { robotGroups, getAllRobots, getGroupStats, getRobotsByGroup } from '@/mock/robots'
 
 const loading = ref(false)
-const tempChartRef = ref(null)
-const humidityChartRef = ref(null)
 const groupRows = ref([])
 const recentRows = ref([])
 
-let tempChart = null
-let humidityChart = null
 let refreshTimer = null
+const groupPieRefs = new Map()
+const groupPieCharts = new Map()
+const groupCardRefs = new Map()
+const activeGroupKey = ref('')
+
+const setGroupCardRef = (key, el) => {
+  if (!key) return
+  if (el) {
+    groupCardRefs.set(key, el)
+    return
+  }
+  groupCardRefs.delete(key)
+}
+
+const groupHighRiskRows = computed(() => {
+  const rows = groupRows.value || []
+  return [...rows]
+    .map((row) => {
+      const devices = Array.isArray(row.highRiskDevices) ? row.highRiskDevices : []
+      const normalizedDevices = devices
+        .map((d) => (typeof d === 'string' ? { name: d } : d))
+        .map((d) => ({ ...d, name: d?.name || d?.robot_id || '' }))
+        .filter((d) => d.name)
+      return { ...row, highRiskDevices: normalizedDevices }
+    })
+    .sort((a, b) => Number(b.highRisk ?? 0) - Number(a.highRisk ?? 0))
+})
 
 const stats = reactive({
   total: 0,
@@ -137,9 +192,85 @@ const stats = reactive({
   marked: 0
 })
 
-const formatDateTime = (dateString) => {
-  if (!dateString) return '-'
-  return new Date(dateString).toLocaleString('zh-CN')
+const setGroupPieRef = (key, el) => {
+  if (!key) return
+  if (el) {
+    groupPieRefs.set(key, el)
+    return
+  }
+  groupPieRefs.delete(key)
+}
+
+const activateGroup = async (key) => {
+  if (!key) return
+  activeGroupKey.value = key
+  await nextTick()
+  const target = groupCardRefs.get(key)
+  if (target?.scrollIntoView) {
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+}
+
+const renderGroupPies = async () => {
+  await nextTick()
+  const rows = groupRows.value || []
+  const keys = new Set(rows.map((row) => row.key || row.name).filter(Boolean))
+
+  for (const [key, chart] of groupPieCharts.entries()) {
+    if (!keys.has(key)) {
+      chart.dispose()
+      groupPieCharts.delete(key)
+    }
+  }
+
+  for (const row of rows) {
+    const key = row.key || row.name
+    if (!key) continue
+
+    const host = groupPieRefs.get(key)
+    if (!host) continue
+
+    const total = Number(row.total ?? 0)
+    const highRisk = Number(row.highRisk ?? 0)
+    const other = Math.max(0, total - highRisk)
+
+    let chart = groupPieCharts.get(key)
+    if (!chart) {
+      chart = echarts.init(host)
+      groupPieCharts.set(key, chart)
+    }
+
+    chart.off('click')
+    chart.on('click', () => {
+      activateGroup(key)
+    })
+
+    chart.setOption({
+      tooltip: {
+        trigger: 'item',
+        formatter: '{b}<br/>{c} ({d}%)'
+      },
+      series: [
+        {
+          type: 'pie',
+          radius: ['55%', '80%'],
+          avoidLabelOverlap: true,
+          label: { show: false },
+          labelLine: { show: false },
+          data: [
+            { value: highRisk, name: '高风险设备', itemStyle: { color: '#F56C6C' } },
+            { value: other, name: '其他设备', itemStyle: { color: '#409EFF' } }
+          ]
+        }
+      ]
+    })
+  }
+}
+
+const resizeGroupPies = () => {
+  for (const chart of groupPieCharts.values()) {
+    chart.resize()
+  }
 }
 
 const loadStats = async () => {
@@ -152,7 +283,31 @@ const loadStats = async () => {
       stats.historyHighRisk = robots.filter((r) => r.riskHistory?.length).length
       stats.marked = robots.filter((r) => (r.mark ?? 0) !== 0).length
 
-      groupRows.value = []
+      groupRows.value = robotGroups.map((group) => {
+        const groupKey = group.key
+        const groupRobots = getRobotsByGroup(groupKey)
+        const groupStat = getGroupStats(groupKey)
+        const highRiskDevices = groupRobots
+          .filter((r) => r.level === 'H')
+          .sort((a, b) => Number(b.riskScore ?? 0) - Number(a.riskScore ?? 0))
+          .slice(0, 12)
+          .map((r) => ({
+            id: r.id,
+            robot_id: r.id,
+            name: r.name || r.id
+          }))
+        return {
+          key: groupKey,
+          name: group.name,
+          expected_total: group.total,
+          total: groupStat.total,
+          highRisk: groupStat.highRisk,
+          historyHighRisk: groupStat.historyHighRisk,
+          marked: groupRobots.filter((r) => (r.mark ?? 0) !== 0).length,
+          highRiskDevices,
+          highRiskDevicesPreviewLimit: 12
+        }
+      })
       recentRows.value = robots.slice(0, 18).map((r) => ({
         partNo: r.partNo,
         referenceNo: r.referenceNo,
@@ -162,12 +317,7 @@ const loadStats = async () => {
         mark: r.mark ?? 0
       }))
 
-      const axisBad = {}
-      for (const axis of ['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7']) {
-        axisBad[axis] = robots.filter((r) => r.checks?.[axis]?.ok === false).length
-      }
-      const events = createRiskEvents(120)
-      updateCharts({ axisBad, events24h: events })
+      await renderGroupPies()
       return
     }
 
@@ -180,7 +330,7 @@ const loadStats = async () => {
     groupRows.value = data.groupStats || []
     recentRows.value = (data.recentUpdated || []).slice(0, 18)
 
-    updateCharts(data)
+    await renderGroupPies()
   } catch (error) {
     console.error('加载统计数据失败:', error)
     ElMessage.error(error?.response?.data?.error || error?.message || '加载数据失败')
@@ -189,89 +339,24 @@ const loadStats = async () => {
   }
 }
 
-const updateCharts = (dashboard) => {
-  // 近24小时风险事件（折线）
-  const events24h = dashboard.events24h || []
-  const timeLabels = events24h.map((item) =>
-    new Date(item.time || item.triggered_at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-  )
-  const counts = events24h.map((item) => item.count ?? 1)
-
-  if (tempChart) {
-    tempChart.setOption({
-      xAxis: { data: timeLabels },
-      series: [{ data: counts }]
-    })
-  } else if (tempChartRef.value) {
-    tempChart = echarts.init(tempChartRef.value)
-    tempChart.setOption({
-      title: { text: '' },
-      tooltip: { trigger: 'axis' },
-      xAxis: {
-        type: 'category',
-        data: timeLabels,
-        axisLabel: { rotate: 45 }
-      },
-      yAxis: { type: 'value', min: 0 },
-      series: [{
-        name: '事件数',
-        type: 'line',
-        data: counts,
-        smooth: true,
-        itemStyle: { color: '#409EFF' }
-      }]
-    })
-  }
-
-  // A1-A7 异常分布（柱状）
-  const axisBad = dashboard.axisBad || {}
-  const axisKeys = ['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7']
-  const axisCounts = axisKeys.map((k) => axisBad[k] ?? 0)
-
-  if (humidityChart) {
-    humidityChart.setOption({
-      xAxis: { data: axisKeys },
-      series: [{ data: axisCounts }]
-    })
-  } else if (humidityChartRef.value) {
-    humidityChart = echarts.init(humidityChartRef.value)
-    humidityChart.setOption({
-      title: { text: '' },
-      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-      xAxis: {
-        type: 'category',
-        data: axisKeys
-      },
-      yAxis: {
-        type: 'value',
-        minInterval: 1
-      },
-      series: [{
-        name: '异常数量',
-        type: 'bar',
-        data: axisCounts,
-        itemStyle: { color: '#E6A23C' },
-        barWidth: '60%'
-      }]
-    })
-  }
-}
-
 onMounted(() => {
   loadStats()
   refreshTimer = setInterval(loadStats, 30000) // 每30秒刷新一次
+  window.addEventListener('resize', resizeGroupPies)
 })
 
 onUnmounted(() => {
   if (refreshTimer) {
     clearInterval(refreshTimer)
   }
-  if (tempChart) {
-    tempChart.dispose()
+  window.removeEventListener('resize', resizeGroupPies)
+
+  for (const chart of groupPieCharts.values()) {
+    chart.dispose()
   }
-  if (humidityChart) {
-    humidityChart.dispose()
-  }
+  groupPieCharts.clear()
+  groupPieRefs.clear()
+  groupCardRefs.clear()
 })
 </script>
 
@@ -343,7 +428,127 @@ onUnmounted(() => {
   margin-bottom: 20px;
 }
 
+.group-pie-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: flex-start;
+}
+
+.group-pie-item {
+  width: 200px;
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  padding: 14px 12px 10px;
+  background: var(--app-surface);
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.group-pie-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+}
+
+.group-pie-item.is-active {
+  border-color: rgba(239, 68, 68, 0.5);
+  box-shadow: 0 10px 24px rgba(239, 68, 68, 0.12);
+}
+
+.group-pie-title {
+  font-weight: 600;
+  color: var(--app-text);
+  margin-bottom: 8px;
+}
+
+.group-pie-chart {
+  width: 176px;
+  height: 176px;
+  margin: 0 auto;
+}
+
+.group-pie-meta {
+  margin-top: 8px;
+  text-align: center;
+  color: var(--app-muted);
+  font-size: 12px;
+}
+
 .data-row {
   margin-bottom: 20px;
+}
+
+.card-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.card-header-hint {
+  color: var(--app-muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.group-risk-board {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.group-risk-card {
+  border: 1px solid var(--app-border);
+  border-radius: 14px;
+  background: var(--app-surface);
+  padding: 14px 14px 10px;
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.group-risk-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.08);
+}
+
+.group-risk-card.is-active {
+  border-color: rgba(239, 68, 68, 0.5);
+  box-shadow: 0 14px 28px rgba(239, 68, 68, 0.12);
+}
+
+.group-risk-card-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.group-risk-title {
+  font-weight: 700;
+  color: var(--app-text);
+}
+
+.group-risk-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--app-muted);
+  flex-shrink: 0;
+}
+
+.group-risk-meta-item.danger {
+  color: rgba(239, 68, 68, 0.9);
+  font-weight: 600;
+}
+
+.group-risk-table :deep(.el-table__cell) {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.group-risk-card-body :deep(.el-empty) {
+  padding: 28px 0;
 }
 </style>

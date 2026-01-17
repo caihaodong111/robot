@@ -167,11 +167,21 @@ class RiskEventViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewset
 def dashboard(request):
     now = timezone.now()
     since = now - timezone.timedelta(hours=24)
+    high_risk_preview_limit = 12
 
     groups = list(RobotGroup.objects.all())
     group_payload = []
     for group in groups:
         qs = RobotComponent.objects.filter(group=group)
+        high_risk_qs = (
+            qs.filter(level="H")
+            .order_by("-risk_score", "-updated_at")
+            .values("id", "robot_id", "name")[:high_risk_preview_limit]
+        )
+        high_risk_devices = [
+            {"id": item["id"], "robot_id": item["robot_id"], "name": item["name"] or item["robot_id"]}
+            for item in high_risk_qs
+        ]
         group_payload.append(
             {
                 "key": group.key,
@@ -181,6 +191,8 @@ def dashboard(request):
                 "highRisk": qs.filter(level="H").count(),
                 "historyHighRisk": qs.exclude(risk_history=[]).count(),
                 "marked": qs.exclude(mark=0).count(),
+                "highRiskDevices": high_risk_devices,
+                "highRiskDevicesPreviewLimit": high_risk_preview_limit,
             }
         )
 
