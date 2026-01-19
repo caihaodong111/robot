@@ -19,7 +19,7 @@ RUN apk update && apk add --no-cache \
 COPY requirements.txt .
 
 # 安装Python依赖
-RUN pip install --upgrade pip && pip install -r requirements.txt
+RUN pip install --upgrade pip && pip install -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple -r requirements.txt
 
 # 复制项目文件
 COPY . .
