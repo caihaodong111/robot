@@ -1,31 +1,37 @@
 # Django核心
-Django==6.0.1
-djangorestframework==3.16.1
-django-cors-headers==4.9.0
+Django>=5.0,<6.0
+djangorestframework>=3.15
+django-cors-headers>=4.0
 
 # 环境变量
-python-dotenv==1.0.1
+python-dotenv>=1.0
 
 # 数据库
-pymysql==1.1.2
+pymysql>=1.0
 
 # WebSocket
-channels==4.3.2
-channels-redis==4.2.1
+channels>=4.0
+channels-redis>=4.0
 
 # Celery异步任务
-celery==5.6.2
-redis==7.1.0
+celery>=5.3
+redis>=5.0
 
 # 缓存
-django-redis==6.0.0
+django-redis>=5.4
 
 # 数据处理
-pandas==2.2.3
-openpyxl==3.1.5
+pandas>=2.0
+openpyxl>=3.0
 
 # 安全
-cryptography==46.0.3
+cryptography>=40.0
 
 # 图片处理
-Pillow==12.1.0
+Pillow>=10.0
+
+# ASGI服务器
+daphne>=4.0
+
+# Celery Beat调度器
+django-celery-beat>=2.5
