@@ -5,7 +5,8 @@ FROM python:3.10-alpine
 WORKDIR /app
 
 # 安装系统依赖
-RUN apk update && apk add --no-cache \
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories && \
+    apk update && apk add --no-cache \
     gcc \
     g++ \
     musl-dev \

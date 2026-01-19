@@ -1,25 +1,22 @@
-version: '3.8'
+# 修复版 docker-compose.yml
+# 适用于服务器上直接包含Dockerfile文件的情况
+# 移除了过时的version属性
+# 使用正确的Dockerfile路径
 
 services:
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: sg-backend:v0.1
     container_name: iot-backend
     ports:
       - "8000:8000"
     restart: unless-stopped
     volumes:
       - ./backend:/app
-    env_file:
-      - ./backend/.env
     networks:
       - iot-network
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
+    image: sg-frontend:v0.1
     container_name: iot-frontend
     ports:
       - "80:80"
