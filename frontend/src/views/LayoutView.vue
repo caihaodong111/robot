@@ -27,6 +27,10 @@
           <el-icon><Bell /></el-icon>
           <span>可视化BI</span>
         </el-menu-item>
+        <el-menu-item index="/portal">
+          <el-icon><Grid /></el-icon>
+          <span>应用门户</span>
+        </el-menu-item>
       </el-menu>
     </el-aside>
 
@@ -75,7 +79,7 @@ import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import {
-  Odometer, Cpu, TrendCharts, Bell, User, SwitchButton
+  Odometer, Cpu, TrendCharts, Bell, User, SwitchButton, Grid
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 
@@ -90,7 +94,8 @@ const currentPageName = computed(() => {
     '/dashboard': '平台概览',
     '/devices': '机器人状态',
     '/monitoring': '关键轨迹检查',
-    '/alerts': '可视化BI'
+    '/alerts': '可视化BI',
+    '/portal': '应用门户'
   }
   return names[route.path] || '首页'
 })
