@@ -10,8 +10,6 @@ services:
     ports:
       - "8000:8000"
     restart: unless-stopped
-    volumes:
-      - ./backend:/app
     networks:
       - iot-network
 
