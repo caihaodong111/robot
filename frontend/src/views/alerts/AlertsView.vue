@@ -24,7 +24,7 @@
             </el-form-item>
           </el-col>
           <el-col :xs="24" :sm="12" :md="10">
-            <el-form-item label="Robot / Table">
+            <el-form-item label="Robot">
               <el-select
                 v-model="form.componentId"
                 class="robot-select"
@@ -69,25 +69,33 @@
                 format="YYYY-MM-DD HH:mm"
                 :default-time="defaultTime"
                 unlink-panels
+                @change="rangeTouched = true"
               />
             </el-form-item>
           </el-col>
         </el-row>
 
-        <el-row :gutter="16">
-          <el-col :xs="24" :sm="24" :md="18">
-            <el-form-item label="Axis Select">
-              <el-select v-model="form.axes" placeholder="选择 A1-A7（可多选）" multiple collapse-tags collapse-tags-tooltip>
-                <el-option v-for="k in AXES" :key="k" :label="k" :value="k" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :xs="24" :sm="24" :md="6" class="load-col">
-            <el-button type="primary" :icon="DataLine" :loading="loading" @click="loadData">
-              Load Data
-            </el-button>
-          </el-col>
-        </el-row>
+	        <el-row :gutter="16">
+	          <el-col :xs="24" :sm="24" :md="12">
+	            <el-form-item label="Axis Select">
+	              <el-select v-model="form.axes" placeholder="选择 A1-A7（可多选）" multiple collapse-tags collapse-tags-tooltip>
+	                <el-option v-for="k in AXES" :key="k" :label="k" :value="k" />
+	              </el-select>
+	            </el-form-item>
+	          </el-col>
+	          <el-col :xs="24" :sm="12" :md="6">
+	            <el-form-item label="Program Name">
+	              <el-select v-model="form.program" placeholder="全部程序" clearable filterable>
+	                <el-option v-for="p in programOptions" :key="p" :label="p" :value="p" />
+	              </el-select>
+	            </el-form-item>
+	          </el-col>
+	          <el-col :xs="24" :sm="12" :md="6" class="load-col">
+	            <el-button type="primary" :icon="DataLine" :loading="loading" @click="loadData">
+	              Load Data
+	            </el-button>
+	          </el-col>
+	        </el-row>
       </el-form>
     </el-card>
 
@@ -103,7 +111,27 @@
               </div>
             </div>
           </template>
-          <div ref="chartRef" class="chart"></div>
+          <div class="chart">
+            <template v-if="activeRobot && form.axes?.length">
+              <el-tabs v-model="activeAxisTab" type="border-card">
+                <el-tab-pane
+                  v-for="axisKey in form.axes"
+                  :key="axisKey"
+                  :label="axisKey"
+	                  :name="axisKey"
+	                >
+	                  <div v-loading="loading" class="chart-wrapper">
+	                    <AggregatedChart
+	                      :data="filteredAggregatedByAxis(axisKey)"
+	                      :config="axisConfig[axisKey] || axisConfig.A1"
+	                      :program="`${activeRobot.partNo} - ${axisKey}`"
+	                    />
+	                  </div>
+	                </el-tab-pane>
+              </el-tabs>
+            </template>
+            <el-empty v-else description="请选择机器人并加载数据" />
+          </div>
         </el-card>
       </el-col>
       <el-col :span="8">
@@ -114,7 +142,7 @@
           <div v-if="activeRobot" class="overview">
             <div class="overview-row">
               <div class="overview-label">Robot</div>
-              <div class="overview-value">{{ activeRobot.partNo }}</div>
+              <div class="overview-value">{{ activeRobot.name || activeRobot.robot_id || '-' }}</div>
             </div>
             <div class="overview-row">
               <div class="overview-label">Reference</div>
@@ -159,14 +187,15 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import * as echarts from 'echarts'
 import { DataLine, Refresh } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { DEMO_MODE } from '@/config/appConfig'
 import { getRobotComponent, getRobotComponents, getRobotGroups } from '@/api/robots'
-import { createTelemetrySeries, getAllRobots, robotGroups as mockGroups } from '@/mock/robots'
+import { getAllRobots, robotGroups as mockGroups } from '@/mock/robots'
+import request from '@/utils/request'
+import AggregatedChart from '@/components/charts/AggregatedChart.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -179,9 +208,20 @@ const robotOptions = ref([])
 const robotSearching = ref(false)
 
 const loading = ref(false)
-const chartRef = ref(null)
-let chart = null
-let resizeHandler = null
+const activeAxisTab = ref('A1')
+const aggregatedByAxis = ref({})
+const rangeTouched = ref(false)
+const availablePrograms = ref([])
+
+const axisConfig = {
+  A1: { min: 'MinCurr_A1', max: 'MAXCurr_A1', lq: 'Curr_A1_LQ', hq: 'Curr_A1_HQ' },
+  A2: { min: 'MinCurr_A2', max: 'MAXCurr_A2', lq: 'Curr_A2_LQ', hq: 'Curr_A2_HQ' },
+  A3: { min: 'MinCurr_A3', max: 'MAXCurr_A3', lq: 'Curr_A3_LQ', hq: 'Curr_A3_HQ' },
+  A4: { min: 'MinCurr_A4', max: 'MAXCurr_A4', lq: 'Curr_A4_LQ', hq: 'Curr_A4_HQ' },
+  A5: { min: 'MinCurr_A5', max: 'MAXCurr_A5', lq: 'Curr_A5_LQ', hq: 'Curr_A5_HQ' },
+  A6: { min: 'MinCurr_A6', max: 'MAXCurr_A6', lq: 'Curr_A6_LQ', hq: 'Curr_A6_HQ' },
+  A7: { min: 'MinCurr_E1', max: 'MAXCurr_E1', lq: 'Curr_E1_LQ', hq: 'Curr_E1_HQ' }
+}
 
 const now = new Date()
 const yesterday = new Date(now.getTime() - 24 * 3600_000)
@@ -190,7 +230,8 @@ const form = reactive({
   plant: (DEMO_MODE ? mockGroups[0].key : ''),
   componentId: null,
   range: [yesterday, now],
-  axes: ['A2']
+  axes: ['A2'],
+  program: ''
 })
 
 const activeRobot = ref(null)
@@ -212,84 +253,93 @@ const checkTooltip = (robot, key) => {
   return check.ok ? `${label}：正常/符合要求` : `${label}：存在异常/待处理`
 }
 
-const hashString = (text) => {
-  let hash = 2166136261
-  for (let i = 0; i < text.length; i += 1) {
-    hash ^= text.charCodeAt(i)
-    hash = Math.imul(hash, 16777619)
-  }
-  return hash >>> 0
-}
-
-const mulberry32 = (seed) => {
-  let t = seed >>> 0
-  return () => {
-    t += 0x6D2B79F5
-    let x = t
-    x = Math.imul(x ^ (x >>> 15), x | 1)
-    x ^= x + Math.imul(x ^ (x >>> 7), x | 61)
-    return ((x ^ (x >>> 14)) >>> 0) / 4294967296
-  }
-}
-
-const buildAxisSeries = (robot, axisKey, start, end) => {
-  const ms = end.getTime() - start.getTime()
-  const points = Math.max(30, Math.min(180, Math.round(ms / (8 * 60_000))))
-  const interval = Math.max(60, Math.round(ms / points / 1000))
-
-  const telemetry = createTelemetrySeries(robot.robot_id || robot.id, points, interval)
-  const ok = robot.checks?.[axisKey]?.ok !== false
-
-  const rand = mulberry32(hashString(`${robot.robot_id || robot.id}::${axisKey}`))
-  return telemetry.map((row, idx) => {
-    const base = ok ? 0.12 : 0.72
-    const wave = Math.sin(idx / 7) * (ok ? 0.06 : 0.1)
-    const noise = (rand() - 0.5) * (ok ? 0.06 : 0.12)
-    const spike = !ok && rand() < 0.06 ? 0.25 + rand() * 0.18 : 0
-    const value = Math.max(0, Math.min(1, base + wave + noise + spike))
-    return [row.timestamp, value]
+const programOptions = computed(() => {
+  if (availablePrograms.value.length) return availablePrograms.value
+  const set = new Set()
+  Object.values(aggregatedByAxis.value || {}).forEach((rows) => {
+    ;(rows || []).forEach((r) => {
+      if (r?.P_name) set.add(String(r.P_name))
+    })
   })
+  return Array.from(set).sort()
+})
+
+const filteredAggregatedByAxis = (axisKey) => {
+  const rows = aggregatedByAxis.value?.[axisKey] || []
+  if (!form.program) return rows
+  return rows.filter((r) => String(r?.P_name || '') === String(form.program))
 }
 
-const renderChart = (robot, axes, range) => {
-  if (!chartRef.value) return
-  if (!chart) chart = echarts.init(chartRef.value)
+const pad2 = (n) => String(n).padStart(2, '0')
 
-  const [start, end] = range
-  const series = axes.map((axisKey, idx) => {
-    const data = buildAxisSeries(robot, axisKey, start, end)
-    const ok = robot.checks?.[axisKey]?.ok !== false
-    const colors = ['#2563eb', '#16a34a', '#b45309', '#7c3aed', '#0891b2', '#be123c', '#334155']
-    const color = colors[idx % colors.length]
-    return {
-      name: axisKey,
-      type: 'line',
-      showSymbol: false,
-      smooth: true,
-      data,
-      lineStyle: { width: 2, color: ok ? color : '#ef4444' },
-      areaStyle: { opacity: 0.08, color: ok ? color : '#ef4444' }
+const formatBackendDateTime = (d) => {
+  const dt = d instanceof Date ? d : new Date(d)
+  if (Number.isNaN(dt.getTime())) return ''
+  return `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())} ${pad2(dt.getHours())}:${pad2(dt.getMinutes())}:${pad2(dt.getSeconds())}`
+}
+
+const parseBackendDateTime = (text) => {
+  if (!text) return null
+  const dt = new Date(String(text).replace(' ', 'T'))
+  return Number.isNaN(dt.getTime()) ? null : dt
+}
+
+const rangeCache = new Map()
+
+const fetchAxisRange = async (partNo) => {
+  if (!partNo) return null
+  if (rangeCache.has(partNo)) return rangeCache.get(partNo)
+  try {
+    const res = await request.get('/robots/axis-range/', { params: { part_no: partNo }, silent: true })
+    const start = parseBackendDateTime(res?.start_time)
+    const end = parseBackendDateTime(res?.end_time)
+    const value = start && end ? [start, end] : null
+    rangeCache.set(partNo, value)
+    return value
+  } catch {
+    rangeCache.set(partNo, null)
+    return null
+  }
+}
+
+const generateMockAggregated = (axisKey) => {
+  const rows = []
+  const cfg = axisConfig[axisKey] || axisConfig.A1
+  for (let i = 0; i < 20; i += 1) {
+    const base = 50 + Math.random() * 30
+    rows.push({
+      SNR_C: `SNR${1000 + i * 5}`,
+      P_name: `Program_${i + 1}`,
+      [cfg.min]: base - 20,
+      [cfg.max]: base + 20,
+      [cfg.lq]: base - 10,
+      [cfg.hq]: base + 10
+    })
+  }
+  return rows
+}
+
+const fetchAggregated = async ({ partNo, axisKey, range }) => {
+  if (DEMO_MODE) return generateMockAggregated(axisKey)
+  try {
+    const [start, end] = range || []
+    const params = {
+      part_no: partNo,
+      axis: axisKey,
+      program: form.program || undefined,
+      start_time: formatBackendDateTime(start),
+      end_time: formatBackendDateTime(end)
     }
-  })
-
-  chart.setOption({
-    grid: { top: 28, right: 18, bottom: 42, left: 46 },
-    tooltip: { trigger: 'axis' },
-    legend: { data: axes, textStyle: { color: 'rgba(15, 23, 42, 0.75)' } },
-    xAxis: {
-      type: 'time',
-      axisLabel: { color: 'rgba(15, 23, 42, 0.65)' },
-      splitLine: { lineStyle: { color: 'rgba(15, 23, 42, 0.06)' } }
-    },
-    yAxis: {
-      type: 'value',
-      min: 0,
-      max: 1,
-      axisLabel: { color: 'rgba(15, 23, 42, 0.65)' },
-      splitLine: { lineStyle: { color: 'rgba(15, 23, 42, 0.06)' } }
-    },
-    series
-  })
+    const response = await request.get('/robots/axis-data/', { params, silent: true })
+    if (Array.isArray(response?.programs)) {
+      availablePrograms.value = response.programs.map(String)
+    }
+    return response?.aggregated || []
+  } catch (e) {
+    const msg = e?.response?.data?.error || e?.response?.data?.detail || '服务器错误'
+    ElMessage.error(`加载聚合数据失败：${msg}`)
+    return []
+  }
 }
 
 const loadGroups = async () => {
@@ -334,7 +384,7 @@ const remoteSearchRobots = async (query) => {
     const rows = data.results || data
     robotOptions.value = rows.map((r) => ({
       id: r.id,
-      name: r.name || r.partNo || r.robot_id,
+      name: r.name || r.robot_id || r.partNo,
       partNo: r.partNo,
       referenceNo: r.referenceNo,
       plant: r.group
@@ -349,9 +399,30 @@ const remoteSearchRobots = async (query) => {
 const resolveRobotFromId = async (componentId) => {
   if (!componentId) return null
   if (DEMO_MODE) {
-    return getAllRobots().find((r) => r.id === componentId) || null
+    const key = String(componentId)
+    return getAllRobots().find((r) => String(r.id) === key) || null
   }
   return await getRobotComponent(componentId)
+}
+
+const upsertRobotOption = (robot) => {
+  if (!robot) return
+  const id = DEMO_MODE ? String(robot.id) : robot.id
+  if (!id) return
+
+  const option = {
+    id,
+    name: robot.name || robot.robot_id || robot.partNo || robot.part_no || String(id),
+    partNo: robot.partNo || robot.part_no || '',
+    referenceNo: robot.referenceNo || robot.reference_no || '',
+    plant: robot.group || form.plant || ''
+  }
+  const existingIdx = robotOptions.value.findIndex((r) => String(r.id) === String(id))
+  if (existingIdx >= 0) {
+    robotOptions.value.splice(existingIdx, 1, option)
+  } else {
+    robotOptions.value.unshift(option)
+  }
 }
 
 const loadData = async () => {
@@ -377,7 +448,24 @@ const loadData = async () => {
     }
 
     activeRobot.value = robot
-    renderChart(robot, form.axes, form.range)
+    upsertRobotOption(robot)
+
+    const autoRange = await fetchAxisRange(robot.partNo)
+    if (!rangeTouched.value && autoRange?.[0] && autoRange?.[1]) form.range = autoRange
+
+    availablePrograms.value = []
+    aggregatedByAxis.value = {}
+    activeAxisTab.value = form.axes[0]
+    const tasks = form.axes.map((axisKey) =>
+      fetchAggregated({ partNo: robot.partNo, axisKey, range: form.range })
+        .then((rows) => [axisKey, rows])
+    )
+    const results = await Promise.allSettled(tasks)
+    aggregatedByAxis.value = Object.fromEntries(
+      results
+        .filter((r) => r.status === 'fulfilled')
+        .map((r) => r.value)
+    )
 
     router.replace({
       path: '/alerts',
@@ -385,6 +473,7 @@ const loadData = async () => {
         plant: form.plant,
         componentId: String(form.componentId),
         axes: form.axes.join(','),
+        program: form.program || undefined,
         start: new Date(form.range[0]).toISOString(),
         end: new Date(form.range[1]).toISOString()
       }
@@ -416,25 +505,32 @@ const resetForm = () => {
   form.componentId = null
   form.range = [yesterday2, now2]
   form.axes = ['A2']
+  form.program = ''
   activeRobot.value = null
   robotOptions.value = []
-  if (chart) chart.clear()
+  availablePrograms.value = []
+  aggregatedByAxis.value = {}
+  activeAxisTab.value = 'A2'
+  rangeTouched.value = false
 }
 
 const hydrateFromRoute = async () => {
   const plant = route.query.plant?.toString()
   const componentId = route.query.componentId?.toString()
   const axes = route.query.axes?.toString()
+  const program = route.query.program?.toString()
   const start = route.query.start?.toString()
   const end = route.query.end?.toString()
 
   if (plant) form.plant = plant
   if (axes) form.axes = axes.split(',').filter(Boolean)
+  form.program = program || ''
   if (start && end) {
     const s = new Date(start)
     const e = new Date(end)
     if (!Number.isNaN(s.getTime()) && !Number.isNaN(e.getTime())) {
       form.range = [s, e]
+      rangeTouched.value = true
     }
   }
   if (componentId) {
@@ -446,17 +542,19 @@ const hydrateFromRoute = async () => {
 onMounted(async () => {
   await loadGroups()
   await hydrateFromRoute()
-  resizeHandler = () => chart?.resize()
-  window.addEventListener('resize', resizeHandler)
 })
 
-onUnmounted(() => {
-  if (resizeHandler) {
-    window.removeEventListener('resize', resizeHandler)
+let programReloadTimer = null
+watch(
+  () => form.program,
+  () => {
+    if (!activeRobot.value) return
+    if (programReloadTimer) clearTimeout(programReloadTimer)
+    programReloadTimer = setTimeout(() => {
+      loadData()
+    }, 150)
   }
-  if (chart) chart.dispose()
-  chart = null
-})
+)
 
 watch(
   () => route.query,
@@ -550,7 +648,11 @@ watch(
 }
 
 .chart {
-  height: 420px;
+  height: 520px;
+}
+
+.chart-wrapper {
+  height: 480px;
 }
 
 .chart-header {

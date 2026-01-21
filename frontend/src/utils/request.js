@@ -29,32 +29,37 @@ request.interceptors.response.use(
     return response.data
   },
   error => {
+    const silent = Boolean(error.config?.silent)
     if (error.response) {
       switch (error.response.status) {
         case 401:
-          ElMessage.error('登录已过期，请重新登录')
+          if (!silent) ElMessage.error('登录已过期，请重新登录')
           localStorage.removeItem('token')
           localStorage.removeItem('username')
           router.push('/login')
           break
         case 403:
-          ElMessage.error('没有权限访问')
+          if (!silent) ElMessage.error('没有权限访问')
           break
         case 404:
-          if (typeof error.response.data?.detail === 'string' && error.response.data.detail.includes('Invalid page')) {
-            ElMessage.warning('页码超出范围，已重置')
-          } else {
-            ElMessage.error('请求的资源不存在')
+          if (!silent) {
+            if (typeof error.response.data?.detail === 'string' && error.response.data.detail.includes('Invalid page')) {
+              ElMessage.warning('页码超出范围，已重置')
+            } else {
+              ElMessage.error('请求的资源不存在')
+            }
           }
           break
         case 500:
-          ElMessage.error('服务器错误')
+          if (!silent) {
+            ElMessage.error(error.response.data?.error || error.response.data?.detail || '服务器错误')
+          }
           break
         default:
-          ElMessage.error(error.response.data.error || error.response.data.detail || '请求失败')
+          if (!silent) ElMessage.error(error.response.data?.error || error.response.data?.detail || '请求失败')
       }
     } else {
-      ElMessage.error('网络错误，请检查网络连接')
+      if (!silent) ElMessage.error('网络错误，请检查网络连接')
     }
     return Promise.reject(error)
   }

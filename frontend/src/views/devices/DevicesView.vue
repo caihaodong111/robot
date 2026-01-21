@@ -284,18 +284,11 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="previewVisible" title="A项检查详情" width="860px">
-      <div class="preview">
-        <div class="preview-meta">
-          <el-tag effect="light" type="info">{{ previewAxis }}</el-tag>
-          <span class="mono">{{ previewPartNo }}</span>
-        </div>
-        <img class="preview-image" :src="previewImageUrl" alt="preview" />
-      </div>
-      <template #footer>
-        <el-button @click="previewVisible = false">关闭</el-button>
-      </template>
-    </el-dialog>
+    <AxisDataPreview
+      v-model:visible="previewVisible"
+      :robot-part-no="previewPartNo"
+      :axis-key="previewAxis"
+    />
   </div>
 </template>
 
@@ -307,6 +300,7 @@ import { ElMessage } from 'element-plus'
 import { DEMO_MODE } from '@/config/appConfig'
 import { getRobotComponents, getRobotGroups, updateRobotComponent } from '@/api/robots'
 import { getGroupStats, getRobotsByGroup, robotGroups as mockGroups } from '@/mock/robots'
+import AxisDataPreview from '@/components/charts/AxisDataPreview.vue'
 
 const router = useRouter()
 
@@ -349,7 +343,6 @@ const editForm = ref({
 const previewVisible = ref(false)
 const previewAxis = ref('A1')
 const previewPartNo = ref('')
-const previewImageUrl = new URL('../../../img.png', import.meta.url).href
 
 const loading = ref(false)
 const groupsData = ref([])
@@ -824,27 +817,6 @@ if (!DEMO_MODE) {
   text-align: left;
   white-space: normal;
   line-height: 1.2;
-}
-
-.preview {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.preview-meta {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.preview-image {
-  width: 100%;
-  max-height: 560px;
-  object-fit: contain;
-  border-radius: 14px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: rgba(148, 163, 184, 0.06);
 }
 
 .detail {

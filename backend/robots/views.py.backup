@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from django.db.models import Count, Q, Avg, Min, Max
+from django.db.models import Count, Q, Avg, Min, Max, Stddev
 from django.db.models.functions import TruncHour
 from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
@@ -245,35 +245,6 @@ def dashboard(request):
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
-def axis_range(request):
-    """
-    Get available timestamp range for a robot (part_no).
-    Query parameters:
-    - part_no: Robot part number (e.g., 'AS33_020RB_400')
-    """
-    part_no = request.query_params.get("part_no", "").upper()
-    if not part_no:
-        return Response({"error": "part_no is required"}, status=400)
-
-    agg = RobotAxisData.objects.filter(part_no=part_no).aggregate(
-        min_ts=Min("timestamp"),
-        max_ts=Max("timestamp"),
-    )
-
-    if not agg["min_ts"] or not agg["max_ts"]:
-        return Response({"error": "No data found", "start_time": None, "end_time": None}, status=404)
-
-    return Response(
-        {
-            "part_no": part_no,
-            "start_time": agg["min_ts"].strftime("%Y-%m-%d %H:%M:%S"),
-            "end_time": agg["max_ts"].strftime("%Y-%m-%d %H:%M:%S"),
-        }
-    )
-
-
-@api_view(["GET"])
-@permission_classes([IsAuthenticated])
 def axis_data(request):
     """
     Get axis time series and aggregated data for a robot
@@ -282,200 +253,124 @@ def axis_data(request):
     - axis: Axis key (A1-A7)
     - start_time: Optional start time (default: 30 days ago)
     - end_time: Optional end time (default: now)
-    - program: Optional program name filter (matches p_name)
     """
     part_no = request.query_params.get("part_no", "").upper()
     axis = request.query_params.get("axis", "A1")
-    program = (request.query_params.get("program") or "").strip()
 
     if not part_no:
         return Response({"error": "part_no is required"}, status=400)
 
-    # Default time range: last 30 days
+    # Map part_no to table name
+    table_name = part_no.lower()
+
+    # Default time range: last 30 days (increased from 7 days)
     end_time = request.query_params.get("end_time")
     start_time = request.query_params.get("start_time")
 
+    if not end_time:
+        end_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    if not start_time:
+        start_time = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d %H:%M:%S')
+
     try:
-        # Parse datetime if provided
-        if end_time:
-            end_dt = datetime.strptime(end_time, '%Y-%m-%d %H:%M:%S')
-        else:
-            end_dt = datetime.now()
+        # Connect to MySQL and fetch data
+        conn = pymysql.connect(**ROBOT_DB_CONFIG)
 
-        if start_time:
-            start_dt = datetime.strptime(start_time, '%Y-%m-%d %H:%M:%S')
-        else:
-            start_dt = datetime.now() - timedelta(days=30)
+        try:
+            # First, check if we have data in the specified range
+            check_query = f"SELECT COUNT(*) as cnt FROM `{table_name}` WHERE `Timestamp` BETWEEN %s AND %s"
 
-        base_queryset = RobotAxisData.objects.filter(
-            part_no=part_no,
-            timestamp__gte=start_dt,
-            timestamp__lte=end_dt
-        )
+            # Fetch time series data
+            query = f"SELECT * FROM `{table_name}` WHERE `Timestamp` BETWEEN %s AND %s ORDER BY `Timestamp`"
+            df = pd.read_sql(query, conn, params=(start_time, end_time))
 
-        # Program dropdown options should come from DB (range-based, not affected by program filter)
-        programs = list(
-            base_queryset.exclude(p_name__isnull=True)
-            .exclude(p_name="")
-            .values_list("p_name", flat=True)
-            .distinct()
-        )
+            # If no data in specified range, try to get the most recent data
+            if df.empty:
+                # Get the latest available data (last 1000 records)
+                query_recent = f"SELECT * FROM `{table_name}` ORDER BY `Timestamp` DESC LIMIT 1000"
+                df = pd.read_sql(query_recent, conn)
 
-        # Apply optional program filter for data returned
-        queryset = base_queryset
-        if program:
-            queryset = queryset.filter(p_name=program)
+                if df.empty:
+                    return Response({"error": "No data found", "data": None, "aggregated": None})
 
-        queryset = queryset.order_by('timestamp')
+                # Sort by timestamp for processing
+                df = df.sort_values(by='Timestamp')
 
-        data_count = queryset.count()
+                # Update time range for response
+                if not df.empty:
+                    start_time = df['Timestamp'].min()
+                    end_time = df['Timestamp'].max()
 
-        # If no data in range, get most recent data
-        if data_count == 0:
-            fallback_base = RobotAxisData.objects.filter(part_no=part_no)
-            programs = list(
-                fallback_base.exclude(p_name__isnull=True)
-                .exclude(p_name="")
-                .values_list("p_name", flat=True)
-                .distinct()
-            )
+            if df.empty:
+                return Response({"error": "No data found", "data": None, "aggregated": None})
 
-            fallback_qs = fallback_base
-            if program:
-                fallback_qs = fallback_qs.filter(p_name=program)
+            # Process data
+            # Drop unnecessary columns
+            cols_to_drop = ['A1_marker', 'A2_marker', 'A3_marker', 'A4_marker',
+                            'A5_marker', 'A6_marker', 'A7_marker', 'SUB']
+            for col in cols_to_drop:
+                if col in df.columns:
+                    del df[col]
 
-            queryset = fallback_qs.order_by('-timestamp')[:1000]
+            # Remove duplicates
+            df = df.drop_duplicates()
 
-            if queryset.count() == 0:
-                return Response(
-                    {
-                        "error": "No data found",
-                        "data": None,
-                        "aggregated": None,
-                        "programs": sorted(programs),
-                        "program": program,
-                    }
-                )
+            # Convert time
+            df['Time'] = pd.to_datetime(df['Timestamp']) + timedelta(hours=8)
+            df['Timestamp'] = df['Time'].astype(str)
 
-            # Update time range for response
-            start_dt = queryset.last().timestamp
-            end_dt = queryset.first().timestamp
-            queryset = list(queryset)
-        else:
-            queryset = list(queryset)
+            # Convert data types
+            df['SNR_C'] = df['SNR_C'].astype(int)
+            for i in range(1, 8):
+                col = f'AxisP{i}'
+                if col in df.columns:
+                    df[col] = df[col].astype(float)
 
-        # Field mapping for axis configuration
-        axis_field_map = {
-            'A1': {'curr': 'curr_a1', 'max': 'max_curr_a1', 'min': 'min_curr_a1', 'temp': 'tem_1', 'pos': 'axisp1', 'lq': 'curr_a1_lq', 'hq': 'curr_a1_hq', 'speed': 'speed1', 'torque': 'torque1', 'fol': 'fol1'},
-            'A2': {'curr': 'curr_a2', 'max': 'max_curr_a2', 'min': 'min_curr_a2', 'temp': 'tem_2', 'pos': 'axisp2', 'lq': 'curr_a2_lq', 'hq': 'curr_a2_hq', 'speed': 'speed2', 'torque': 'torque2', 'fol': 'fol2'},
-            'A3': {'curr': 'curr_a3', 'max': 'max_curr_a3', 'min': 'min_curr_a3', 'temp': 'tem_3', 'pos': 'axisp3', 'lq': 'curr_a3_lq', 'hq': 'curr_a3_hq', 'speed': 'speed3', 'torque': 'torque3', 'fol': 'fol3'},
-            'A4': {'curr': 'curr_a4', 'max': 'max_curr_a4', 'min': 'min_curr_a4', 'temp': 'tem_4', 'pos': 'axisp4', 'lq': 'curr_a4_lq', 'hq': 'curr_a4_hq', 'speed': 'speed4', 'torque': 'torque4', 'fol': 'fol4'},
-            'A5': {'curr': 'curr_a5', 'max': 'max_curr_a5', 'min': 'min_curr_a5', 'temp': 'tem_5', 'pos': 'axisp5', 'lq': 'curr_a5_lq', 'hq': 'curr_a5_hq', 'speed': 'speed5', 'torque': 'torque5', 'fol': 'fol5'},
-            'A6': {'curr': 'curr_a6', 'max': 'max_curr_a6', 'min': 'min_curr_a6', 'temp': 'tem_6', 'pos': 'axisp6', 'lq': 'curr_a6_lq', 'hq': 'curr_a6_hq', 'speed': 'speed6', 'torque': 'torque6', 'fol': 'fol6'},
-            'A7': {'curr': 'curr_e1', 'max': 'max_curr_e1', 'min': 'min_curr_e1', 'temp': 'tem_7', 'pos': 'axisp7', 'lq': 'curr_e1_lq', 'hq': 'curr_e1_hq', 'speed': 'speed7', 'torque': 'torque7', 'fol': 'fol7'},
-        }
+            # Sort data
+            deft = df.sort_values(by=['SNR_C', 'Time'])
+            deft['sort'] = range(1, len(deft) + 1)
 
-        field_map = axis_field_map.get(axis, axis_field_map['A1'])
+            # Calculate aggregated data (quantiles)
+            ref_cols = [f'MAXCurr_A{i}' for i in range(1, 7)] + ['MAXCurr_E1'] + \
+                       [f'MinCurr_A{i}' for i in range(1, 7)] + ['MinCurr_E1']
+            ref = deft.groupby('SNR_C')[[c for c in ref_cols if c in deft.columns]].last()
 
-        # Build data list for response
-        data_list = []
-        sort_idx = 1
-        for item in queryset:
-            data_item = {
-                'sort': sort_idx,
-                'Timestamp': item.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
-                'SNR_C': item.snr_c,
-                'P_name': item.p_name or '',
-                field_map['curr']: getattr(item, field_map['curr']),
-                field_map['max']: getattr(item, field_map['max']),
-                field_map['min']: getattr(item, field_map['min']),
-                field_map['temp']: getattr(item, field_map['temp']),
-                field_map['pos']: getattr(item, field_map['pos']),
-                field_map['speed']: getattr(item, field_map['speed']),
-                field_map['torque']: getattr(item, field_map['torque']),
-                field_map['fol']: getattr(item, field_map['fol']),
+            x_tex = deft["SNR_C"].sort_values(ascending=True).unique().astype(str)
+
+            # Lower quantile (1%)
+            curr_cols = [f'Curr_A{i}' for i in range(1, 7)] + ['Curr_E1']
+            lq_cols = [c for c in curr_cols if c in deft.columns]
+            LQ = deft.groupby('SNR_C')[lq_cols].quantile(q=0.01, interpolation='nearest')
+            LQ.columns = [f'{col}_LQ' for col in LQ.columns]
+
+            # Upper quantile (99%)
+            HQ = deft.groupby('SNR_C')[lq_cols].quantile(q=0.99, interpolation='nearest')
+            HQ.columns = [f'{col}_HQ' for col in HQ.columns]
+
+            # Labels
+            labeltext = deft.groupby('SNR_C')['P_name'].last()
+
+            # Merge all
+            Q = pd.merge(pd.merge(pd.merge(LQ, HQ, left_index=True, right_index=True, how='outer'),
+                                  ref, left_index=True, right_index=True, how='inner'),
+                         labeltext, left_index=True, right_index=True, how='inner').reset_index()
+            Q["SNR_C"] = x_tex
+
+            # Convert to dict for JSON response
+            response_data = {
+                'table_name': table_name,
+                'axis': axis,
+                'start_time': start_time,
+                'end_time': end_time,
+                'data': deft.to_dict('records'),
+                'aggregated': Q.to_dict('records'),
+                'total_records': len(deft)
             }
 
-            # Add all fields for all axes
-            for i in range(1, 7):
-                data_item[f'Curr_A{i}'] = getattr(item, f'curr_a{i}', None)
-                data_item[f'MAXCurr_A{i}'] = getattr(item, f'max_curr_a{i}', None)
-                data_item[f'MinCurr_A{i}'] = getattr(item, f'min_curr_a{i}', None)
-                data_item[f'Tem_{i}'] = getattr(item, f'tem_{i}', None)
-                data_item[f'AxisP{i}'] = getattr(item, f'axisp{i}', None)
-                data_item[f'Speed{i}'] = getattr(item, f'speed{i}', None)
-                data_item[f'Torque{i}'] = getattr(item, f'torque{i}', None)
-                data_item[f'Fol{i}'] = getattr(item, f'fol{i}', None)
+            return Response(response_data)
 
-            # E1 axis (A7)
-            data_item['Curr_E1'] = getattr(item, 'curr_e1', None)
-            data_item['MAXCurr_E1'] = getattr(item, 'max_curr_e1', None)
-            data_item['MinCurr_E1'] = getattr(item, 'min_curr_e1', None)
-            data_item['Tem_7'] = getattr(item, 'tem_7', None)
-            data_item['AxisP7'] = getattr(item, 'axisp7', None)
-            data_item['Speed7'] = getattr(item, 'speed7', None)
-            data_item['Torque7'] = getattr(item, 'torque7', None)
-            data_item['Fol7'] = getattr(item, 'fol7', None)
-
-            data_list.append(data_item)
-            sort_idx += 1
-
-        # Calculate aggregated data by SNR_C
-        from collections import defaultdict
-        snr_groups = defaultdict(list)
-        for item in data_list:
-            snr_groups[item['SNR_C']].append(item)
-
-        aggregated_list = []
-        for snr in sorted(snr_groups.keys()):
-            items = snr_groups[snr]
-            last_item = items[-1]
-
-            # Calculate quantiles
-            curr_values = [item[field_map['curr']] for item in items if item[field_map['curr']] is not None]
-            curr_values.sort()
-
-            lq_value = curr_values[0] if curr_values else 0
-            hq_value = curr_values[-1] if curr_values else 0
-
-            agg_item = {
-                'SNR_C': str(snr),
-                'P_name': last_item.get('P_name', ''),
-                field_map['lq']: lq_value,
-                field_map['hq']: hq_value,
-                field_map['min']: last_item.get(field_map['min']),
-                field_map['max']: last_item.get(field_map['max']),
-            }
-
-            # Add all LQ and HQ fields for all axes
-            for i in range(1, 7):
-                agg_item[f'Curr_A{i}_LQ'] = lq_value
-                agg_item[f'Curr_A{i}_HQ'] = hq_value
-                agg_item[f'MinCurr_A{i}'] = last_item.get(f'MinCurr_A{i}')
-                agg_item[f'MAXCurr_A{i}'] = last_item.get(f'MAXCurr_A{i}')
-
-            agg_item[f'Curr_E1_LQ'] = lq_value
-            agg_item[f'Curr_E1_HQ'] = hq_value
-            agg_item['MinCurr_E1'] = last_item.get('MinCurr_E1')
-            agg_item['MAXCurr_E1'] = last_item.get('MAXCurr_E1')
-
-            aggregated_list.append(agg_item)
-
-        response_data = {
-            'table_name': part_no.lower(),
-            'axis': axis,
-            'start_time': start_dt.strftime('%Y-%m-%d %H:%M:%S'),
-            'end_time': end_dt.strftime('%Y-%m-%d %H:%M:%S'),
-            'data': data_list,
-            'aggregated': aggregated_list,
-            'total_records': len(data_list),
-            'programs': sorted(programs),
-            'program': program,
-        }
-
-        return Response(response_data)
+        finally:
+            conn.close()
 
     except Exception as e:
-        import traceback
-        traceback.print_exc()
         return Response({"error": str(e)}, status=500)
