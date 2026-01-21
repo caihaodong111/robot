@@ -1,4 +1,6 @@
 from datetime import datetime, timedelta
+from collections import defaultdict
+from django.db import connection
 from django.db.models import Count, Q, Avg, Min, Max
 from django.db.models.functions import TruncHour
 from django.utils import timezone
@@ -282,7 +284,7 @@ def axis_data(request):
     - axis: Axis key (A1-A7)
     - start_time: Optional start time (default: 30 days ago)
     - end_time: Optional end time (default: now)
-    - program: Optional program name filter (matches p_name)
+    - program: Optional program/application filter (matches Name_C)
     """
     part_no = request.query_params.get("part_no", "").upper()
     axis = request.query_params.get("axis", "A1")
@@ -294,6 +296,69 @@ def axis_data(request):
     # Default time range: last 30 days
     end_time = request.query_params.get("end_time")
     start_time = request.query_params.get("start_time")
+
+    def _quantile_nearest(sorted_values, q: float):
+        if not sorted_values:
+            return 0
+        idx = int(round((len(sorted_values) - 1) * q))
+        idx = max(0, min(idx, len(sorted_values) - 1))
+        return sorted_values[idx]
+
+    def _get_table_name_candidates(part_no_value: str):
+        return [part_no_value, part_no_value.lower(), part_no_value.upper()]
+
+    def _find_existing_table(part_no_value: str):
+        try:
+            with connection.cursor() as cursor:
+                for candidate in _get_table_name_candidates(part_no_value):
+                    cursor.execute("SHOW TABLES LIKE %s", [candidate])
+                    if cursor.fetchone():
+                        return candidate
+        except Exception:
+            return None
+        return None
+
+    def _get_table_columns(table_name_value: str):
+        with connection.cursor() as cursor:
+            cursor.execute(f"SHOW COLUMNS FROM `{table_name_value}`")
+            return [row[0] for row in cursor.fetchall()]
+
+    def _fetch_programs_from_table(table_name_value: str, time_col: str, start_dt_value, end_dt_value):
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"SELECT DISTINCT `Name_C` FROM `{table_name_value}` WHERE `{time_col}` BETWEEN %s AND %s AND `Name_C` IS NOT NULL AND `Name_C` != ''",
+                [start_dt_value, end_dt_value],
+            )
+            return sorted([row[0] for row in cursor.fetchall() if row and row[0]])
+
+    def _fetch_rows_from_table(table_name_value: str, time_col: str, cols: list[str], start_dt_value, end_dt_value, program_value: str):
+        where = [f"`{time_col}` BETWEEN %s AND %s"]
+        params = [start_dt_value, end_dt_value]
+        if program_value:
+            where.append("`Name_C` = %s")
+            params.append(program_value)
+        select_cols = ", ".join([f"`{c}`" for c in cols])
+        sql = f"SELECT {select_cols} FROM `{table_name_value}` WHERE {' AND '.join(where)} ORDER BY `{time_col}` ASC LIMIT 10000"
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            rows = cursor.fetchall()
+        return rows
+
+    def _fetch_recent_rows_from_table(table_name_value: str, time_col: str, cols: list[str], program_value: str, limit: int = 1000):
+        where = []
+        params = []
+        if program_value:
+            where.append("`Name_C` = %s")
+            params.append(program_value)
+        select_cols = ", ".join([f"`{c}`" for c in cols])
+        sql = f"SELECT {select_cols} FROM `{table_name_value}`"
+        if where:
+            sql += f" WHERE {' AND '.join(where)}"
+        sql += f" ORDER BY `{time_col}` DESC LIMIT {int(limit)}"
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            rows = cursor.fetchall()
+        return rows
 
     try:
         # Parse datetime if provided
@@ -307,6 +372,142 @@ def axis_data(request):
         else:
             start_dt = datetime.now() - timedelta(days=30)
 
+        axis_table_map = {
+            "A1": {"curr": "Curr_A1", "max": "MAXCurr_A1", "min": "MinCurr_A1", "temp": "Tem_1", "pos": "AxisP1", "speed": "Speed1", "torque": "Torque1", "fol": "Fol1", "lq": "Curr_A1_LQ", "hq": "Curr_A1_HQ"},
+            "A2": {"curr": "Curr_A2", "max": "MAXCurr_A2", "min": "MinCurr_A2", "temp": "Tem_2", "pos": "AxisP2", "speed": "Speed2", "torque": "Torque2", "fol": "Fol2", "lq": "Curr_A2_LQ", "hq": "Curr_A2_HQ"},
+            "A3": {"curr": "Curr_A3", "max": "MAXCurr_A3", "min": "MinCurr_A3", "temp": "Tem_3", "pos": "AxisP3", "speed": "Speed3", "torque": "Torque3", "fol": "Fol3", "lq": "Curr_A3_LQ", "hq": "Curr_A3_HQ"},
+            "A4": {"curr": "Curr_A4", "max": "MAXCurr_A4", "min": "MinCurr_A4", "temp": "Tem_4", "pos": "AxisP4", "speed": "Speed4", "torque": "Torque4", "fol": "Fol4", "lq": "Curr_A4_LQ", "hq": "Curr_A4_HQ"},
+            "A5": {"curr": "Curr_A5", "max": "MAXCurr_A5", "min": "MinCurr_A5", "temp": "Tem_5", "pos": "AxisP5", "speed": "Speed5", "torque": "Torque5", "fol": "Fol5", "lq": "Curr_A5_LQ", "hq": "Curr_A5_HQ"},
+            "A6": {"curr": "Curr_A6", "max": "MAXCurr_A6", "min": "MinCurr_A6", "temp": "Tem_6", "pos": "AxisP6", "speed": "Speed6", "torque": "Torque6", "fol": "Fol6", "lq": "Curr_A6_LQ", "hq": "Curr_A6_HQ"},
+            "A7": {"curr": "Curr_E1", "max": "MAXCurr_E1", "min": "MinCurr_E1", "temp": "Tem_7", "pos": "AxisP7", "speed": "Speed7", "torque": "Torque7", "fol": "Fol7", "lq": "Curr_E1_LQ", "hq": "Curr_E1_HQ"},
+        }
+        table_field_map = axis_table_map.get(axis, axis_table_map["A1"])
+
+        # Prefer querying robot-specific raw table if present (supports Name_C program/application)
+        table_name = _find_existing_table(part_no)
+        if table_name:
+            cols = _get_table_columns(table_name)
+            cols_set = set(cols)
+
+            time_col = "Timestamp" if "Timestamp" in cols_set else ("timestamp" if "timestamp" in cols_set else None)
+            if time_col and "Name_C" in cols_set and "SNR_C" in cols_set:
+                required = [time_col, "SNR_C", "P_name", "Name_C"] + [
+                    table_field_map["curr"],
+                    table_field_map["max"],
+                    table_field_map["min"],
+                    table_field_map["temp"],
+                    table_field_map["pos"],
+                    table_field_map["speed"],
+                    table_field_map["torque"],
+                    table_field_map["fol"],
+                ]
+                missing = [c for c in required if c not in cols_set]
+                if not missing:
+                    programs = _fetch_programs_from_table(table_name, time_col, start_dt, end_dt)
+                    raw_rows = _fetch_rows_from_table(table_name, time_col, required, start_dt, end_dt, program)
+
+                    if not raw_rows:
+                        raw_rows = _fetch_recent_rows_from_table(table_name, time_col, required, program, limit=1000)
+                        if not raw_rows:
+                            return Response(
+                                {
+                                    "error": "No data found",
+                                    "data": None,
+                                    "aggregated": None,
+                                    "programs": programs,
+                                    "program": program,
+                                },
+                                status=404,
+                            )
+
+                        # recent rows are DESC; reverse to ASC
+                        raw_rows = list(reversed(raw_rows))
+
+                    # Build data list
+                    data_list = []
+                    for idx, row in enumerate(raw_rows, start=1):
+                        row_dict = dict(zip(required, row))
+                        ts = row_dict.get(time_col)
+                        if isinstance(ts, datetime):
+                            ts_str = ts.strftime("%Y-%m-%d %H:%M:%S")
+                        else:
+                            ts_str = str(ts) if ts is not None else ""
+
+                        data_item = {
+                            "sort": idx,
+                            "Timestamp": ts_str,
+                            "SNR_C": row_dict.get("SNR_C"),
+                            "P_name": row_dict.get("P_name") or "",
+                            "Name_C": row_dict.get("Name_C") or "",
+                        }
+                        for k in [
+                            table_field_map["curr"],
+                            table_field_map["max"],
+                            table_field_map["min"],
+                            table_field_map["temp"],
+                            table_field_map["pos"],
+                            table_field_map["speed"],
+                            table_field_map["torque"],
+                            table_field_map["fol"],
+                        ]:
+                            data_item[k] = row_dict.get(k)
+                        data_list.append(data_item)
+
+                    # Aggregate by SNR_C (quantile like Digitaltwin_timefree.py)
+                    snr_groups = defaultdict(list)
+                    for item in data_list:
+                        snr_groups[item["SNR_C"]].append(item)
+
+                    aggregated_list = []
+                    for snr in sorted([k for k in snr_groups.keys() if k is not None]):
+                        items = snr_groups[snr]
+                        last_item = items[-1]
+
+                        curr_key = table_field_map["curr"]
+                        curr_values = []
+                        for it in items:
+                            v = it.get(curr_key)
+                            if v is None:
+                                continue
+                            try:
+                                curr_values.append(float(v))
+                            except Exception:
+                                continue
+                        curr_values.sort()
+                        lq_value = _quantile_nearest(curr_values, 0.01)
+                        hq_value = _quantile_nearest(curr_values, 0.99)
+
+                        aggregated_list.append(
+                            {
+                                "SNR_C": str(snr),
+                                "P_name": last_item.get("P_name", ""),
+                                "Name_C": last_item.get("Name_C", ""),
+                                table_field_map["lq"]: lq_value,
+                                table_field_map["hq"]: hq_value,
+                                table_field_map["min"]: last_item.get(table_field_map["min"]),
+                                table_field_map["max"]: last_item.get(table_field_map["max"]),
+                            }
+                        )
+
+                    # Derive time range from returned rows
+                    first_ts = data_list[0]["Timestamp"] if data_list else ""
+                    last_ts = data_list[-1]["Timestamp"] if data_list else ""
+
+                    return Response(
+                        {
+                            "table_name": table_name,
+                            "axis": axis,
+                            "start_time": first_ts,
+                            "end_time": last_ts,
+                            "data": data_list,
+                            "aggregated": aggregated_list,
+                            "total_records": len(data_list),
+                            "programs": programs,
+                            "program": program,
+                        }
+                    )
+
+        # Fallback: query from RobotAxisData model (does not include Name_C; `program` falls back to p_name)
         base_queryset = RobotAxisData.objects.filter(
             part_no=part_no,
             timestamp__gte=start_dt,
@@ -421,7 +622,6 @@ def axis_data(request):
             sort_idx += 1
 
         # Calculate aggregated data by SNR_C
-        from collections import defaultdict
         snr_groups = defaultdict(list)
         for item in data_list:
             snr_groups[item['SNR_C']].append(item)

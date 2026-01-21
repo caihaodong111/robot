@@ -69,12 +69,6 @@ const programOptions = computed(() => {
   return Array.from(set).sort()
 })
 
-const filteredTimeSeriesData = computed(() => {
-  const rows = chartData.value?.data || []
-  if (!selectedProgram.value) return rows
-  return rows.filter((r) => String(r?.P_name || '') === String(selectedProgram.value))
-})
-
 // Load axis data - try API first, fallback to mock data
 const loadAxisData = async () => {
   if (!props.robotPartNo || !props.axisKey) return
@@ -210,8 +204,8 @@ watch(chartData, () => {
           <el-form label-position="top">
             <el-row :gutter="12">
               <el-col :xs="24" :sm="12" :md="8">
-                <el-form-item label="Program Name">
-                  <el-select v-model="selectedProgram" placeholder="全部程序" clearable filterable>
+                <el-form-item label="应用程序（Name_C）">
+                  <el-select v-model="selectedProgram" placeholder="全部应用程序" clearable filterable>
                     <el-option v-for="p in programOptions" :key="p" :label="p" :value="p" />
                   </el-select>
                 </el-form-item>
@@ -221,7 +215,7 @@ watch(chartData, () => {
         </div>
         <div class="chart-wrapper" v-if="chartData.data && chartData.data.length > 0">
           <TimeSeriesChart
-            :data="filteredTimeSeriesData"
+            :data="chartData.data || []"
             :config="currentConfig"
             :axis="axisKey"
           />
@@ -239,7 +233,7 @@ watch(chartData, () => {
 
 <style scoped>
 .axis-preview-content {
-  min-height: 500px;
+  min-height: 920px;
 }
 
 .chart-filters :deep(.el-form-item) {
@@ -252,6 +246,6 @@ watch(chartData, () => {
 
 .chart-wrapper {
   width: 100%;
-  height: 500px;
+  height: 860px;
 }
 </style>

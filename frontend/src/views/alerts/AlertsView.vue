@@ -83,13 +83,13 @@
 	              </el-select>
 	            </el-form-item>
 	          </el-col>
-	          <el-col :xs="24" :sm="12" :md="6">
-	            <el-form-item label="Program Name">
-	              <el-select v-model="form.program" placeholder="全部程序" clearable filterable>
-	                <el-option v-for="p in programOptions" :key="p" :label="p" :value="p" />
-	              </el-select>
-	            </el-form-item>
-	          </el-col>
+		          <el-col :xs="24" :sm="12" :md="6">
+		            <el-form-item label="应用程序（Name_C）">
+		              <el-select v-model="form.program" placeholder="全部应用程序" clearable filterable>
+		                <el-option v-for="p in programOptions" :key="p" :label="p" :value="p" />
+		              </el-select>
+		            </el-form-item>
+		          </el-col>
 	          <el-col :xs="24" :sm="12" :md="6" class="load-col">
 	            <el-button type="primary" :icon="DataLine" :loading="loading" @click="loadData">
 	              Load Data
@@ -121,11 +121,11 @@
 	                  :name="axisKey"
 	                >
 	                  <div v-loading="loading" class="chart-wrapper">
-	                    <AggregatedChart
-	                      :data="filteredAggregatedByAxis(axisKey)"
-	                      :config="axisConfig[axisKey] || axisConfig.A1"
-	                      :program="`${activeRobot.partNo} - ${axisKey}`"
-	                    />
+		                    <AggregatedChart
+		                      :data="aggregatedByAxis[axisKey] || []"
+		                      :config="axisConfig[axisKey] || axisConfig.A1"
+		                      :program="`${activeRobot.partNo} - ${axisKey}`"
+		                    />
 	                  </div>
 	                </el-tab-pane>
               </el-tabs>
@@ -254,21 +254,8 @@ const checkTooltip = (robot, key) => {
 }
 
 const programOptions = computed(() => {
-  if (availablePrograms.value.length) return availablePrograms.value
-  const set = new Set()
-  Object.values(aggregatedByAxis.value || {}).forEach((rows) => {
-    ;(rows || []).forEach((r) => {
-      if (r?.P_name) set.add(String(r.P_name))
-    })
-  })
-  return Array.from(set).sort()
+  return availablePrograms.value
 })
-
-const filteredAggregatedByAxis = (axisKey) => {
-  const rows = aggregatedByAxis.value?.[axisKey] || []
-  if (!form.program) return rows
-  return rows.filter((r) => String(r?.P_name || '') === String(form.program))
-}
 
 const pad2 = (n) => String(n).padStart(2, '0')
 

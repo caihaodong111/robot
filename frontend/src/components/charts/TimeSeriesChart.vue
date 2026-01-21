@@ -49,13 +49,15 @@ const getChartOption = () => {
     title: {
       text: `${props.axis} - 时间序列数据`,
       left: 'center',
-      textStyle: { fontSize: 14 }
+      top: 8,
+      textStyle: { fontSize: 14, fontWeight: 600 }
     },
     tooltip: {
       trigger: 'axis',
       axisPointer: {
         type: 'cross'
       },
+      confine: true,
       formatter: (params) => {
         const idx = params[0].dataIndex
         const d = data[idx]
@@ -70,20 +72,30 @@ const getChartOption = () => {
     },
     legend: {
       data: ['最小电流', '最大电流', '电流', '温度', '位置', '速度', '扭矩', '跟随误差'],
-      top: 30,
+      top: 34,
       textStyle: { fontSize: 11 }
     },
     grid: [
-      { left: '5%', right: '5%', top: '80', height: '18%' },
-      { left: '5%', right: '5%', top: '28%', height: '18%' },
-      { left: '5%', right: '5%', top: '48%', height: '18%' },
-      { left: '5%', right: '5%', top: '68%', height: '18%' }
+      { left: 60, right: 28, top: 78, height: 150 },
+      { left: 60, right: 28, top: 240, height: 105 },
+      { left: 60, right: 28, top: 355, height: 105 },
+      { left: 60, right: 28, top: 470, height: 105 },
+      { left: 60, right: 28, top: 585, height: 105 },
+      { left: 60, right: 28, top: 700, height: 105 }
     ],
     xAxis: [
-      { gridIndex: 0, type: 'value', name: 'Motion Time', nameTextStyle: { fontSize: 10 } },
-      { gridIndex: 1, type: 'value' },
-      { gridIndex: 2, type: 'value' },
-      { gridIndex: 3, type: 'value' }
+      {
+        gridIndex: 0,
+        type: 'value',
+        name: 'Motion Time',
+        nameTextStyle: { fontSize: 10, fontWeight: 600 },
+        axisLabel: { show: false }
+      },
+      { gridIndex: 1, type: 'value', axisLabel: { show: false } },
+      { gridIndex: 2, type: 'value', axisLabel: { show: false } },
+      { gridIndex: 3, type: 'value', axisLabel: { show: false } },
+      { gridIndex: 4, type: 'value', axisLabel: { show: false } },
+      { gridIndex: 5, type: 'value' }
     ],
     yAxis: [
       {
@@ -91,7 +103,7 @@ const getChartOption = () => {
         type: 'value',
         name: 'Current %',
         position: 'left',
-        nameTextStyle: { fontSize: 10 }
+        nameTextStyle: { fontSize: 10, fontWeight: 600 }
       },
       {
         gridIndex: 1,
@@ -99,35 +111,47 @@ const getChartOption = () => {
         name: 'Temperature',
         min: 15,
         max: 100,
-        nameTextStyle: { fontSize: 10 }
+        nameTextStyle: { fontSize: 10, fontWeight: 600 }
       },
       {
         gridIndex: 2,
         type: 'value',
         name: 'Position',
-        nameTextStyle: { fontSize: 10 }
+        nameTextStyle: { fontSize: 10, fontWeight: 600 }
       },
       {
         gridIndex: 3,
         type: 'value',
         name: 'Speed',
-        nameTextStyle: { fontSize: 10 }
+        nameTextStyle: { fontSize: 10, fontWeight: 600 }
+      },
+      {
+        gridIndex: 4,
+        type: 'value',
+        name: 'Torque',
+        nameTextStyle: { fontSize: 10, fontWeight: 600 }
+      },
+      {
+        gridIndex: 5,
+        type: 'value',
+        name: 'Following error',
+        nameTextStyle: { fontSize: 10, fontWeight: 600 }
       }
     ],
     dataZoom: [
       {
         type: 'inside',
-        xAxisIndex: [0, 1, 2, 3],
+        xAxisIndex: [0, 1, 2, 3, 4, 5],
         start: 0,
         end: 100
       },
       {
         type: 'slider',
-        xAxisIndex: [0, 1, 2, 3],
+        xAxisIndex: [0, 1, 2, 3, 4, 5],
         start: 0,
         end: 100,
-        height: 20,
-        bottom: 10
+        height: 22,
+        bottom: 18
       }
     ],
     series: [
@@ -186,6 +210,24 @@ const getChartOption = () => {
         data: data.map(d => [d.sort, d.speed]),
         symbolSize: 4,
         itemStyle: { color: 'blue' }
+      },
+      {
+        name: '扭矩',
+        type: 'scatter',
+        xAxisIndex: 4,
+        yAxisIndex: 4,
+        data: data.map(d => [d.sort, d.torque]),
+        symbolSize: 4,
+        itemStyle: { color: 'sienna' }
+      },
+      {
+        name: '跟随误差',
+        type: 'scatter',
+        xAxisIndex: 5,
+        yAxisIndex: 5,
+        data: data.map(d => [d.sort, d.fol]),
+        symbolSize: 4,
+        itemStyle: { color: 'limegreen' }
       }
     ]
   }
@@ -252,6 +294,6 @@ watch(() => [props.data, props.config, props.axis], () => {
 .chart-container {
   width: 100%;
   height: 100%;
-  min-height: 400px;
+  min-height: 840px;
 }
 </style>
