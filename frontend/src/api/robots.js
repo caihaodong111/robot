@@ -1,5 +1,6 @@
 import request from '@/utils/request'
 
+// 获取机器人组列表
 export function getRobotGroups() {
   return request({
     url: '/robots/groups/',
@@ -7,13 +8,7 @@ export function getRobotGroups() {
   })
 }
 
-export function getRobotsDashboard() {
-  return request({
-    url: '/robots/dashboard/',
-    method: 'get'
-  })
-}
-
+// 获取机器人部件列表
 export function getRobotComponents(params) {
   return request({
     url: '/robots/components/',
@@ -22,6 +17,7 @@ export function getRobotComponents(params) {
   })
 }
 
+// 获取单个机器人部件详情
 export function getRobotComponent(id) {
   return request({
     url: `/robots/components/${id}/`,
@@ -29,6 +25,7 @@ export function getRobotComponent(id) {
   })
 }
 
+// 更新机器人部件
 export function updateRobotComponent(id, data) {
   return request({
     url: `/robots/components/${id}/`,
@@ -37,6 +34,7 @@ export function updateRobotComponent(id, data) {
   })
 }
 
+// 获取风险事件列表
 export function getRiskEvents(params) {
   return request({
     url: '/robots/risk-events/',
@@ -45,22 +43,33 @@ export function getRiskEvents(params) {
   })
 }
 
-export function acknowledgeRiskEvent(id, notes = '') {
+// 获取单个风险事件详情
+export function getRiskEvent(id) {
+  return request({
+    url: `/robots/risk-events/${id}/`,
+    method: 'get'
+  })
+}
+
+// 确认风险事件
+export function acknowledgeRiskEvent(id, data) {
   return request({
     url: `/robots/risk-events/${id}/acknowledge/`,
     method: 'post',
-    data: { notes }
+    data
   })
 }
 
-export function resolveRiskEvent(id, notes = '') {
+// 解决风险事件
+export function resolveRiskEvent(id, data) {
   return request({
     url: `/robots/risk-events/${id}/resolve/`,
     method: 'post',
-    data: { notes }
+    data
   })
 }
 
+// 获取风险事件统计
 export function getRiskEventStatistics(params) {
   return request({
     url: '/robots/risk-events/statistics/',

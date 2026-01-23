@@ -137,13 +137,7 @@
               placement="top"
               :show-after="120"
             >
-              <button
-                type="button"
-                class="dot-button"
-                @click="openAxisPreview(row, key)"
-              >
-                <span class="dot" :class="row.checks?.[key]?.ok ? 'dot-ok' : 'dot-bad'"></span>
-              </button>
+              <span class="dot" :class="row.checks?.[key]?.ok ? 'dot-ok' : 'dot-bad'"></span>
             </el-tooltip>
           </template>
         </el-table-column>
@@ -196,9 +190,7 @@
                 <div class="detail-check-cell">
                   <span class="detail-check-key">{{ k }}</span>
                   <span class="detail-check-label">{{ detailRobot.checks?.[k]?.label || '-' }}</span>
-                  <button type="button" class="dot-button" @click="openAxisPreview(detailRobot, k)">
-                    <span class="dot" :class="detailRobot.checks?.[k]?.ok ? 'dot-ok' : 'dot-bad'"></span>
-                  </button>
+                  <span class="dot" :class="detailRobot.checks?.[k]?.ok ? 'dot-ok' : 'dot-bad'"></span>
                 </div>
               </el-tooltip>
             </div>
@@ -284,11 +276,6 @@
       </template>
     </el-dialog>
 
-    <AxisDataPreview
-      v-model:visible="previewVisible"
-      :robot-part-no="previewPartNo"
-      :axis-key="previewAxis"
-    />
   </div>
 </template>
 
@@ -300,7 +287,6 @@ import { ElMessage } from 'element-plus'
 import { DEMO_MODE } from '@/config/appConfig'
 import { getRobotComponents, getRobotGroups, updateRobotComponent } from '@/api/robots'
 import { getGroupStats, getRobotsByGroup, robotGroups as mockGroups } from '@/mock/robots'
-import AxisDataPreview from '@/components/charts/AxisDataPreview.vue'
 
 const router = useRouter()
 
@@ -339,10 +325,6 @@ const editForm = ref({
   remark: '',
   level: 'L'
 })
-
-const previewVisible = ref(false)
-const previewAxis = ref('A1')
-const previewPartNo = ref('')
 
 const loading = ref(false)
 const groupsData = ref([])
@@ -558,30 +540,18 @@ const saveEdit = async () => {
   }
 }
 
-const openAxisPreview = (row, axisKey) => {
-  previewAxis.value = axisKey
-  previewPartNo.value = row?.partNo || row?.part_no || ''
-  previewVisible.value = true
-}
-
-const openBI = (robot) => {
-  const plant = selectedGroup.value
-  const componentId = DEMO_MODE ? (robot.id || '') : robot.id
-  router.push({
-    path: '/alerts',
-    query: {
-      plant,
-      componentId: String(componentId),
-      axes: 'A2'
-    }
-  })
-}
-
 const checkTooltip = (robot, key) => {
   const check = robot?.checks?.[key]
   const label = check?.label ? `${key}（${check.label}）` : key
   if (!check) return label
   return check.ok ? `${label}：正常/符合要求` : `${label}：存在异常/待处理`
+}
+
+const openBI = (robot) => {
+  // 打开Django后端的BI可视化页面
+  const partNo = robot?.partNo || robot?.part_no || 'as33_020rb_400'
+  // 在新窗口打开BI页面
+  window.open(`/api/robots/bi/?table=${partNo}`, '_blank')
 }
 
 const loadGroups = async () => {
