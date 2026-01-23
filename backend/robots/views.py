@@ -164,6 +164,7 @@ class RiskEventViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewset
 def bi_view(request):
     """
     BI可视化页面 - 使用Bokeh components静态嵌入
+    支持程序、轴、时间范围选择
     """
     from .bokeh_charts import create_bi_charts
     import logging
@@ -172,12 +173,24 @@ def bi_view(request):
 
     # 从查询参数获取参数
     table_name = request.GET.get('table', 'as33_020rb_400')
-    days = int(request.GET.get('days', 30))  # 默认30天
+    # 注意：create_bi_charts 现在会自动获取数据库实际时间范围
+    # URL 参数用于控件联动，但实际数据范围由数据库决定
+    program = request.GET.get('program', None)
+    axis = request.GET.get('axis', None)
+    start_date = request.GET.get('start_date', None)
+    end_date = request.GET.get('end_date', None)
 
-    logger.info(f"BI页面请求: table={table_name}, days={days}")
+    logger.info(f"BI页面请求: table={table_name}, program={program}, axis={axis}, start={start_date}, end={end_date}")
 
-    # 生成Bokeh图表
-    script, div, chart_info = create_bi_charts(table_name, days)
+    # 生成Bokeh图表（函数内部会获取数据库实际时间范围）
+    # 传递轴和程序参数，只生成需要的图表
+    script, div, chart_info = create_bi_charts(
+        table_name,
+        axis=axis,
+        program=program,
+        start_date=start_date,
+        end_date=end_date,
+    )
 
     if script is None:
         # 数据获取失败或无数据
@@ -194,6 +207,10 @@ def bi_view(request):
         'bokeh_script': script,
         'bokeh_div': div,
         'chart_info': chart_info,
+        # 传递控件值到模板，用于设置默认选择
+        'selected_program': program,
+        'selected_axis': axis,
+        'selected_start_date': start_date,
+        'selected_end_date': end_date,
     }
     return render(request, 'bi.html', context)
-

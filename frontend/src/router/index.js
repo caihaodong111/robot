@@ -16,7 +16,12 @@ const routes = [
     children: [
       {
         path: '',
-        redirect: '/devices'
+        redirect: '/dashboard'
+      },
+      {
+        path: 'dashboard',
+        name: 'Dashboard',
+        component: () => import('@/views/dashboard/DashboardView.vue')
       },
       {
         path: 'devices',
@@ -27,6 +32,11 @@ const routes = [
         path: 'monitoring',
         name: 'Monitoring',
         component: () => import('@/views/monitoring/MonitoringView.vue')
+      },
+      {
+        path: 'alerts',
+        name: 'Alerts',
+        component: () => import('@/views/alerts/AlertsView.vue')
       },
       {
         path: 'portal',
