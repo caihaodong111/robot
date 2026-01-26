@@ -85,3 +85,19 @@ class RiskEventSerializer(serializers.ModelSerializer):
             "notes",
             "triggered_at",
         )
+
+
+class BIRobotSerializer(serializers.Serializer):
+    """BI可视化机器人选择器序列化器"""
+    value = serializers.CharField(source="part_no", help_text="机器人表名")
+    label = serializers.CharField(help_text="显示标签")
+    robot_id = serializers.CharField(help_text="机器人ID")
+
+    def to_representation(self, instance):
+        """自定义输出格式"""
+        return {
+            "value": instance.part_no,  # BI使用的表名
+            "label": f"{instance.robot_id} ({instance.part_no})",
+            "robot_id": instance.robot_id,
+            "name": instance.name,
+        }

@@ -548,10 +548,17 @@ const checkTooltip = (robot, key) => {
 }
 
 const openBI = (robot) => {
-  // 打开Django后端的BI可视化页面
-  const partNo = robot?.partNo || robot?.part_no || 'as33_020rb_400'
-  // 在新窗口打开BI页面
-  window.open(`/api/robots/bi/?table=${partNo}`, '_blank')
+  // 跳转到BI可视化页面，传递车间和机器人参数
+  const partNo = robot?.partNo || robot?.part_no || ''
+  const groupKey = robot?.group || selectedGroup.value || ''
+  // 跳转到alerts页面，带上参数
+  router.push({
+    path: '/alerts',
+    query: {
+      group: groupKey,
+      robot: partNo
+    }
+  })
 }
 
 const loadGroups = async () => {

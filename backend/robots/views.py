@@ -9,12 +9,18 @@ from rest_framework.response import Response
 
 from .models import RiskEvent, RobotComponent, RobotGroup
 from .permissions import IsStaffOrReadOnly
-from .serializers import RiskEventSerializer, RobotComponentSerializer, RobotGroupSerializer
+from .serializers import (
+    RiskEventSerializer,
+    RobotComponentSerializer,
+    RobotGroupSerializer,
+    BIRobotSerializer,
+)
 
 
 class RobotGroupViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     queryset = RobotGroup.objects.all()
     serializer_class = RobotGroupSerializer
+    permission_classes = [IsStaffOrReadOnly]
 
     def list(self, request, *args, **kwargs):
         groups = list(self.get_queryset())
@@ -105,6 +111,40 @@ class RobotComponentViewSet(
                 qs = qs.filter(axis_q)
 
         return qs
+
+    @action(detail=False, methods=["get"])
+    def bi_robots(self, request):
+        """获取BI可视化机器人选择列表"""
+        # 获取车间过滤
+        group_key = request.query_params.get("group")
+        qs = self.get_queryset()
+
+        if group_key:
+            qs = qs.filter(group__key=group_key)
+
+        # 获取搜索关键词
+        keyword = (request.query_params.get("keyword") or "").strip()
+        if keyword:
+            qs = qs.filter(
+                Q(robot_id__icontains=keyword)
+                | Q(name__icontains=keyword)
+                | Q(part_no__icontains=keyword)
+            )
+
+        # 按robot_id去重并排序
+        robots = qs.values("robot_id", "part_no", "name").distinct().order_by("robot_id")
+
+        # 手动构建返回数据
+        results = []
+        for r in robots:
+            results.append({
+                "value": r["part_no"],  # BI使用的表名
+                "label": f"{r['robot_id']} ({r['part_no']})",
+                "robot_id": r["robot_id"],
+                "name": r.get("name", ""),
+            })
+
+        return Response({"results": results})
 
 
 class RiskEventViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
