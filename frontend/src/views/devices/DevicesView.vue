@@ -6,7 +6,7 @@
           <div class="title">
             <span class="title-text">机器人状态信息</span>
           </div>
-          <el-button :icon="Refresh" @click="handleRefresh">刷新</el-button>
+          <el-button :icon="Refresh" @click="handleRefresh">载入数据</el-button>
         </div>
       </template>
 
