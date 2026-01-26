@@ -52,9 +52,6 @@
         <el-button type="primary" :disabled="!activeName" @click="handleLoad">
           加载
         </el-button>
-        <el-button :disabled="!activeName" @click="handleOpenNew">
-          新窗口打开
-        </el-button>
 
         <!-- 显示当前选择 -->
         <div v-if="activeName" class="current-selection">
@@ -227,11 +224,6 @@ const handleFrameLoad = () => {
 const handleLoad = () => {
   if (!activeName.value) return
   startLoading()
-}
-
-const handleOpenNew = () => {
-  if (!activeName.value) return
-  window.open(`/api/robots/bi/?table=${encodeURIComponent(activeName.value)}`, '_blank')
 }
 
 // 监听activeName变化，自动开始加载
