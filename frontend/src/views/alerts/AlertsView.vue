@@ -50,7 +50,7 @@ const activeName = ref('')
 
 const biUrl = computed(() => {
   const name = activeName.value.trim()
-  return name ? `/api/robots/bi/?table=${encodeURIComponent(name)}` : ''
+  return name ? `/api/robots/bi/?table=${encodeURIComponent(name)}&embed=1` : ''
 })
 
 const handleLoad = () => {

@@ -1,0 +1,44 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BI可视化分析 - {{ table_name }}</title>
+
+    <!-- Bokeh CSS -->
+    <link rel="stylesheet" href="https://cdn.pydata.org/bokeh/release/bokeh-3.8.0.min.css" type="text/css" />
+    <link rel="stylesheet" href="https://cdn.pydata.org/bokeh/release/bokeh-widgets-3.8.0.min.css" type="text/css" />
+    <link rel="stylesheet" href="https://cdn.pydata.org/bokeh/release/bokeh-tables-3.8.0.min.css" type="text/css" />
+
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #ffffff;
+            overflow-x: auto;
+        }
+        .bi-container {
+            width: 100%;
+            min-height: 100vh;
+            background: #fff;
+            overflow-x: auto;
+        }
+        .bk-root { width: 100% !important; }
+    </style>
+</head>
+<body>
+    <div class="bi-container">
+        {{ bokeh_div|safe }}
+    </div>
+
+    <!-- Bokeh JS -->
+    <script src="https://cdn.pydata.org/bokeh/release/bokeh-3.8.0.min.js"></script>
+    <script src="https://cdn.pydata.org/bokeh/release/bokeh-widgets-3.8.0.min.js"></script>
+    <script src="https://cdn.pydata.org/bokeh/release/bokeh-tables-3.8.0.min.js"></script>
+    <script src="https://cdn.pydata.org/bokeh/release/bokeh-gl-3.8.0.min.js"></script>
+
+    <!-- 图表脚本 -->
+    {{ bokeh_script|safe }}
+</body>
+</html>

@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from django.shortcuts import render
 from django.db.models import Count, Q
+from django.views.decorators.clickjacking import xframe_options_exempt
 from rest_framework import mixins, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -161,10 +162,12 @@ class RiskEventViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewset
         )
 
 
+@xframe_options_exempt
 def bi_view(request):
     """
     BI可视化页面 - 使用Bokeh components静态嵌入
     支持程序、轴、时间范围选择
+    支持embed参数：embed=1时返回纯净模板用于iframe嵌入
     """
     from .bokeh_charts import create_bi_charts
     import logging
@@ -173,6 +176,8 @@ def bi_view(request):
 
     # 从查询参数获取参数
     table_name = request.GET.get('table', 'as33_020rb_400')
+    # 检测是否为嵌入模式
+    embed_mode = request.GET.get('embed', '0') == '1'
     # 注意：create_bi_charts 现在会自动获取数据库实际时间范围
     # URL 参数用于控件联动，但实际数据范围由数据库决定
     program = request.GET.get('program', None)
@@ -180,7 +185,7 @@ def bi_view(request):
     start_date = request.GET.get('start_date', None)
     end_date = request.GET.get('end_date', None)
 
-    logger.info(f"BI页面请求: table={table_name}, program={program}, axis={axis}, start={start_date}, end={end_date}")
+    logger.info(f"BI页面请求: table={table_name}, program={program}, axis={axis}, start={start_date}, end={end_date}, embed={embed_mode}")
 
     # 生成Bokeh图表（函数内部会获取数据库实际时间范围）
     # 传递轴和程序参数，只生成需要的图表
@@ -213,4 +218,7 @@ def bi_view(request):
         'selected_start_date': start_date,
         'selected_end_date': end_date,
     }
-    return render(request, 'bi.html', context)
+
+    # 根据embed参数选择模板
+    template_name = 'bi_embed.html' if embed_mode else 'bi.html'
+    return render(request, template_name, context)
