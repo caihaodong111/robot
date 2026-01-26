@@ -101,3 +101,27 @@ class BIRobotSerializer(serializers.Serializer):
             "robot_id": instance.robot_id,
             "name": instance.name,
         }
+
+
+class GripperCheckSerializer(serializers.Serializer):
+    """关键轨迹检查序列化器"""
+    start_time = serializers.DateTimeField(help_text="开始时间")
+    end_time = serializers.DateTimeField(help_text="结束时间")
+    gripper_list = serializers.ListField(
+        child=serializers.CharField(),
+        help_text="机器人表名列表"
+    )
+    key_paths = serializers.ListField(
+        child=serializers.CharField(required=False, allow_blank=True),
+        required=False,
+        help_text="关键路径关键字列表，如 ['R1/CO', 'R1/DO']"
+    )
+
+
+class GripperCheckResultSerializer(serializers.Serializer):
+    """关键轨迹检查结果序列化器"""
+    success = serializers.BooleanField()
+    count = serializers.IntegerField()
+    data = serializers.ListField(child=serializers.DictField(), required=False)
+    columns = serializers.ListField(child=serializers.CharField(), required=False)
+    error = serializers.CharField(required=False, allow_blank=True)

@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from django.shortcuts import render
 from django.db.models import Count, Q
 from django.views.decorators.clickjacking import xframe_options_exempt
-from rest_framework import mixins, viewsets
+from rest_framework import mixins, viewsets, status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -14,7 +14,9 @@ from .serializers import (
     RobotComponentSerializer,
     RobotGroupSerializer,
     BIRobotSerializer,
+    GripperCheckSerializer,
 )
+from .gripper_service import check_gripper_from_config
 
 
 class RobotGroupViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
@@ -262,3 +264,107 @@ def bi_view(request):
     # 根据embed参数选择模板
     template_name = 'bi_embed.html' if embed_mode else 'bi.html'
     return render(request, template_name, context)
+
+
+class GripperCheckViewSet(viewsets.GenericViewSet):
+    """
+    关键轨迹检查API ViewSet
+    提供执行关键轨迹检查和获取机器人列表的接口
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return RobotComponent.objects.all()
+
+    @action(detail=False, methods=['post'])
+    def execute(self, request):
+        """
+        执行关键轨迹检查
+
+        请求体:
+        {
+            "start_time": "2024-01-01T00:00:00",
+            "end_time": "2024-01-08T00:00:00",
+            "gripper_list": ["as33_020rb_400", "as33_020rb_401"],
+            "key_paths": ["R1/CO", "R1/DO", "R1/CN", "R1/DN"]
+        }
+
+        返回:
+        {
+            "success": true,
+            "count": 100,
+            "data": [...],
+            "columns": [...]
+        }
+        """
+        serializer = GripperCheckSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({
+                'success': False,
+                'error': 'Invalid request data',
+                'details': serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # 执行检查
+            result = check_gripper_from_config(serializer.validated_data)
+            return Response(result)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'])
+    def robot_tables(self, request):
+        """
+        获取可用的机器人表名列表（从RobotComponent获取part_no）
+        支持按车间(group_key)筛选
+
+        参数:
+            group: 车间key（可选）
+
+        返回:
+        {
+            "results": [
+                {"value": "as33_020rb_400", "label": "as33_020rb_400"},
+                ...
+            ]
+        }
+        """
+        # 获取车间筛选参数
+        group_key = request.query_params.get('group')
+
+        # 构建查询
+        qs = RobotComponent.objects.values('part_no').distinct()
+
+        if group_key:
+            qs = qs.filter(group__key=group_key)
+
+        tables = qs.order_by('part_no')
+
+        results = []
+        for t in tables:
+            results.append({
+                'value': t['part_no'],
+                'label': t['part_no']
+            })
+
+        return Response({'results': results})
+
+    @action(detail=False, methods=['get'])
+    def config_template(self, request):
+        """
+        获取配置模板，帮助前端了解如何构建请求
+
+        返回:
+        {
+            "key_paths_example": ["R1/CO", "R1/DO", "R1/CN", "R1/DN"],
+            "default_time_range_hours": 168
+        }
+        """
+        return Response({
+            'key_paths_example': ['R1/CO', 'R1/DO', 'R1/CN', 'R1/DN'],
+            'default_time_range_hours': 168,  # 7天
+            'description': '关键轨迹检查用于检测机器人抓放点动作的电流异常'
+        })

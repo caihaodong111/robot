@@ -77,3 +77,31 @@ export function getRiskEventStatistics(params) {
     params
   })
 }
+
+// ==================== 关键轨迹检查 API ====================
+
+// 获取可用的机器人表名列表
+export function getGripperRobotTables(params) {
+  return request({
+    url: '/robots/gripper-check/robot_tables/',
+    method: 'get',
+    params
+  })
+}
+
+// 执行关键轨迹检查
+export function executeGripperCheck(data) {
+  return request({
+    url: '/robots/gripper-check/execute/',
+    method: 'post',
+    data
+  })
+}
+
+// 获取配置模板
+export function getGripperConfigTemplate() {
+  return request({
+    url: '/robots/gripper-check/config_template/',
+    method: 'get'
+  })
+}
