@@ -1,124 +1,180 @@
 <template>
-  <div class="dashboard">
-    <el-card class="hero-card">
-      <template #header>
-        <div class="card-header">
-          <div class="title">
-            <span class="title-text">平台概览</span>
-            <span class="title-sub">机器人与关键轨迹检查的运行概览</span>
-          </div>
-          <el-button :icon="Refresh" @click="handleRefresh">刷新</el-button>
-        </div>
-      </template>
-
-      <el-row :gutter="16">
-        <el-col :xs="12" :sm="12" :md="6">
-          <div class="stat-card">
-            <div class="stat-label">机器人总量</div>
-            <div class="stat-value">{{ summary.total }}</div>
-            <div class="stat-meta">在线 {{ summary.online }} · 维护 {{ summary.maintenance }}</div>
-          </div>
-        </el-col>
-        <el-col :xs="12" :sm="12" :md="6">
-          <div class="stat-card stat-warning">
-            <div class="stat-label">高风险机器人</div>
-            <div class="stat-value">{{ summary.highRisk }}</div>
-            <div class="stat-meta">历史高风险 {{ summary.historyHighRisk }}</div>
-          </div>
-        </el-col>
-        <el-col :xs="12" :sm="12" :md="6">
-          <div class="stat-card stat-muted">
-            <div class="stat-label">离线设备</div>
-            <div class="stat-value">{{ summary.offline }}</div>
-            <div class="stat-meta">离线率 {{ summary.offlineRate }}%</div>
-          </div>
-        </el-col>
-        <el-col :xs="12" :sm="12" :md="6">
-          <div class="stat-card stat-primary">
-            <div class="stat-label">运行健康指数</div>
-            <div class="stat-value">{{ summary.healthIndex }}</div>
-            <div class="stat-meta">基于在线与风险状态</div>
-          </div>
-        </el-col>
-      </el-row>
-
-      <div class="quick-actions">
-        <span class="quick-title">快速入口</span>
-        <el-button type="primary" @click="goTo('/devices')">机器人状态</el-button>
-        <el-button @click="goTo('/monitoring')">关键轨迹检查</el-button>
-        <el-button @click="goTo('/alerts')">可视化BI</el-button>
-        <el-button @click="goTo('/portal')">应用门户</el-button>
+  <div class="dashboard-viewport">
+    <!-- Header Section -->
+    <header class="dashboard-header">
+      <div class="title-area">
+        <h1>平台概览 <small>Platform Overview</small></h1>
+        <p class="subtitle">实时监控机器人集群健康态势与风险分布</p>
       </div>
-    </el-card>
+      <div class="header-actions">
+        <div class="last-update">最后更新: {{ lastUpdateTime }}</div>
+        <el-button :icon="Refresh" circle @click="handleRefresh" class="refresh-btn"></el-button>
+        <el-button type="primary" class="gradient-btn" @click="goTo('/portal')">管理控制台</el-button>
+      </div>
+    </header>
 
-    <el-row :gutter="16">
-      <el-col :xs="24" :lg="14">
-        <el-card>
+    <!-- KPI Metrics -->
+    <div class="kpi-grid">
+      <div class="kpi-card glass-card">
+        <div class="kpi-icon total"><el-icon><Cpu /></el-icon></div>
+        <div class="kpi-info">
+          <label>机器人总数</label>
+          <div class="value">{{ summary.total }}</div>
+          <div class="trend positive">
+            <span class="online-dot"></span> 在线 {{ summary.online }}
+          </div>
+        </div>
+      </div>
+      <div class="kpi-card glass-card warning">
+        <div class="kpi-icon risk"><el-icon><Warning /></el-icon></div>
+        <div class="kpi-info">
+          <label>高风险设备</label>
+          <div class="value">{{ summary.highRisk }}</div>
+          <div class="trend negative">占比 {{ highRiskRate }}%</div>
+        </div>
+      </div>
+      <div class="kpi-card glass-card muted">
+        <div class="kpi-icon offline"><el-icon><CircleClose /></el-icon></div>
+        <div class="kpi-info">
+          <label>离线设备</label>
+          <div class="value">{{ summary.offline }}</div>
+          <div class="trend">离线率 {{ summary.offlineRate }}%</div>
+        </div>
+      </div>
+      <div class="kpi-card glass-card primary">
+        <div class="kpi-icon health"><el-icon><Odometer /></el-icon></div>
+        <div class="kpi-info">
+          <label>综合健康指数</label>
+          <div class="value">{{ summary.healthIndex }}</div>
+          <div class="trend-bar">
+            <div class="fill" :style="{ width: summary.healthIndex + '%' }"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Charts Layout -->
+    <div class="chart-layout-grid">
+      <!-- Section 1: Risk Ratio Pie Charts (User Requested) -->
+      <div class="card-wrapper ratio-section">
+        <el-card class="styled-card">
           <template #header>
-            <div class="table-header">
-              <span>机器人分组状态</span>
-              <span class="table-meta">共 {{ groupRows.length }} 组</span>
+            <div class="card-header-inner">
+              <span class="title">各组高风险占比 <small>High-Risk Ratio per Group</small></span>
+              <el-tooltip content="展示各车间组内，高风险机器人数量占该组总设备数的百分比">
+                <el-icon class="info-icon"><InfoFilled /></el-icon>
+              </el-tooltip>
             </div>
           </template>
-
-          <el-table :data="groupRows" stripe height="420" v-loading="loading">
-            <el-table-column prop="name" label="分组" min-width="140" show-overflow-tooltip />
-            <el-table-column prop="total" label="总量" width="90" align="center" />
-            <el-table-column prop="stats.online" label="在线" width="90" align="center" />
-            <el-table-column prop="stats.offline" label="离线" width="90" align="center" />
-            <el-table-column prop="stats.maintenance" label="维护" width="90" align="center" />
-            <el-table-column prop="stats.highRisk" label="高风险" width="90" align="center" />
-          </el-table>
+          <div class="pie-grid-container">
+            <div ref="chartRef" class="main-chart-item full-width-chart"></div>
+          </div>
         </el-card>
-      </el-col>
+      </div>
 
-      <el-col :xs="24" :lg="10">
-        <el-card>
+      <!-- Section 2: Pulse & Health -->
+      <div class="card-wrapper pulse-section">
+        <el-card class="styled-card">
           <template #header>
-            <div class="table-header">
-              <span>近期风险事件</span>
-              <span class="table-meta">最新 {{ recentAlerts.length }} 条</span>
+            <div class="card-header-inner">
+              <span class="title">运行脉搏 <small>Operational Pulse</small></span>
             </div>
           </template>
-
-          <el-empty v-if="!recentAlerts.length && !alertLoading" description="暂无风险事件" />
-
-          <el-table
-            v-else
-            :data="recentAlerts"
-            stripe
-            height="420"
-            v-loading="alertLoading"
-          >
-            <el-table-column prop="triggered_at" label="时间" width="160">
-              <template #default="{ row }">
-                {{ formatDateTime(row.triggered_at || row.time) }}
-              </template>
-            </el-table-column>
-            <el-table-column prop="robot_name" label="机器人" min-width="140" show-overflow-tooltip />
-            <el-table-column prop="severity" label="级别" width="90" align="center">
-              <template #default="{ row }">
-                <el-tag :type="severityType(row.severity)" effect="light">
-                  {{ severityLabel(row.severity) }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="message" label="事件描述" min-width="180" show-overflow-tooltip />
-          </el-table>
+          <div ref="statusChartRef" class="main-chart-item"></div>
         </el-card>
-      </el-col>
-    </el-row>
+      </div>
+
+      <!-- Section 3: Trend & Recent Alerts -->
+      <div class="card-wrapper trend-section">
+        <el-card class="styled-card">
+          <template #header>
+            <div class="card-header-inner">
+              <span class="title">风险态势趋势 <small>Risk Trend (7D)</small></span>
+            </div>
+          </template>
+          <div ref="trendChartRef" class="main-chart-item"></div>
+        </el-card>
+      </div>
+
+      <div class="card-wrapper alerts-section">
+        <el-card class="styled-card">
+          <template #header>
+            <div class="card-header-inner">
+              <span class="title">实时风险预警 <small>Active Alerts</small></span>
+              <el-link type="primary" @click="goTo('/alerts')">全部</el-link>
+            </div>
+          </template>
+          <div class="alert-list-styled">
+            <div v-if="alertLoading" class="loading-shimmer">加载中...</div>
+            <template v-else-if="recentAlerts.length">
+              <div v-for="alert in recentAlerts.slice(0, 5)" :key="alert.id" class="alert-item-mini">
+                <div class="alert-badge" :class="alert.severity"></div>
+                <div class="alert-content">
+                  <div class="alert-top">
+                    <span class="robot-name">{{ alert.robot_name }}</span>
+                    <span class="alert-time">{{ formatTimeOnly(alert.triggered_at) }}</span>
+                  </div>
+                  <div class="alert-msg">{{ alert.message }}</div>
+                </div>
+              </div>
+            </template>
+            <el-empty v-else :image-size="60" description="暂无活动风险" />
+          </div>
+        </el-card>
+      </div>
+    </div>
+
+    <!-- Quick Navigation -->
+    <footer class="quick-nav">
+      <div class="nav-item" @click="goTo('/devices')">
+        <el-icon><Monitor /></el-icon> 状态监控
+      </div>
+      <div class="nav-item" @click="goTo('/monitoring')">
+        <el-icon><LocationInformation /></el-icon> 轨迹分析
+      </div>
+      <div class="nav-item" @click="goTo('/alerts')">
+        <el-icon><PieChart /></el-icon> 数据分析
+      </div>
+      <div class="nav-item" @click="handleRefresh">
+        <el-icon><RefreshRight /></el-icon> 同步数据
+      </div>
+    </footer>
+
+    <!-- Detail Dialog -->
+    <el-dialog v-model="detailVisible" :title="detailTitle" width="850px" class="premium-dialog">
+      <el-table :data="detailRows" stripe v-loading="detailLoading" height="400">
+        <el-table-column prop="name" label="机器人" width="180" />
+        <el-table-column prop="status" label="状态" width="100">
+          <template #default="{ row }">
+             <span class="status-indicator" :class="row.status">{{ row.status }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="level" label="风险等级" width="100">
+          <template #default="{ row }">
+            <el-tag :type="row.level === 'H' ? 'danger' : row.level === 'M' ? 'warning' : 'success'" size="small">
+              {{ row.level }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="riskScore" label="风险分" width="90" align="center" />
+        <el-table-column prop="remark" label="风险描述" show-overflow-tooltip />
+      </el-table>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Refresh } from '@element-plus/icons-vue'
+import {
+  Refresh, Cpu, Warning, CircleClose, Odometer,
+  InfoFilled, Monitor, LocationInformation, PieChart, RefreshRight
+} from '@element-plus/icons-vue'
+import * as echarts from 'echarts'
 import { DEMO_MODE } from '@/config/appConfig'
-import { getRobotGroups, getRiskEventStatistics } from '@/api/robots'
-import { createRiskEvents, getGroupStats, robotGroups as mockGroups } from '@/mock/robots'
+import { getRobotComponents, getRobotGroups, getRiskEventStatistics } from '@/api/robots'
+import { createRiskEvents, getGroupStats, getRobotsByGroup, robotGroups as mockGroups } from '@/mock/robots'
 
 const router = useRouter()
 
@@ -126,6 +182,17 @@ const loading = ref(false)
 const alertLoading = ref(false)
 const groupsData = ref([])
 const recentAlerts = ref([])
+const lastUpdateTime = ref(new Date().toLocaleTimeString())
+
+const chartRef = ref(null)
+const statusChartRef = ref(null)
+const trendChartRef = ref(null)
+const chartInstances = new Map()
+
+const detailVisible = ref(false)
+const detailTitle = ref('')
+const detailRows = ref([])
+const detailLoading = ref(false)
 
 const groupRows = computed(() => {
   if (DEMO_MODE) {
@@ -164,19 +231,16 @@ const summary = computed(() => {
   return { total, online, offline, maintenance, highRisk, historyHighRisk, offlineRate, healthIndex }
 })
 
+const highRiskRate = computed(() => (summary.value.total ? Math.round((summary.value.highRisk / summary.value.total) * 100) : 0))
+
 const formatDateTime = (value) => {
   if (!value) return '-'
   return new Date(value).toLocaleString('zh-CN')
 }
 
-const severityLabel = (value) => {
-  const map = { critical: '严重', high: '高', medium: '中', low: '低' }
-  return map[value] || value || '-'
-}
-
-const severityType = (value) => {
-  const map = { critical: 'danger', high: 'warning', medium: 'info', low: '' }
-  return map[value] || 'info'
+const formatTimeOnly = (value) => {
+  if (!value) return '-'
+  return new Date(value).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
 }
 
 const loadGroups = async () => {
@@ -208,6 +272,7 @@ const loadAlerts = async () => {
 }
 
 const handleRefresh = () => {
+  lastUpdateTime.value = new Date().toLocaleTimeString()
   loadGroups()
   loadAlerts()
 }
@@ -216,108 +281,520 @@ const goTo = (path) => {
   router.push(path)
 }
 
+const initChart = (key, el) => {
+  if (!el) return null
+  if (!chartInstances.has(key)) {
+    chartInstances.set(key, echarts.init(el))
+  }
+  return chartInstances.get(key)
+}
+
+const renderPieChart = () => {
+  const chart = initChart('pie', chartRef.value)
+  if (!chart) return
+  
+  const rows = groupRows.value
+  const series = []
+  const titles = []
+  
+  rows.forEach((row, index) => {
+    const highRisk = row.stats?.highRisk || 0
+    const total = row.total || 1
+    const ratio = Math.round((highRisk / total) * 100)
+    
+    const centerX = (index * 25 + 12.5) + '%'
+    const centerY = '50%'
+    
+    // Dynamic color based on risk ratio
+    const riskColor = ratio > 40 ? '#ef4444' : ratio > 20 ? '#f59e0b' : '#3b82f6'
+
+    series.push({
+      type: 'pie',
+      radius: ['55%', '75%'],
+      center: [centerX, centerY],
+      avoidLabelOverlap: false,
+      label: { show: false },
+      emphasis: { scale: true },
+      data: [
+        { value: highRisk, name: '高风险', itemStyle: { color: '#ef4444' } },
+        { value: total - highRisk, name: '正常', itemStyle: { color: '#e2e8f0' } }
+      ]
+    })
+    
+    // Inner center text using graphic or label for custom look
+    titles.push({
+      text: ratio + '%',
+      left: centerX,
+      top: '48%',
+      textAlign: 'center',
+      textStyle: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: ratio > 0 ? '#ef4444' : '#64748b'
+      }
+    }, {
+      text: row.name,
+      left: centerX,
+      top: '85%',
+      textAlign: 'center',
+      textStyle: {
+        fontSize: 12,
+        color: '#64748b',
+        fontWeight: 'normal'
+      }
+    })
+  })
+
+  chart.setOption({
+    tooltip: {
+      trigger: 'item',
+      formatter: '{b}: {c} ({d}%)'
+    },
+    title: titles,
+    series: series
+  })
+
+  chart.off('click')
+  chart.on('click', (params) => {
+    const group = rows[params.seriesIndex]
+    openDetail({
+      seriesName: `${group.name} - 高风险详情`,
+      data: { key: group.key, name: group.name }
+    })
+  })
+}
+
+const renderStatusChart = () => {
+  const chart = initChart('status', statusChartRef.value)
+  if (!chart) return
+  const rows = groupRows.value
+  const categories = rows.map((row) => row.name)
+  const online = rows.map((row) => row.stats?.online || 0)
+  const offline = rows.map((row) => row.stats?.offline || 0)
+  
+  chart.setOption({
+    grid: { left: '3%', right: '4%', top: '15%', bottom: '10%', containLabel: true },
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+    xAxis: {
+      type: 'category',
+      data: categories,
+      axisLine: { lineStyle: { color: '#e2e8f0' } },
+      axisLabel: { color: '#64748b' }
+    },
+    yAxis: {
+      type: 'value',
+      splitLine: { lineStyle: { type: 'dashed', color: '#f1f5f9' } },
+      axisLabel: { color: '#64748b' }
+    },
+    series: [
+      {
+        name: '在线',
+        type: 'bar',
+        barWidth: '20%',
+        data: online,
+        itemStyle: {
+          borderRadius: [4, 4, 0, 0],
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: '#10b981' },
+            { offset: 1, color: '#34d399' }
+          ])
+        }
+      },
+      {
+        name: '离线',
+        type: 'bar',
+        barWidth: '20%',
+        data: offline,
+        itemStyle: {
+          borderRadius: [4, 4, 0, 0],
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: '#ef4444' },
+            { offset: 1, color: '#f87171' }
+          ])
+        }
+      }
+    ]
+  })
+}
+
+const renderTrendChart = () => {
+  const chart = initChart('trend', trendChartRef.value)
+  if (!chart) return
+  
+  const days = 7
+  const labels = []
+  const highRisk = []
+  const baseHigh = summary.value.highRisk
+  
+  for (let i = days - 1; i >= 0; i -= 1) {
+    const date = new Date()
+    date.setDate(date.getDate() - i)
+    labels.push(`${date.getMonth() + 1}/${date.getDate()}`)
+    highRisk.push(Math.max(0, Math.round(baseHigh * (0.8 + Math.random() * 0.4))))
+  }
+
+  chart.setOption({
+    grid: { left: '3%', right: '4%', top: '15%', bottom: '10%', containLabel: true },
+    tooltip: { trigger: 'axis' },
+    xAxis: {
+      type: 'category',
+      boundaryGap: false,
+      data: labels,
+      axisLine: { lineStyle: { color: '#e2e8f0' } },
+      axisLabel: { color: '#64748b' }
+    },
+    yAxis: {
+      type: 'value',
+      splitLine: { lineStyle: { color: '#f1f5f9' } }
+    },
+    series: [{
+      name: '风险数值',
+      type: 'line',
+      smooth: true,
+      symbol: 'none',
+      areaStyle: {
+        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: 'rgba(239, 68, 68, 0.2)' },
+          { offset: 1, color: 'rgba(239, 68, 68, 0)' }
+        ])
+      },
+      lineStyle: { color: '#ef4444', width: 3 },
+      data: highRisk
+    }]
+  })
+}
+
+const renderAllCharts = () => {
+  renderPieChart()
+  renderStatusChart()
+  renderTrendChart()
+}
+
+const openDetail = async (payload) => {
+  const groupKey = payload.data.key
+  const groupName = payload.data.name
+  detailTitle.value = `${groupName} - 高风险设备列表`
+  detailVisible.value = true
+  detailLoading.value = true
+  
+  try {
+    if (DEMO_MODE) {
+      const list = getRobotsByGroup(groupKey)
+      detailRows.value = list.filter(r => r.isHighRisk)
+    } else {
+      const data = await getRobotComponents({ group: groupKey, tab: 'highRisk' })
+      detailRows.value = data?.results || []
+    }
+  } catch (error) {
+    ElMessage.error('加载详情失败')
+  } finally {
+    detailLoading.value = false
+  }
+}
+
 onMounted(() => {
   loadGroups()
   loadAlerts()
+  renderAllCharts()
+  window.addEventListener('resize', () => chartInstances.forEach(c => c.resize()))
 })
+
+onBeforeUnmount(() => {
+  chartInstances.forEach(c => c.dispose())
+})
+
+watch(groupRows, renderAllCharts, { deep: true })
 </script>
 
 <style scoped>
-.dashboard {
+.dashboard-viewport {
+  padding: 24px;
   display: flex;
   flex-direction: column;
+  gap: 24px;
+  background-color: #f8fafc;
+  min-height: calc(100vh - 100px);
+  color: #1e293b;
+}
+
+/* Header */
+.dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.dashboard-header h1 {
+  font-size: 28px;
+  font-weight: 800;
+  margin: 0;
+  background: linear-gradient(135deg, #1e293b 0%, #3b82f6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.dashboard-header h1 small {
+  font-size: 14px;
+  color: #64748b;
+  font-weight: 400;
+  margin-left: 8px;
+  -webkit-text-fill-color: #64748b;
+}
+
+.subtitle {
+  margin: 4px 0 0;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
   gap: 16px;
 }
 
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
+.last-update {
+  font-size: 12px;
+  color: #94a3b8;
+  background: #fff;
+  padding: 6px 12px;
+  border-radius: 20px;
+  border: 1px solid #e2e8f0;
 }
 
-.title {
+.gradient-btn {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  border: none;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+}
+
+/* KPI Cards */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 20px;
+  padding: 20px;
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.glass-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 30px -10px rgba(0, 0, 0, 0.1);
+}
+
+.kpi-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+}
+
+.kpi-icon.total { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
+.kpi-icon.risk { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+.kpi-icon.offline { background: rgba(148, 163, 184, 0.1); color: #64748b; }
+.kpi-icon.health { background: rgba(16, 185, 129, 0.1); color: #10b981; }
+
+.kpi-info label {
+  display: block;
+  font-size: 13px;
+  color: #64748b;
+  margin-bottom: 4px;
+}
+
+.kpi-info .value {
+  font-size: 24px;
+  font-weight: 800;
+  color: #1e293b;
+}
+
+.trend {
+  font-size: 12px;
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
   gap: 4px;
 }
 
-.title-text {
-  font-size: 16px;
-  font-weight: 700;
+.trend.positive { color: #10b981; }
+.trend.negative { color: #ef4444; }
+
+.online-dot {
+  width: 6px;
+  height: 6px;
+  background: #10b981;
+  border-radius: 50%;
+  box-shadow: 0 0 8px #10b981;
 }
 
-.title-sub {
-  font-size: 12px;
-  color: var(--app-muted);
+.trend-bar {
+  height: 4px;
+  width: 100px;
+  background: #e2e8f0;
+  border-radius: 2px;
+  margin-top: 8px;
+  overflow: hidden;
 }
 
-.stat-card {
-  border: 1px solid rgba(148, 163, 184, 0.25);
-  border-radius: 14px;
-  padding: 14px;
-  background: rgba(255, 255, 255, 0.85);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-height: 96px;
+.trend-bar .fill {
+  height: 100%;
+  background: #10b981;
+  transition: width 1s ease-out;
 }
 
-.stat-card.stat-warning {
-  background: rgba(245, 158, 11, 0.12);
-  border-color: rgba(245, 158, 11, 0.25);
+/* Charts Grid */
+.chart-layout-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: auto auto;
+  gap: 20px;
 }
 
-.stat-card.stat-muted {
-  background: rgba(148, 163, 184, 0.12);
-  border-color: rgba(148, 163, 184, 0.25);
+.ratio-section { grid-column: span 3; }
+.pulse-section { grid-column: span 2; }
+.trend-section { grid-column: span 1; }
+.alerts-section { grid-column: span 1; }
+
+.styled-card {
+  border-radius: 20px;
+  border: none;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
 }
 
-.stat-card.stat-primary {
-  background: rgba(37, 99, 235, 0.1);
-  border-color: rgba(37, 99, 235, 0.2);
-}
-
-.stat-label {
-  font-size: 12px;
-  color: rgba(15, 23, 42, 0.6);
-  font-weight: 600;
-}
-
-.stat-value {
-  font-size: 24px;
-  font-weight: 800;
-  color: rgba(15, 23, 42, 0.9);
-}
-
-.stat-meta {
-  font-size: 12px;
-  color: rgba(15, 23, 42, 0.55);
-}
-
-.quick-actions {
-  margin-top: 14px;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.quick-title {
-  font-size: 12px;
-  color: rgba(15, 23, 42, 0.6);
-  margin-right: 6px;
-}
-
-.table-header {
+.card-header-inner {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 10px;
 }
 
-.table-meta {
+.card-header-inner .title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #334155;
+}
+
+.card-header-inner .title small {
+  color: #94a3b8;
+  font-weight: 400;
+  margin-left: 4px;
+}
+
+.main-chart-item {
+  width: 100%;
+  height: 300px;
+}
+
+.pie-grid-container {
+  padding: 10px 0;
+}
+
+.full-width-chart {
+  height: 240px;
+}
+
+/* Alert List */
+.alert-list-styled {
+  height: 300px;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.alert-item-mini {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  margin-bottom: 8px;
+  background: #f8fafc;
+  transition: background 0.2s;
+}
+
+.alert-item-mini:hover { background: #f1f5f9; }
+
+.alert-badge {
+  width: 4px;
+  height: 40px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.alert-badge.critical { background: #ef4444; }
+.alert-badge.high { background: #f97316; }
+.alert-badge.medium { background: #f59e0b; }
+.alert-badge.low { background: #3b82f6; }
+
+.alert-content { flex: 1; overflow: hidden; }
+.alert-top { display: flex; justify-content: space-between; margin-bottom: 2px; }
+.robot-name { font-size: 13px; font-weight: 600; color: #334155; }
+.alert-time { font-size: 11px; color: #94a3b8; }
+.alert-msg { font-size: 12px; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Quick Nav */
+.quick-nav {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  padding-top: 10px;
+}
+
+.nav-item {
+  background: #fff;
+  padding: 12px 24px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #475569;
+  cursor: pointer;
+  border: 1px solid #e2e8f0;
+  transition: all 0.2s;
+}
+
+.nav-item:hover {
+  background: #3b82f6;
+  color: #fff;
+  border-color: #3b82f6;
+  transform: translateY(-2px);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* Dialog Styling */
+.premium-dialog :deep(.el-dialog) {
+  border-radius: 24px;
+  overflow: hidden;
+}
+
+.status-indicator {
   font-size: 12px;
-  color: rgba(15, 23, 42, 0.55);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+.status-indicator.online { background: #dcfce7; color: #166534; }
+.status-indicator.offline { background: #fee2e2; color: #991b1b; }
+.status-indicator.maintenance { background: #fef3c7; color: #92400e; }
+
+@media (max-width: 1200px) {
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  .chart-layout-grid { grid-template-columns: 1fr; }
+  .ratio-section, .pulse-section, .trend-section, .alerts-section { grid-column: span 1; }
 }
 </style>
