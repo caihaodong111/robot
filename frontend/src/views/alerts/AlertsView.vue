@@ -1,89 +1,99 @@
 <template>
-  <div class="bi-shell">
-    <el-card class="bi-card">
-      <template #header>
-        <div class="bi-header">
-          <div class="bi-title">
-            <span class="title-text">可视化 BI</span>
-            <span class="title-sub">选择车间和机器人后加载可视化界面</span>
+  <div class="bi-viewport">
+    <!-- Header Section -->
+    <header class="bi-header">
+      <div class="title-area">
+        <h1>可视化分析 <small>Visual Analytics</small></h1>
+        <p class="subtitle">基于机器人数据的交互式可视化分析平台</p>
+      </div>
+      <div class="header-actions">
+        <el-button :icon="Refresh" circle @click="handleLoad" :disabled="!activeName" class="refresh-btn"></el-button>
+        <el-button type="primary" class="gradient-btn" :disabled="!activeName" @click="handleLoad">
+          <el-icon v-if="!isLoading"><Search /></el-icon>
+          {{ isLoading ? '加载中...' : '加载分析' }}
+        </el-button>
+      </div>
+    </header>
+
+    <!-- Control Panel -->
+    <div class="control-panel glass-card">
+      <div class="control-row">
+        <!-- 车间选择 -->
+        <div class="control-item">
+          <label><el-icon><Location /></el-icon> 目标车间</label>
+          <el-select
+            v-model="selectedGroup"
+            placeholder="请选择车间"
+            clearable
+            @change="handleGroupChange"
+            class="styled-select"
+          >
+            <el-option
+              v-for="group in groups"
+              :key="group.key"
+              :label="group.name"
+              :value="group.key"
+            />
+          </el-select>
+        </div>
+
+        <!-- 机器人选择 -->
+        <div class="control-item">
+          <label><el-icon><Monitor /></el-icon> 机器人</label>
+          <el-select
+            v-model="selectedRobot"
+            placeholder="请选择机器人"
+            filterable
+            clearable
+            :disabled="!selectedGroup"
+            :loading="robotsLoading"
+            @change="handleRobotChange"
+            class="styled-select"
+          >
+            <el-option
+              v-for="robot in robots"
+              :key="robot.value"
+              :label="robot.label"
+              :value="robot.value"
+            />
+          </el-select>
+        </div>
+
+        <!-- 当前选择显示 -->
+        <div v-if="activeName" class="current-selection-info">
+          <div class="selection-icon"><el-icon><DataAnalysis /></el-icon></div>
+          <div class="selection-text">
+            <span class="selection-label">当前分析</span>
+            <span class="selection-value">{{ currentRobotLabel }}</span>
           </div>
         </div>
-      </template>
+      </div>
+    </div>
 
-      <div class="bi-controls">
-        <!-- 车间选择 -->
-        <el-select
-          v-model="selectedGroup"
-          placeholder="选择车间"
-          clearable
-          style="width: 180px"
-          @change="handleGroupChange"
-        >
-          <el-option
-            v-for="group in groups"
-            :key="group.key"
-            :label="group.name"
-            :value="group.key"
-          />
-        </el-select>
-
-        <!-- 机器人搜索选择 -->
-        <el-select
-          v-model="selectedRobot"
-          placeholder="搜索并选择机器人"
-          filterable
-          remote
-          reserve-keyword
-          clearable
-          :remote-method="searchRobots"
-          :loading="robotsLoading"
-          :disabled="!selectedGroup"
-          style="width: 320px"
-          @change="handleRobotChange"
-        >
-          <el-option
-            v-for="robot in robots"
-            :key="robot.value"
-            :label="robot.label"
-            :value="robot.value"
-          />
-        </el-select>
-
-        <el-button type="primary" :disabled="!activeName" @click="handleLoad">
-          加载
-        </el-button>
-
-        <!-- 显示当前选择 -->
-        <div v-if="activeName" class="current-selection">
-          当前：{{ currentRobotLabel }}
-        </div>
+    <!-- Content Area -->
+    <div class="bi-content">
+      <div v-if="!activeName" class="bi-empty-state">
+        <div class="empty-icon"><el-icon><PieChart /></el-icon></div>
+        <div class="empty-text">请选择车间和机器人后加载 BI 可视化界面</div>
       </div>
 
-      <div class="bi-content">
-        <div v-if="!activeName" class="bi-empty">
-          请选择车间和机器人后加载 BI 可视化界面
-        </div>
-
-        <!-- BI图表容器 -->
-        <div v-else class="bi-frame-wrapper">
+      <!-- BI图表容器 -->
+      <el-card v-else class="bi-card styled-card">
+        <div class="bi-frame-wrapper">
           <!-- 加载遮罩层 -->
           <Transition name="fade">
             <div v-if="isLoading" class="bi-loading-overlay">
               <div class="bi-loading-content">
-                <!-- 脉冲圆点动画 -->
-                <div class="pulse-dots">
-                  <span class="pulse-dot"></span>
-                  <span class="pulse-dot"></span>
-                  <span class="pulse-dot"></span>
+                <!-- 加载动画 -->
+                <div class="loading-spinner">
+                  <svg class="spinner" viewBox="0 0 50 50">
+                    <circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="4"></circle>
+                  </svg>
                 </div>
                 <!-- 加载文字 -->
-                <div class="loading-text">
-                  <span class="text-main">正在加载数据</span>
-                  <span class="text-dots"></span>
-                </div>
-                <!-- 机器人名称 -->
-                <div v-if="currentRobotLabel" class="loading-robot">
-                  {{ currentRobotLabel }}
+                <div class="loading-message">
+                  <div class="loading-title">正在加载数据</div>
+                  <div class="loading-tip">请保持当前界面，数据加载中...</div>
                 </div>
               </div>
             </div>
@@ -103,14 +113,15 @@
             @load="handleFrameLoad"
           ></iframe>
         </div>
-      </div>
-    </el-card>
+      </el-card>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { Refresh, Location, Monitor, Search, DataAnalysis, PieChart } from '@element-plus/icons-vue'
 import request from '@/utils/request'
 
 const route = useRoute()
@@ -140,54 +151,37 @@ const loadGroups = async () => {
   }
 }
 
-// 车间变化时重置机器人选择
-const handleGroupChange = () => {
+// 车间变化时加载该车间所有机器人
+const handleGroupChange = async () => {
   selectedRobot.value = ''
   robots.value = []
   activeName.value = ''
   currentRobotLabel.value = ''
   isLoading.value = false
+
+  if (!selectedGroup.value) return
+
+  // 自动加载该车间的所有机器人
+  await loadRobots()
 }
 
-// 搜索机器人
-const searchRobots = async (query) => {
-  if (!query || !selectedGroup.value) {
-    robots.value = []
-    return
-  }
+// 加载车间的所有机器人
+const loadRobots = async () => {
+  if (!selectedGroup.value) return
 
   robotsLoading.value = true
   try {
     const response = await request.get('/robots/components/bi_robots/', {
       params: {
-        group: selectedGroup.value,
-        keyword: query
+        group: selectedGroup.value
       }
     })
     robots.value = response.results || []
   } catch (error) {
-    console.error('搜索机器人失败:', error)
+    console.error('加载机器人列表失败:', error)
     robots.value = []
   } finally {
     robotsLoading.value = false
-  }
-}
-
-// 直接根据part_no获取机器人信息（用于从URL参数初始化）
-const getRobotByPartNo = async (group, partNo) => {
-  try {
-    const response = await request.get('/robots/components/bi_robots/', {
-      params: {
-        group: group,
-        keyword: partNo
-      }
-    })
-    const results = response.results || []
-    const robot = results.find(r => r.value === partNo)
-    return robot
-  } catch (error) {
-    console.error('获取机器人信息失败:', error)
-    return null
   }
 }
 
@@ -242,14 +236,15 @@ const initFromQuery = async () => {
     // 先设置车间
     selectedGroup.value = queryGroup
 
-    // 获取该机器人信息并设置
-    const robot = await getRobotByPartNo(queryGroup, queryRobot)
+    // 加载该车间的所有机器人
+    await loadRobots()
+
+    // 找到并设置选中的机器人
+    const robot = robots.value.find(r => r.value === queryRobot)
     if (robot) {
       selectedRobot.value = robot.value
       activeName.value = robot.value
       currentRobotLabel.value = robot.label
-      // 也加入到搜索结果中，以便显示
-      robots.value = [robot]
     }
   }
 }
@@ -262,76 +257,211 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.bi-shell {
+.bi-viewport {
+  padding: 24px;
   display: flex;
   flex-direction: column;
+  gap: 24px;
+  background-color: #f8fafc;
+  min-height: calc(100vh - 100px);
+  color: #1e293b;
+}
+
+/* Header - 参考Dashboard样式 */
+.bi-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.bi-header h1 {
+  font-size: 28px;
+  font-weight: 800;
+  margin: 0;
+  background: linear-gradient(135deg, #1e293b 0%, #3b82f6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.bi-header h1 small {
+  font-size: 14px;
+  color: #64748b;
+  font-weight: 400;
+  margin-left: 8px;
+  -webkit-text-fill-color: #64748b;
+}
+
+.subtitle {
+  margin: 4px 0 0;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
   gap: 16px;
 }
 
-.bi-card :deep(.el-card__header) {
-  padding: 14px 18px;
+.gradient-btn {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  border: none;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
 }
 
-.bi-header {
+/* 玻璃态控制面板 */
+.control-panel {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 20px;
+  padding: 20px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05);
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 20px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05);
+}
+
+.control-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
 }
 
-.bi-title {
+.control-item {
   display: flex;
   flex-direction: column;
+  gap: 8px;
+  min-width: 200px;
+  flex: 1;
+}
+
+.control-item label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  display: flex;
+  align-items: center;
   gap: 4px;
 }
 
-.title-text {
-  font-size: 16px;
-  font-weight: 700;
-  color: rgba(15, 23, 42, 0.9);
+.styled-select {
+  width: 100%;
 }
 
-.title-sub {
-  font-size: 12px;
-  color: rgba(15, 23, 42, 0.6);
-}
-
-.bi-controls {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  flex-wrap: wrap;
-  margin-bottom: 16px;
-}
-
-.current-selection {
-  padding: 6px 12px;
-  background: rgba(64, 158, 255, 0.1);
-  color: #409eff;
-  border-radius: 4px;
-  font-size: 13px;
-}
-
-.bi-content {
-  min-height: 560px;
-  border: 1px dashed rgba(148, 163, 184, 0.5);
+.styled-select :deep(.el-input__wrapper) {
   border-radius: 12px;
-  background: rgba(148, 163, 184, 0.06);
-  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  border: 1px solid #e2e8f0;
+  transition: all 0.3s ease;
+  background: #fff;
 }
 
-.bi-empty {
-  height: 560px;
+.styled-select :deep(.el-input__wrapper:hover) {
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.styled-select :deep(.el-input__wrapper.is-focus) {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* 当前选择信息 */
+.current-selection-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(37, 99, 235, 0.1) 100%);
+  border-radius: 14px;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+.selection-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: rgba(15, 23, 42, 0.55);
+  font-size: 20px;
+}
+
+.selection-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.selection-label {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.selection-value {
   font-size: 14px;
+  font-weight: 600;
+  color: #3b82f6;
+}
+
+/* 内容区域 */
+.bi-content {
+  min-height: 560px;
+}
+
+/* 空状态 */
+.bi-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  min-height: 560px;
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(8px);
+  border-radius: 20px;
+  border: 2px dashed #cbd5e1;
+}
+
+.empty-icon {
+  width: 80px;
+  height: 80px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(37, 99, 235, 0.1) 100%);
+  color: #3b82f6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36px;
+}
+
+.empty-text {
+  font-size: 15px;
+  color: #64748b;
+}
+
+/* BI卡片 */
+.styled-card {
+  border-radius: 20px;
+  border: none;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
 }
 
 .bi-frame-wrapper {
   position: relative;
   width: 100%;
   height: 720px;
+  border-radius: 16px;
+  overflow: hidden;
 }
 
 .bi-frame {
@@ -348,12 +478,12 @@ onMounted(async () => {
   left: 0;
   right: 0;
   bottom: 0;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.98) 100%);
+  background: rgba(255, 255, 255, 0.95);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 10;
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(4px);
 }
 
 .bi-loading-content {
@@ -363,100 +493,60 @@ onMounted(async () => {
   gap: 24px;
 }
 
-/* 脉冲圆点动画 */
-.pulse-dots {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+/* 旋转Spinner */
+.loading-spinner {
+  width: 48px;
+  height: 48px;
 }
 
-.pulse-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #409eff 0%, #66b1ff 100%);
-  animation: pulse 1.4s ease-in-out infinite;
-  box-shadow: 0 0 0 0 rgba(64, 158, 255, 0.4);
+.spinner {
+  width: 100%;
+  height: 100%;
+  animation: rotate 1.5s linear infinite;
 }
 
-.pulse-dot:nth-child(1) {
-  animation-delay: 0s;
+.spinner .path {
+  stroke: #3b82f6;
+  stroke-linecap: round;
+  animation: dash 1.5s ease-in-out infinite;
 }
 
-.pulse-dot:nth-child(2) {
-  animation-delay: 0.2s;
+@keyframes rotate {
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
-.pulse-dot:nth-child(3) {
-  animation-delay: 0.4s;
-}
-
-@keyframes pulse {
-  0%, 100% {
-    transform: scale(0.8);
-    opacity: 0.5;
-    box-shadow: 0 0 0 0 rgba(64, 158, 255, 0.4);
+@keyframes dash {
+  0% {
+    stroke-dasharray: 1, 150;
+    stroke-dashoffset: 0;
   }
   50% {
-    transform: scale(1.2);
-    opacity: 1;
-    box-shadow: 0 0 20px 8px rgba(64, 158, 255, 0);
+    stroke-dasharray: 90, 150;
+    stroke-dashoffset: -35;
+  }
+  100% {
+    stroke-dasharray: 90, 150;
+    stroke-dashoffset: -124;
   }
 }
 
 /* 加载文字 */
-.loading-text {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 15px;
-  font-weight: 500;
-  color: rgba(15, 23, 42, 0.75);
-  letter-spacing: 0.5px;
+.loading-message {
+  text-align: center;
 }
 
-.text-dots {
-  display: flex;
-  gap: 2px;
+.loading-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 6px;
 }
 
-.text-dots::before,
-.text-dots::after {
-  content: '';
-  width: 3px;
-  height: 3px;
-  border-radius: 50%;
-  background: #409eff;
-  animation: bounce 1.4s ease-in-out infinite;
-}
-
-.text-dots::before {
-  animation-delay: 0.2s;
-}
-
-.text-dots::after {
-  animation-delay: 0.4s;
-}
-
-@keyframes bounce {
-  0%, 100% {
-    transform: translateY(0);
-    opacity: 0.4;
-  }
-  50% {
-    transform: translateY(-6px);
-    opacity: 1;
-  }
-}
-
-/* 机器人名称 */
-.loading-robot {
+.loading-tip {
   font-size: 13px;
-  color: rgba(15, 23, 42, 0.5);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  padding: 6px 14px;
-  background: rgba(64, 158, 255, 0.08);
-  border-radius: 6px;
+  color: #64748b;
 }
 
 /* 进度条 */

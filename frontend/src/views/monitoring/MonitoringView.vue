@@ -3,35 +3,29 @@
     <!-- Header Area -->
     <header class="page-header">
       <div class="title-group">
-        <div class="icon-orb">
-          <el-icon><TrendCharts /></el-icon>
-        </div>
         <div class="text-content">
           <h1>关键轨迹检查 Pulse <small>Trajectory Pulse</small></h1>
           <p class="description">基于实时电流数据的机器人重点抓放点位精准巡检</p>
         </div>
       </div>
       <div class="header-actions">
-        <el-button-group>
-          <el-tooltip content="刷新数据" placement="bottom">
-            <el-button :icon="Refresh" @click="loadPlantGroups" circle />
-          </el-tooltip>
-          <el-button 
-            v-if="checkResult" 
-            type="primary" 
-            :icon="Download" 
-            @click="handleExport"
-            class="export-btn"
-          >
-            导出报告
-          </el-button>
-        </el-button-group>
+        <el-tooltip content="刷新数据" placement="bottom">
+          <el-button :icon="Refresh" @click="loadPlantGroups" circle class="refresh-btn" />
+        </el-tooltip>
+        <el-button
+          v-if="checkResult"
+          @click="handleExport"
+          class="export-btn"
+        >
+          <el-icon class="export-icon"><Download /></el-icon>
+          <span>导出报告</span>
+        </el-button>
       </div>
     </header>
 
     <!-- Control Center (Horizontal) -->
     <div class="control-center glass-panel">
-      <div class="control-row">
+      <div class="control-row main-controls">
         <!-- Plant Selection -->
         <div class="control-item plant-selector">
           <label><el-icon><Location /></el-icon> 目标车间</label>
@@ -86,7 +80,23 @@
           </el-select>
         </div>
 
-        <!-- Time Range -->
+        <!-- Execute Button -->
+        <div class="control-item button-wrapper">
+          <el-button
+            type="primary"
+            class="pulse-btn"
+            :loading="checking"
+            :disabled="!canExecute"
+            @click="executeCheck"
+          >
+            <el-icon v-if="!checking"><Search /></el-icon>
+            {{ checking ? '正在诊断...' : '执行诊断' }}
+          </el-button>
+        </div>
+      </div>
+
+      <!-- Time Range Row -->
+      <div class="control-row secondary-row">
         <div class="control-item time-selector">
           <label><el-icon><Calendar /></el-icon> 时间跨度</label>
           <el-date-picker
@@ -98,20 +108,6 @@
             :shortcuts="shortcuts"
             unlink-panels
           />
-        </div>
-
-        <!-- Execute Button -->
-        <div class="control-footer">
-          <el-button
-            type="primary"
-            class="pulse-btn"
-            :loading="checking"
-            :disabled="!canExecute"
-            @click="executeCheck"
-          >
-            <el-icon v-if="!checking"><Search /></el-icon>
-            {{ checking ? '正在诊断...' : '执行诊断' }}
-          </el-button>
         </div>
       </div>
 
@@ -166,7 +162,7 @@
             <div class="summary-left">
               <span class="label">检测完成:</span>
               <span class="val">{{ checkResult.count }}</span>
-              <span class="unit">个点位</span>
+              <span class="unit">条记录</span>
             </div>
             <div class="summary-right">
               <div class="legend">
@@ -182,8 +178,11 @@
             v-loading="checking"
             @sort-change="handleSortChange"
             class="custom-table"
+            :default-sort="{ prop: 'robot', order: 'ascending' }"
+            height="500"
           >
-            <el-table-column prop="robot" label="机器人" min-width="180" sortable fixed="left">
+            <!-- 固定列：基本信息 -->
+            <el-table-column prop="robot" label="机器人" min-width="140" sortable fixed="left" class-name="fixed-left-col">
               <template #default="{ row }">
                 <div class="robot-info">
                   <el-icon><Monitor /></el-icon>
@@ -191,37 +190,151 @@
                 </div>
               </template>
             </el-table-column>
-            
-            <el-table-column prop="Name_C" label="位置" width="120" sortable />
-            <el-table-column prop="P_name" label="程序路径" min-width="200" show-overflow-tooltip sortable />
-            
-            <el-table-column label="电流基准 (LQ/HQ)" width="180" align="center">
-              <template #default="{ row }">
-                <div class="val-group">
-                  <span class="mono">{{ formatValue(row.Curr_A1_LQ) }}</span>
-                  <span class="divider">/</span>
-                  <span class="mono">{{ formatValue(row.Curr_A1_HQ) }}</span>
-                </div>
-              </template>
+
+            <el-table-column prop="Name_C" label="位置" width="110" sortable align="center" />
+            <el-table-column prop="SNR_C" label="SNR" width="80" sortable align="center" />
+            <el-table-column prop="SUB" label="SUB" width="70" sortable align="center" />
+            <el-table-column prop="P_name" label="程序路径" min-width="120" show-overflow-tooltip sortable />
+
+            <!-- 分组：LQ 电流值 -->
+            <el-table-column label="LQ 电流" align="center">
+              <el-table-column prop="Curr_A1_LQ" label="A1" width="80" sortable align="right" class-name="mono-col">
+                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A1_LQ) }}</span></template>
+              </el-table-column>
+              <el-table-column prop="Curr_A2_LQ" label="A2" width="80" sortable align="right" class-name="mono-col">
+                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A2_LQ) }}</span></template>
+              </el-table-column>
+              <el-table-column prop="Curr_A3_LQ" label="A3" width="80" sortable align="right" class-name="mono-col">
+                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A3_LQ) }}</span></template>
+              </el-table-column>
+              <el-table-column prop="Curr_A4_LQ" label="A4" width="80" sortable align="right" class-name="mono-col">
+                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A4_LQ) }}</span></template>
+              </el-table-column>
+              <el-table-column prop="Curr_A5_LQ" label="A5" width="80" sortable align="right" class-name="mono-col">
+                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A5_LQ) }}</span></template>
+              </el-table-column>
+              <el-table-column prop="Curr_A6_LQ" label="A6" width="80" sortable align="right" class-name="mono-col">
+                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A6_LQ) }}</span></template>
+              </el-table-column>
+              <el-table-column prop="Curr_E1_LQ" label="E1" width="80" sortable align="right" class-name="mono-col">
+                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_E1_LQ) }}</span></template>
+              </el-table-column>
             </el-table-column>
 
-            <el-table-column prop="QH1" label="偏差 QH1" width="120" sortable align="center">
-              <template #default="{ row }">
-                <el-tag :type="getStatusType(row.QH1)" effect="light" class="mono-tag">
-                  {{ formatValue(row.QH1) }}
-                </el-tag>
-              </template>
+            <!-- 分组：HQ 电流值 -->
+            <el-table-column label="HQ 电流" align="center">
+              <el-table-column prop="Curr_A1_HQ" label="A1" width="80" sortable align="right" class-name="mono-col">
+                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A1_HQ) }}</span></template>
+              </el-table-column>
+              <el-table-column prop="Curr_A2_HQ" label="A2" width="80" sortable align="right" class-name="mono-col">
+                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A2_HQ) }}</span></template>
+              </el-table-column>
+              <el-table-column prop="Curr_A3_HQ" label="A3" width="80" sortable align="right" class-name="mono-col">
+                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A3_HQ) }}</span></template>
+              </el-table-column>
+              <el-table-column prop="Curr_A4_HQ" label="A4" width="80" sortable align="right" class-name="mono-col">
+                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A4_HQ) }}</span></template>
+              </el-table-column>
+              <el-table-column prop="Curr_A5_HQ" label="A5" width="80" sortable align="right" class-name="mono-col">
+                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A5_HQ) }}</span></template>
+              </el-table-column>
+              <el-table-column prop="Curr_A6_HQ" label="A6" width="80" sortable align="right" class-name="mono-col">
+                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A6_HQ) }}</span></template>
+              </el-table-column>
+              <el-table-column prop="Curr_E1_HQ" label="E1" width="80" sortable align="right" class-name="mono-col">
+                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_E1_HQ) }}</span></template>
+              </el-table-column>
             </el-table-column>
 
-            <el-table-column prop="QL1" label="偏差 QL1" width="120" sortable align="center">
-              <template #default="{ row }">
-                <el-tag :type="getStatusType(row.QL1)" effect="light" class="mono-tag">
-                  {{ formatValue(row.QL1) }}
-                </el-tag>
-              </template>
-            </el-table-column>
+            <el-table-column prop="size" label="样本" width="70" sortable align="center" />
 
-            <el-table-column prop="size" label="样本数" width="100" sortable align="right" />
+            <!-- 分组：偏差值 -->
+            <el-table-column label="偏差值" align="center">
+              <el-table-column label="1" width="120" align="center">
+                <el-table-column prop="QH1" label="QH" width="60" sortable align="center">
+                  <template #default="{ row }">
+                    <span class="deviation-value" :class="getStatusClass(row.QH1)">{{ formatValue(row.QH1) }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="QL1" label="QL" width="60" sortable align="center">
+                  <template #default="{ row }">
+                    <span class="deviation-value" :class="getStatusClass(row.QL1)">{{ formatValue(row.QL1) }}</span>
+                  </template>
+                </el-table-column>
+              </el-table-column>
+              <el-table-column label="2" width="120" align="center">
+                <el-table-column prop="QH2" label="QH" width="60" sortable align="center">
+                  <template #default="{ row }">
+                    <span class="deviation-value" :class="getStatusClass(row.QH2)">{{ formatValue(row.QH2) }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="QL2" label="QL" width="60" sortable align="center">
+                  <template #default="{ row }">
+                    <span class="deviation-value" :class="getStatusClass(row.QL2)">{{ formatValue(row.QL2) }}</span>
+                  </template>
+                </el-table-column>
+              </el-table-column>
+              <el-table-column label="3" width="120" align="center">
+                <el-table-column prop="QH3" label="QH" width="60" sortable align="center">
+                  <template #default="{ row }">
+                    <span class="deviation-value" :class="getStatusClass(row.QH3)">{{ formatValue(row.QH3) }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="QL3" label="QL" width="60" sortable align="center">
+                  <template #default="{ row }">
+                    <span class="deviation-value" :class="getStatusClass(row.QL3)">{{ formatValue(row.QL3) }}</span>
+                  </template>
+                </el-table-column>
+              </el-table-column>
+              <el-table-column label="4" width="120" align="center">
+                <el-table-column prop="QH4" label="QH" width="60" sortable align="center">
+                  <template #default="{ row }">
+                    <span class="deviation-value" :class="getStatusClass(row.QH4)">{{ formatValue(row.QH4) }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="QL4" label="QL" width="60" sortable align="center">
+                  <template #default="{ row }">
+                    <span class="deviation-value" :class="getStatusClass(row.QL4)">{{ formatValue(row.QL4) }}</span>
+                  </template>
+                </el-table-column>
+              </el-table-column>
+              <el-table-column label="5" width="120" align="center">
+                <el-table-column prop="QH5" label="QH" width="60" sortable align="center">
+                  <template #default="{ row }">
+                    <span class="deviation-value" :class="getStatusClass(row.QH5)">{{ formatValue(row.QH5) }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="QL5" label="QL" width="60" sortable align="center">
+                  <template #default="{ row }">
+                    <span class="deviation-value" :class="getStatusClass(row.QL5)">{{ formatValue(row.QL5) }}</span>
+                  </template>
+                </el-table-column>
+              </el-table-column>
+              <el-table-column label="6" width="120" align="center">
+                <el-table-column prop="QH6" label="QH" width="60" sortable align="center">
+                  <template #default="{ row }">
+                    <span class="deviation-value" :class="getStatusClass(row.QH6)">{{ formatValue(row.QH6) }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="QL6" label="QL" width="60" sortable align="center">
+                  <template #default="{ row }">
+                    <span class="deviation-value" :class="getStatusClass(row.QL6)">{{ formatValue(row.QL6) }}</span>
+                  </template>
+                </el-table-column>
+              </el-table-column>
+              <el-table-column label="7" width="120" align="center">
+                <el-table-column prop="QH7" label="QH" width="60" sortable align="center">
+                  <template #default="{ row }">
+                    <span class="deviation-value" :class="getStatusClass(row.QH7)">{{ formatValue(row.QH7) }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="QL7" label="QL" width="60" sortable align="center">
+                  <template #default="{ row }">
+                    <span class="deviation-value" :class="getStatusClass(row.QL7)">{{ formatValue(row.QL7) }}</span>
+                  </template>
+                </el-table-column>
+              </el-table-column>
+            </el-table-column>
           </el-table>
 
           <footer class="table-footer">
@@ -270,9 +383,9 @@
 <script setup>
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
-import { 
-  Download, Search, Refresh, Location, Cpu, Calendar, 
-  TrendCharts, Operation, Monitor, Warning 
+import {
+  Download, Search, Refresh, Location, Cpu, Calendar,
+  Operation, Monitor, Warning
 } from '@element-plus/icons-vue'
 import { DEMO_MODE } from '@/config/appConfig'
 import { getRobotGroups, getGripperRobotTables, executeGripperCheck } from '@/api/robots'
@@ -448,17 +561,57 @@ const getStatusType = (val) => {
   return 'success'
 }
 
+const getStatusClass = (val) => {
+  const n = Math.abs(parseFloat(val))
+  if (isNaN(n)) return 'dev-neutral'
+  if (n > 0.3) return 'dev-danger'
+  if (n > 0.1) return 'dev-warning'
+  return 'dev-success'
+}
+
 const generateMockData = (count) => {
-  return Array.from({ length: count }, (_, i) => ({
-    robot: `RB_${100 + (i % 5)}`,
-    Name_C: `R${i % 2 + 1}/${['PICK', 'PLACE'][i % 2]}`,
-    P_name: `/home/robot/Programs/Main_Cycle_V2.mod#L${100 + i * 5}`,
-    Curr_A1_LQ: (Math.random() * 1.5).toFixed(3),
-    Curr_A1_HQ: (3 + Math.random() * 2).toFixed(3),
-    QH1: (Math.random() * 0.5 - 0.1).toFixed(3),
-    QL1: (Math.random() * 0.4 - 0.05).toFixed(3),
-    size: Math.floor(Math.random() * 200) + 50
-  }))
+  return Array.from({ length: count }, (_, i) => {
+    const robotNum = 100 + (i % 8)
+    return {
+      robot: `RB_${robotNum}`,
+      Name_C: `R${i % 4 + 1}/${['PICK', 'PLACE', 'WELD', 'CHECK'][i % 4]}`,
+      SNR_C: `SNR${100 + i}`,
+      SUB: `S${i % 3}`,
+      P_name: `/home/robot/Programs/Task_${i % 5}/Main_Cycle_V${i % 3 + 1}.mod#L${100 + i * 5}`,
+      // LQ 电流值
+      Curr_A1_LQ: (Math.random() * 1.5 + 0.3).toFixed(3),
+      Curr_A2_LQ: (Math.random() * 1.8 + 0.4).toFixed(3),
+      Curr_A3_LQ: (Math.random() * 2.0 + 0.5).toFixed(3),
+      Curr_A4_LQ: (Math.random() * 1.6 + 0.3).toFixed(3),
+      Curr_A5_LQ: (Math.random() * 1.4 + 0.2).toFixed(3),
+      Curr_A6_LQ: (Math.random() * 1.3 + 0.3).toFixed(3),
+      Curr_E1_LQ: (Math.random() * 0.8 + 0.1).toFixed(3),
+      // HQ 电流值
+      Curr_A1_HQ: (3 + Math.random() * 2).toFixed(3),
+      Curr_A2_HQ: (3.5 + Math.random() * 2.5).toFixed(3),
+      Curr_A3_HQ: (4 + Math.random() * 3).toFixed(3),
+      Curr_A4_HQ: (3.2 + Math.random() * 2.2).toFixed(3),
+      Curr_A5_HQ: (2.8 + Math.random() * 1.8).toFixed(3),
+      Curr_A6_HQ: (2.5 + Math.random() * 1.5).toFixed(3),
+      Curr_E1_HQ: (1.5 + Math.random() * 1).toFixed(3),
+      size: Math.floor(Math.random() * 200) + 50,
+      // 偏差值
+      QH1: (Math.random() * 0.5 - 0.1).toFixed(3),
+      QL1: (Math.random() * 0.4 - 0.05).toFixed(3),
+      QH2: (Math.random() * 0.5 - 0.1).toFixed(3),
+      QL2: (Math.random() * 0.4 - 0.05).toFixed(3),
+      QH3: (Math.random() * 0.5 - 0.1).toFixed(3),
+      QL3: (Math.random() * 0.4 - 0.05).toFixed(3),
+      QH4: (Math.random() * 0.5 - 0.1).toFixed(3),
+      QL4: (Math.random() * 0.4 - 0.05).toFixed(3),
+      QH5: (Math.random() * 0.5 - 0.1).toFixed(3),
+      QL5: (Math.random() * 0.4 - 0.05).toFixed(3),
+      QH6: (Math.random() * 0.5 - 0.1).toFixed(3),
+      QL6: (Math.random() * 0.4 - 0.05).toFixed(3),
+      QH7: (Math.random() * 0.5 - 0.1).toFixed(3),
+      QL7: (Math.random() * 0.4 - 0.05).toFixed(3)
+    }
+  })
 }
 
 const pagedRows = computed(() => {
@@ -500,10 +653,10 @@ onMounted(loadPlantGroups)
   padding: 24px;
   display: flex;
   flex-direction: column;
-  gap: 24px;
-  background: #f0f2f5;
-  min-height: calc(100vh - 120px);
-  color: #2c3e50;
+  gap: 20px;
+  background: #f8fafc;
+  min-height: calc(100vh - 100px);
+  color: #1e293b;
   overflow-x: hidden;
 }
 
@@ -512,6 +665,7 @@ onMounted(loadPlantGroups)
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 4px;
 }
 
 .title-group {
@@ -520,24 +674,14 @@ onMounted(loadPlantGroups)
   gap: 16px;
 }
 
-.icon-orb {
-  width: 48px;
-  height: 48px;
-  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-  border-radius: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-size: 24px;
-  box-shadow: 0 8px 16px rgba(79, 172, 254, 0.3);
-}
-
 .text-content h1 {
   margin: 0;
-  font-size: 24px;
-  font-weight: 700;
+  font-size: 26px;
+  font-weight: 800;
   letter-spacing: -0.5px;
+  background: linear-gradient(135deg, #1e293b 0%, #4facfe 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .text-content small {
@@ -545,6 +689,7 @@ onMounted(loadPlantGroups)
   color: #94a3b8;
   font-size: 14px;
   margin-left: 8px;
+  -webkit-text-fill-color: #94a3b8;
 }
 
 .description {
@@ -555,47 +700,60 @@ onMounted(loadPlantGroups)
 
 /* Glass Panel */
 .glass-panel {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.5);
-  border-radius: 18px;
-  padding: 20px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.04);
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 20px;
+  padding: 18px 20px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
 }
 
 /* Control Center */
 .control-row {
   display: flex;
   align-items: flex-end;
-  gap: 24px;
+  gap: 18px;
   flex-wrap: wrap;
 }
 
+.main-controls {
+  flex-wrap: nowrap;
+  align-items: flex-end;
+}
+
 .secondary-row {
-  margin-top: 20px;
-  padding-top: 20px;
+  margin-top: 14px;
+  padding-top: 14px;
   border-top: 1px solid rgba(0, 0, 0, 0.05);
+  flex-wrap: nowrap;
 }
 
 .control-item {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 7px;
 }
 
 .control-item label {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   color: #475569;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 
-.plant-selector { width: 180px; }
-.robot-selector { width: 260px; }
-.time-selector { width: 340px; }
-.path-config { flex: 1; min-width: 400px; }
+.plant-selector { width: 170px; flex-shrink: 0; }
+.robot-selector { width: 240px; flex-shrink: 0; }
+.time-selector { width: 100%; max-width: 480px; flex: 1; }
+.path-config { flex: 1; min-width: 350px; }
+
+.button-wrapper {
+  margin-left: auto;
+  flex-shrink: 0;
+}
 
 .count-tag { margin-left: 4px; }
 
@@ -626,16 +784,20 @@ onMounted(loadPlantGroups)
 
 /* Execute Button */
 .pulse-btn {
-  height: 42px;
-  padding: 0 32px;
+  height: 40px;
+  padding: 0 28px;
   border-radius: 12px;
   font-weight: 600;
+  font-size: 14px;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  border: none;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.2);
   transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
 .pulse-btn:not(:disabled):hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.3);
+  box-shadow: 0 8px 24px rgba(37, 99, 235, 0.35);
 }
 
 /* Results */
@@ -646,17 +808,24 @@ onMounted(loadPlantGroups)
 .result-container {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
+  overflow: hidden;
+}
+
+.result-container > * {
+  overflow: hidden;
 }
 
 .result-summary {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+  padding: 14px 18px;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(12px);
+  border-radius: 16px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.03);
+  border: 1px solid rgba(255, 255, 255, 0.5);
 }
 
 .summary-left {
@@ -665,15 +834,16 @@ onMounted(loadPlantGroups)
   gap: 8px;
 }
 
-.summary-left .label { font-size: 14px; color: #64748b; }
-.summary-left .val { font-size: 22px; font-weight: 800; color: #2563eb; }
+.summary-left .label { font-size: 13px; color: #64748b; font-weight: 500; }
+.summary-left .val { font-size: 24px; font-weight: 800; color: #3b82f6; }
 .summary-left .unit { font-size: 12px; color: #94a3b8; }
 
 .legend {
   font-size: 12px;
   color: #64748b;
   display: flex;
-  gap: 12px;
+  gap: 14px;
+  align-items: center;
 }
 
 .dot {
@@ -683,19 +853,69 @@ onMounted(loadPlantGroups)
   display: inline-block;
   margin-right: 4px;
 }
-.dot.ok { background: #10b981; }
-.dot.warning { background: #f59e0b; }
-.dot.bad { background: #ef4444; }
+.dot.ok { background: #10b981; box-shadow: 0 0 6px rgba(16, 185, 129, 0.4); }
+.dot.warning { background: #f59e0b; box-shadow: 0 0 6px rgba(245, 158, 11, 0.4); }
+.dot.bad { background: #ef4444; box-shadow: 0 0 6px rgba(239, 68, 68, 0.4); }
 
 /* Table Styling */
 .custom-table {
   border-radius: 16px;
   overflow: hidden;
-  box-shadow: 0 8px 30px rgba(0,0,0,0.05);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.04);
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(12px);
+}
+
+.custom-table :deep(.el-table__inner-wrapper) {
+  overflow-x: auto;
+}
+
+.custom-table :deep(.el-table__body-wrapper) {
+  overflow-x: auto;
 }
 
 .custom-table :deep(.el-table__row) {
   transition: background-color 0.2s;
+}
+
+.custom-table :deep(.el-table__row td) {
+  padding: 0;
+}
+
+.custom-table :deep(.el-table__header) {
+  background: #f8fafc;
+}
+
+.custom-table :deep(.el-table__header th) {
+  background: #f1f5f9;
+  color: #475569;
+  font-weight: 600;
+  font-size: 13px;
+  padding: 0;
+  border-color: #e2e8f0;
+}
+
+.custom-table :deep(.el-table__header .cell) {
+  padding: 12px 8px;
+  line-height: 1.4;
+}
+
+.custom-table :deep(.el-table__body .cell) {
+  padding: 12px 8px;
+  line-height: 1.4;
+}
+
+/* Fixed column handling */
+.custom-table :deep(.el-table__fixed) {
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.08);
+}
+
+.custom-table :deep(.el-table__fixed-column) {
+  background: inherit;
+}
+
+.custom-table :deep(.fixed-left-col .cell) {
+  padding-left: 14px;
 }
 
 .robot-info {
@@ -703,6 +923,68 @@ onMounted(loadPlantGroups)
   align-items: center;
   gap: 8px;
   font-weight: 600;
+  color: #334155;
+  font-size: 14px;
+}
+
+.robot-info .el-icon {
+  font-size: 16px;
+}
+
+/* Mono font columns */
+.custom-table :deep(.mono-col .cell) {
+  font-family: 'Share Tech Mono', 'SF Mono', Consolas, monospace;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.mono {
+  font-family: 'Share Tech Mono', 'SF Mono', Consolas, monospace;
+  font-size: 13px;
+}
+
+/* Status tags */
+.status-tag {
+  font-family: 'Share Tech Mono', 'SF Mono', Consolas, monospace;
+  font-size: 12px;
+  min-width: 42px;
+  border-radius: 6px;
+  padding: 0 8px;
+  height: 24px;
+  line-height: 24px;
+  display: inline-block;
+  text-align: center;
+}
+
+/* Deviation value styles */
+.deviation-value {
+  font-family: 'Share Tech Mono', 'SF Mono', Consolas, monospace;
+  font-size: 13px;
+  font-weight: 500;
+  display: inline-block;
+  min-width: 44px;
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+
+.deviation-value.dev-success {
+  color: #16a34a;
+  background: #dcfce7;
+}
+
+.deviation-value.dev-warning {
+  color: #d97706;
+  background: #fef3c7;
+}
+
+.deviation-value.dev-danger {
+  color: #dc2626;
+  background: #fee2e2;
+}
+
+.deviation-value.dev-neutral {
+  color: #64748b;
+  background: #f1f5f9;
 }
 
 .val-group {
@@ -714,13 +996,11 @@ onMounted(loadPlantGroups)
   color: #64748b;
 }
 
-.mono { font-family: 'Share Tech Mono', monospace; }
-.mono-tag { font-family: 'Share Tech Mono', monospace; min-width: 60px; }
-
 .table-footer {
   display: flex;
   justify-content: center;
   padding: 16px 0;
+  overflow: visible;
 }
 
 /* State Transitions */
@@ -735,14 +1015,26 @@ onMounted(loadPlantGroups)
 
 .empty-state {
   text-align: center;
-  padding: 80px 0;
+  padding: 70px 0;
+  color: #94a3b8;
+}
+
+.empty-state h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #64748b;
+  margin-bottom: 8px;
+}
+
+.empty-state p {
+  font-size: 14px;
   color: #94a3b8;
 }
 
 .empty-illustration {
-  font-size: 64px;
-  margin-bottom: 24px;
-  opacity: 0.2;
+  font-size: 56px;
+  margin-bottom: 20px;
+  opacity: 0.15;
 }
 
 .pulse-icon {
@@ -765,23 +1057,149 @@ onMounted(loadPlantGroups)
   width: 90%;
   max-width: 600px;
   box-shadow: 0 10px 30px rgba(239, 68, 68, 0.2);
+  border-radius: 16px;
 }
 
 /* Responsive adjustments */
 @media (max-width: 1200px) {
+  .main-controls { flex-wrap: wrap; }
+  .secondary-row { flex-wrap: wrap; }
   .control-row { gap: 16px; }
   .path-config { min-width: 100%; }
+  .button-wrapper { margin-left: 0; }
+}
+
+@media (max-width: 768px) {
+  .trajectory-viewport {
+    padding: 16px;
+  }
+
+  .custom-table {
+    font-size: 12px;
+  }
+
+  .custom-table :deep(.el-table__header .cell),
+  .custom-table :deep(.el-table__body .cell) {
+    padding: 8px 6px;
+  }
 }
 
 :deep(.el-input__wrapper),
 :deep(.el-select__wrapper) {
-  background: white !important;
-  border: 1px solid rgba(0, 0, 0, 0.05) !important;
+  background: rgba(255, 255, 255, 0.9) !important;
+  border: 1px solid rgba(0, 0, 0, 0.06) !important;
   border-radius: 10px !important;
   box-shadow: none !important;
+  transition: all 0.2s ease !important;
+}
+
+:deep(.el-input__wrapper:hover),
+:deep(.el-select__wrapper:hover) {
+  border-color: rgba(59, 130, 246, 0.3) !important;
 }
 
 :deep(.el-select__wrapper.is-focused) {
-  border-color: #2563eb !important;
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
+}
+
+/* Header Refresh Button */
+:deep(.header-actions .refresh-btn) {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #e2e8f0;
+  color: #64748b;
+  transition: all 0.3s ease;
+}
+
+:deep(.header-actions .refresh-btn:hover) {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: #fff;
+  transform: rotate(180deg);
+}
+
+/* Export Button */
+.export-btn {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  border: none;
+  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.25);
+  border-radius: 12px;
+  height: 38px;
+  padding: 0 22px;
+  font-weight: 600;
+  font-size: 14px;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.export-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(16, 185, 129, 0.35);
+}
+
+.export-btn:active {
+  transform: translateY(0);
+}
+
+.export-icon {
+  font-size: 16px;
+}
+
+/* Pagination */
+:deep(.el-pagination.is-background .el-pager li:not(.is-disabled).is-active) {
+  background: #3b82f6;
+}
+
+/* Path Tags */
+:deep(.path-tag) {
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  color: #3b82f6;
+}
+
+:deep(.add-path-btn) {
+  border-style: dashed;
+  color: #64748b;
+}
+
+:deep(.el-check-tag.is-checked) {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: #fff;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* Table scrollbar specifically */
+.custom-table :deep(.el-table__body-wrapper)::-webkit-scrollbar {
+  height: 8px;
+}
+
+.custom-table :deep(.el-table__body-wrapper)::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.custom-table :deep(.el-table__body-wrapper)::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Ensure cells don't overflow */
+.custom-table :deep(.el-table__cell) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.custom-table :deep(.cell) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: break-word;
 }
 </style>

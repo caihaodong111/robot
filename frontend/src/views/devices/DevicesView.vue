@@ -1,37 +1,43 @@
 <template>
   <div class="robot-status">
-    <el-card class="group-card">
-      <template #header>
-        <div class="card-header">
-          <div class="title">
-            <span class="title-text">机器人状态信息</span>
-          </div>
-          <el-button :icon="Refresh" @click="handleRefresh">载入数据</el-button>
+    <!-- Header Section -->
+    <header class="status-header">
+      <div class="title-area">
+        <h1>机器人状态 <small>Robot Status</small></h1>
+        <p class="subtitle">实时监控各车间机器人运行状态与风险等级</p>
+      </div>
+      <div class="header-actions">
+        <el-button :icon="Refresh" @click="handleRefresh" class="refresh-btn">载入数据</el-button>
+      </div>
+    </header>
+
+    <!-- KPI Metrics Grid -->
+    <div class="kpi-grid">
+      <button
+        v-for="group in groups"
+        :key="group.key"
+        type="button"
+        class="kpi-card glass-card"
+        :class="{ active: group.key === selectedGroup }"
+        @click="selectedGroup = group.key"
+      >
+        <div class="kpi-icon" :class="getIconClass(group.key)">
+          <el-icon><Monitor /></el-icon>
         </div>
-      </template>
-
-      <el-row :gutter="16" class="group-row">
-        <el-col v-for="group in groups" :key="group.key" :span="6">
-          <button
-            type="button"
-            class="group-tile"
-            :class="{ active: group.key === selectedGroup }"
-            @click="selectedGroup = group.key"
-          >
-            <div class="group-top">
-              <div class="group-name">{{ group.name }}</div>
-              <div class="group-total">{{ group.total }}</div>
-            </div>
-            <div class="group-meta">
-              <span class="meta-item">在线 {{ group.stats.online }}</span>
-              <span class="meta-item">维护 {{ group.stats.maintenance }}</span>
-              <span class="meta-item meta-risk">高风险 {{ group.stats.highRisk }}</span>
-            </div>
-          </button>
-        </el-col>
-      </el-row>
-
-    </el-card>
+        <div class="kpi-info">
+          <label>{{ group.name }}</label>
+          <div class="value">{{ group.total }}</div>
+          <div class="trend-row">
+            <span class="trend risk">
+              <span class="risk-dot"></span> 高风险 {{ group.stats.highRisk }}
+            </span>
+            <span class="trend normal">
+              <span class="normal-dot"></span> 正常 {{ group.stats.online - group.stats.highRisk }}
+            </span>
+          </div>
+        </div>
+      </button>
+    </div>
 
     <el-card class="list-card">
       <el-tabs v-model="activeTab" class="status-tabs">
@@ -282,7 +288,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { Refresh, Search, Close } from '@element-plus/icons-vue'
+import { Refresh, Search, Close, Monitor } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { DEMO_MODE } from '@/config/appConfig'
 import { getRobotComponents, getRobotGroups, updateRobotComponent } from '@/api/robots'
@@ -363,6 +369,16 @@ const groupStats = computed(() => {
   const group = groups.value.find((g) => g.key === selectedGroup.value)
   return group?.stats || { online: 0, highRisk: 0, historyHighRisk: 0 }
 })
+
+const getIconClass = (groupKey) => {
+  const colorMap = {
+    hop: 'blue',
+    wb: 'purple',
+    sb: 'green',
+    tb: 'orange'
+  }
+  return colorMap[groupKey] || 'blue'
+}
 
 const robots = computed(() => (DEMO_MODE ? getRobotsByGroup(selectedGroup.value) : serverRows.value))
 
@@ -635,93 +651,173 @@ if (!DEMO_MODE) {
 
 <style scoped>
 .robot-status {
+  padding: 24px;
   display: flex;
   flex-direction: column;
   gap: 20px;
+  background-color: #f8fafc;
+  min-height: calc(100vh - 100px);
+  color: #1e293b;
 }
 
-.card-header {
+/* Header */
+.status-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.title-area h1 {
+  font-size: 28px;
+  font-weight: 800;
+  margin: 0;
+  background: linear-gradient(135deg, #1e293b 0%, #3b82f6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.title-area h1 small {
+  font-size: 14px;
+  color: #64748b;
+  font-weight: 400;
+  margin-left: 8px;
+  -webkit-text-fill-color: #64748b;
+}
+
+.subtitle {
+  margin: 4px 0 0;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.refresh-btn {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  border: none;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+}
+
+/* KPI Grid */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+}
+
+.kpi-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  cursor: pointer;
+  text-align: left;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  border: none;
+  background: transparent;
+  width: 100%;
+}
+
+.kpi-card:hover {
+  transform: translateY(-4px);
+}
+
+.kpi-card.active {
+  border: 1px solid rgba(37, 99, 235, 0.4);
+  background: rgba(37, 99, 235, 0.04);
+}
+
+.kpi-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.kpi-icon.blue { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
+.kpi-icon.purple { background: rgba(139, 92, 246, 0.1); color: #8b5cf6; }
+.kpi-icon.green { background: rgba(16, 185, 129, 0.1); color: #10b981; }
+.kpi-icon.orange { background: rgba(249, 115, 22, 0.1); color: #f97316; }
+
+.kpi-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.kpi-info label {
+  display: block;
+  font-size: 13px;
+  color: #64748b;
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+
+.kpi-info .value {
+  font-size: 24px;
+  font-weight: 800;
+  color: #1e293b;
+  line-height: 1.2;
+}
+
+.kpi-info .trend-row {
+  margin-top: 4px;
+  display: flex;
   gap: 12px;
 }
 
-.title {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.title-text {
-  font-size: 16px;
-  font-weight: 700;
-}
-
-.group-row {
-  margin-bottom: 6px;
-}
-
-.group-tile {
-  width: 100%;
-  border: 1px solid var(--app-border);
-  background: rgba(148, 163, 184, 0.06);
-  border-radius: var(--app-radius);
-  padding: 14px 14px 12px;
-  cursor: pointer;
-  text-align: left;
-  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
-}
-
-.group-tile:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--app-shadow);
-}
-
-.group-tile.active {
-  border-color: rgba(37, 99, 235, 0.35);
-  background: rgba(37, 99, 235, 0.08);
-}
-
-.group-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 10px;
-}
-
-.group-name {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--app-text);
-}
-
-.group-total {
-  font-size: 22px;
-  font-weight: 800;
-  color: rgba(15, 23, 42, 0.8);
-}
-
-.group-meta {
-  margin-top: 10px;
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  color: rgba(15, 23, 42, 0.65);
+.kpi-info .trend {
   font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 500;
 }
 
-.meta-item {
-  padding: 4px 8px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.85);
-  border: 1px solid rgba(15, 23, 42, 0.08);
+.kpi-info .trend.risk {
+  color: #ef4444;
 }
 
-.meta-risk {
-  color: #b45309;
-  border-color: rgba(245, 158, 11, 0.28);
-  background: rgba(245, 158, 11, 0.12);
+.kpi-info .trend.normal {
+  color: #10b981;
+}
+
+.risk-dot {
+  width: 6px;
+  height: 6px;
+  background: #ef4444;
+  border-radius: 50%;
+  box-shadow: 0 0 8px #ef4444;
+  flex-shrink: 0;
+}
+
+.normal-dot {
+  width: 6px;
+  height: 6px;
+  background: #10b981;
+  border-radius: 50%;
+  box-shadow: 0 0 8px #10b981;
+  flex-shrink: 0;
+}
+
+/* Glass Card */
+.glass-card {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 20px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05);
+}
+
+.glass-card :deep(.el-card__body) {
+  padding: 20px;
 }
 
 .filters {
@@ -881,5 +977,10 @@ if (!DEMO_MODE) {
 .low {
   color: #b91c1c;
   font-weight: 700;
+}
+
+/* Responsive */
+@media (max-width: 1200px) {
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); }
 }
 </style>

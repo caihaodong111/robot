@@ -1,36 +1,50 @@
 <template>
   <el-container class="layout-container">
     <!-- 侧边栏 -->
-    <el-aside width="220px" class="app-aside">
-      <div class="logo">
-        <el-icon :size="30"><Cpu /></el-icon>
-        <span>机器人技术管理平台</span>
-      </div>
+    <el-aside :width="isCollapsed ? '60px' : '220px'" class="app-aside" :class="{ collapsed: isCollapsed }">
+      <el-tooltip content="机器人技术管理平台" placement="right" :show-after="500" :disabled="!isCollapsed">
+        <div class="logo">
+          <el-icon :size="isCollapsed ? 28 : 30"><Cpu /></el-icon>
+          <span v-show="!isCollapsed">机器人技术管理平台</span>
+        </div>
+      </el-tooltip>
       <el-menu
         class="app-menu"
         :default-active="activeMenu"
+        :collapse="isCollapsed"
+        :collapse-transition="false"
         router
       >
-        <el-menu-item index="/dashboard">
-          <el-icon><Odometer /></el-icon>
-          <span>平台概览</span>
-        </el-menu-item>
-        <el-menu-item index="/devices">
-          <el-icon><Cpu /></el-icon>
-          <span>机器人状态</span>
-        </el-menu-item>
-        <el-menu-item index="/monitoring">
-          <el-icon><TrendCharts /></el-icon>
-          <span>关键轨迹检查</span>
-        </el-menu-item>
-        <el-menu-item index="/alerts">
-          <el-icon><Bell /></el-icon>
-          <span>可视化BI</span>
-        </el-menu-item>
-        <el-menu-item index="/portal">
-          <el-icon><Grid /></el-icon>
-          <span>应用门户</span>
-        </el-menu-item>
+        <el-tooltip content="平台概览" placement="right" :show-after="500" :disabled="!isCollapsed">
+          <el-menu-item index="/dashboard">
+            <el-icon><Odometer /></el-icon>
+            <span>平台概览</span>
+          </el-menu-item>
+        </el-tooltip>
+        <el-tooltip content="机器人状态" placement="right" :show-after="500" :disabled="!isCollapsed">
+          <el-menu-item index="/devices">
+            <el-icon><Cpu /></el-icon>
+            <span>机器人状态</span>
+          </el-menu-item>
+        </el-tooltip>
+        <el-tooltip content="关键轨迹检查" placement="right" :show-after="500" :disabled="!isCollapsed">
+          <el-menu-item index="/monitoring">
+            <el-icon><TrendCharts /></el-icon>
+            <span>关键轨迹检查</span>
+          </el-menu-item>
+        </el-tooltip>
+        <el-tooltip content="可视化BI" placement="right" :show-after="500" :disabled="!isCollapsed">
+          <el-menu-item index="/alerts">
+            <el-icon><Bell /></el-icon>
+            <span>可视化BI</span>
+          </el-menu-item>
+        </el-tooltip>
+        <el-tooltip content="应用门户" placement="right" :show-after="500" :disabled="!isCollapsed">
+          <el-menu-item index="/portal">
+            <el-icon><Grid /></el-icon>
+            <span>应用门户</span>
+          </el-menu-item>
+        </el-tooltip>
       </el-menu>
     </el-aside>
 
@@ -39,7 +53,11 @@
       <!-- 顶部导航 -->
       <el-header>
         <div class="header-content">
-          <div class="breadcrumb">
+          <div class="header-left">
+            <el-icon class="collapse-btn" @click="toggleCollapse">
+              <Expand v-if="isCollapsed" />
+              <Fold v-else />
+            </el-icon>
             <el-breadcrumb separator="/">
               <el-breadcrumb-item :to="{ path: '/' }">首页</el-breadcrumb-item>
               <el-breadcrumb-item>{{ currentPageName }}</el-breadcrumb-item>
@@ -75,17 +93,23 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import {
-  Odometer, Cpu, TrendCharts, Bell, User, SwitchButton, Grid
+  Odometer, Cpu, TrendCharts, Bell, User, SwitchButton, Grid, Expand, Fold
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
+
+const isCollapsed = ref(false)
+
+const toggleCollapse = () => {
+  isCollapsed.value = !isCollapsed.value
+}
 
 const activeMenu = computed(() => route.path)
 
@@ -123,6 +147,10 @@ const handleLogout = async () => {
   background: var(--app-surface);
   border-right: 1px solid var(--app-border);
   color: var(--app-text);
+  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+  position: relative;
+  will-change: width;
 }
 
 .logo {
@@ -130,11 +158,17 @@ const handleLogout = async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: bold;
   color: var(--app-text);
-  gap: 10px;
+  gap: 8px;
   border-bottom: 1px solid var(--app-border);
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+.app-aside.collapsed .logo {
+  padding: 0;
 }
 
 .app-menu {
@@ -165,6 +199,23 @@ const handleLogout = async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.collapse-btn {
+  font-size: 18px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  color: var(--app-text);
+}
+
+.collapse-btn:hover {
+  color: var(--app-primary);
 }
 
 .user-name {

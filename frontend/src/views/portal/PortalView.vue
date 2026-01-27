@@ -1,71 +1,92 @@
 <template>
-  <div class="portal">
-    <el-card class="portal-hero">
-      <div class="hero-top">
-        <div class="hero-title">
-          <div class="hero-title-main">PDM 应用门户</div>
-          <div class="hero-title-sub">统一入口 · 快速检索 · 一键打开/复制</div>
-        </div>
-        <div class="hero-stats">
-          <div class="stat">
-            <div class="stat-value">{{ stats.total }}</div>
-            <div class="stat-label">应用总数</div>
-          </div>
-          <div class="stat">
-            <div class="stat-value">{{ stats.web }}</div>
-            <div class="stat-label">Web 入口</div>
-          </div>
-          <div class="stat">
-            <div class="stat-value">{{ stats.offline }}</div>
-            <div class="stat-label">非 Web</div>
-          </div>
-          <div class="stat">
-            <div class="stat-value">{{ stats.pending }}</div>
-            <div class="stat-label">待补充</div>
-          </div>
+  <div class="portal-viewport">
+    <header class="portal-header">
+      <div class="title-area">
+        <h1>应用门户 <small>Application Portal</small></h1>
+        <p class="subtitle">统一入口 · 快速检索 · 一键打开/复制</p>
+      </div>
+      <div class="header-actions">
+        <el-button :icon="Refresh" circle @click="resetFilters" class="refresh-btn"></el-button>
+      </div>
+    </header>
+
+    <!-- KPI Stats -->
+    <div class="kpi-grid">
+      <div class="kpi-card glass-card">
+        <div class="kpi-icon total"><el-icon><Grid /></el-icon></div>
+        <div class="kpi-info">
+          <label>应用总数</label>
+          <div class="value">{{ stats.total }}</div>
         </div>
       </div>
-
-      <div class="hero-filters">
-        <el-input
-          v-model="query"
-          placeholder="搜索：应用名称 / 反馈人 / 范围 / 入口"
-          clearable
-          class="filter-item filter-search"
-        >
-          <template #prefix>
-            <el-icon><Search /></el-icon>
-          </template>
-        </el-input>
-
-        <el-select
-          v-model="scopeFilter"
-          placeholder="范围"
-          clearable
-          filterable
-          class="filter-item"
-        >
-          <el-option v-for="s in scopes" :key="s" :label="s" :value="s" />
-        </el-select>
-
-        <el-select
-          v-model="reporterFilter"
-          placeholder="反馈人"
-          clearable
-          filterable
-          class="filter-item"
-        >
-          <el-option v-for="p in reporters" :key="p" :label="p" :value="p" />
-        </el-select>
-
-        <el-radio-group v-model="viewMode" class="filter-item">
-          <el-radio-button label="table">表格</el-radio-button>
-          <el-radio-button label="cards">卡片</el-radio-button>
-        </el-radio-group>
+      <div class="kpi-card glass-card primary">
+        <div class="kpi-icon web"><el-icon><Link /></el-icon></div>
+        <div class="kpi-info">
+          <label>Web 入口</label>
+          <div class="value">{{ stats.web }}</div>
+        </div>
       </div>
-    </el-card>
+      <div class="kpi-card glass-card warning">
+        <div class="kpi-icon offline"><el-icon><Monitor /></el-icon></div>
+        <div class="kpi-info">
+          <label>非 Web</label>
+          <div class="value">{{ stats.offline }}</div>
+        </div>
+      </div>
+      <div class="kpi-card glass-card muted">
+        <div class="kpi-icon pending"><el-icon><Warning /></el-icon></div>
+        <div class="kpi-info">
+          <label>待补充</label>
+          <div class="value">{{ stats.pending }}</div>
+        </div>
+      </div>
+    </div>
 
-    <el-card class="portal-body">
+    <!-- Filters Panel -->
+    <div class="filters-panel glass-card">
+      <el-input
+        v-model="query"
+        placeholder="搜索：应用名称 / 反馈人 / 范围 / 入口"
+        clearable
+        class="filter-search styled-input"
+      >
+        <template #prefix>
+          <el-icon><Search /></el-icon>
+        </template>
+      </el-input>
+
+      <el-select
+        v-model="scopeFilter"
+        placeholder="范围"
+        clearable
+        filterable
+        class="styled-select"
+      >
+        <el-option v-for="s in scopes" :key="s" :label="s" :value="s" />
+      </el-select>
+
+      <el-select
+        v-model="reporterFilter"
+        placeholder="反馈人"
+        clearable
+        filterable
+        class="styled-select"
+      >
+        <el-option v-for="p in reporters" :key="p" :label="p" :value="p" />
+      </el-select>
+
+      <el-radio-group v-model="viewMode" class="view-toggle">
+        <el-radio-button label="table">
+          <el-icon><List /></el-icon>
+        </el-radio-button>
+        <el-radio-button label="cards">
+          <el-icon><Grid /></el-icon>
+        </el-radio-button>
+      </el-radio-group>
+    </div>
+
+    <!-- Apps List Card -->
+    <el-card class="apps-list-card styled-card">
       <template #header>
         <div class="body-header">
           <div class="body-title">
@@ -180,7 +201,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { CopyDocument, Link, Search } from '@element-plus/icons-vue'
+import { CopyDocument, Link, Search, Refresh, Grid, Monitor, Warning, List } from '@element-plus/icons-vue'
 import { PDM_APPS } from '@/views/portal/pdmApps'
 
 const apps = ref(PDM_APPS)
@@ -287,73 +308,118 @@ const resetFilters = () => {
 </script>
 
 <style scoped>
-.portal {
+/* Viewport */
+.portal-viewport {
+  padding: 24px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 24px;
+  background-color: #f8fafc;
+  min-height: calc(100vh - 100px);
+  color: #1e293b;
 }
 
-.portal-hero {
-  background: linear-gradient(135deg, rgba(37, 99, 235, 0.10), rgba(99, 102, 241, 0.08));
-  border: 1px solid rgba(37, 99, 235, 0.12);
-}
-
-.hero-top {
+/* Header - 参考Dashboard样式 */
+.portal-header {
   display: flex;
   justify-content: space-between;
-  gap: 20px;
-  align-items: flex-start;
-}
-
-.hero-title-main {
-  font-size: 18px;
-  font-weight: 700;
-  color: rgba(15, 23, 42, 0.92);
-}
-
-.hero-title-sub {
-  margin-top: 6px;
-  font-size: 13px;
-  color: rgba(15, 23, 42, 0.60);
-}
-
-.hero-stats {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(90px, 1fr));
-  gap: 10px;
-}
-
-.stat {
-  background: rgba(255, 255, 255, 0.75);
-  border: 1px solid rgba(148, 163, 184, 0.25);
-  border-radius: 10px;
-  padding: 10px 12px;
-  min-width: 90px;
-}
-
-.stat-value {
-  font-size: 18px;
-  font-weight: 700;
-  color: rgba(15, 23, 42, 0.92);
-  line-height: 1.2;
-}
-
-.stat-label {
-  margin-top: 2px;
-  font-size: 12px;
-  color: rgba(15, 23, 42, 0.60);
-}
-
-.hero-filters {
-  margin-top: 16px;
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
   align-items: center;
 }
 
-.filter-item {
-  width: 180px;
+.portal-header h1 {
+  font-size: 28px;
+  font-weight: 800;
+  margin: 0;
+  background: linear-gradient(135deg, #1e293b 0%, #3b82f6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.portal-header h1 small {
+  font-size: 14px;
+  color: #64748b;
+  font-weight: 400;
+  margin-left: 8px;
+  -webkit-text-fill-color: #64748b;
+}
+
+.subtitle {
+  margin: 4px 0 0;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+/* KPI Cards - 参考Dashboard玻璃态样式 */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 20px;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.glass-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 30px -10px rgba(0, 0, 0, 0.1);
+}
+
+.kpi-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+}
+
+.kpi-icon.total { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
+.kpi-icon.web { background: rgba(16, 185, 129, 0.1); color: #10b981; }
+.kpi-icon.offline { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+.kpi-icon.pending { background: rgba(148, 163, 184, 0.1); color: #64748b; }
+
+.kpi-info label {
+  display: block;
+  font-size: 13px;
+  color: #64748b;
+  margin-bottom: 4px;
+}
+
+.kpi-info .value {
+  font-size: 24px;
+  font-weight: 800;
+  color: #1e293b;
+}
+
+/* Filters Panel */
+.filters-panel {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 20px;
+  padding: 20px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
 .filter-search {
@@ -361,8 +427,61 @@ const resetFilters = () => {
   min-width: 280px;
 }
 
-.portal-body :deep(.el-card__header) {
-  padding: 12px 16px;
+.styled-input :deep(.el-input__wrapper) {
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  border: 1px solid #e2e8f0;
+  transition: all 0.3s ease;
+  background: #fff;
+}
+
+.styled-input :deep(.el-input__wrapper:hover) {
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.styled-input :deep(.el-input__wrapper.is-focus) {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.styled-select {
+  width: 160px;
+}
+
+.styled-select :deep(.el-input__wrapper) {
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  border: 1px solid #e2e8f0;
+  transition: all 0.3s ease;
+  background: #fff;
+}
+
+.styled-select :deep(.el-input__wrapper:hover) {
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.styled-select :deep(.el-input__wrapper.is-focus) {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.view-toggle :deep(.el-radio-button__inner) {
+  border-radius: 12px;
+  padding: 8px 16px;
+}
+
+/* Apps List Card */
+.styled-card {
+  border-radius: 20px;
+  border: none;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
+}
+
+.apps-list-card :deep(.el-card__header) {
+  padding: 16px 20px;
+  border-bottom: 1px solid #f1f5f9;
 }
 
 .body-header {
@@ -376,20 +495,41 @@ const resetFilters = () => {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-weight: 600;
+  font-size: 16px;
+  font-weight: 700;
+  color: #334155;
 }
 
 .body-count {
   font-weight: 500;
 }
 
+/* Cards View */
 .cards {
   padding-top: 4px;
 }
 
 .app-card {
+  height: 240px;
   margin-bottom: 16px;
-  border-radius: 12px;
+  border-radius: 16px;
+  border: 1px solid #f1f5f9;
+  transition: all 0.3s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+}
+
+.app-card :deep(.el-card__body) {
+  padding: 16px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .app-card-top {
@@ -397,6 +537,7 @@ const resetFilters = () => {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+  flex-shrink: 0;
 }
 
 .app-name {
@@ -404,18 +545,20 @@ const resetFilters = () => {
   align-items: baseline;
   gap: 8px;
   min-width: 0;
+  flex: 1;
 }
 
 .app-id {
-  color: rgba(15, 23, 42, 0.45);
+  color: #94a3b8;
   font-size: 12px;
   font-weight: 600;
+  flex-shrink: 0;
 }
 
 .app-name-text {
   font-size: 15px;
   font-weight: 700;
-  color: rgba(15, 23, 42, 0.90);
+  color: #1e293b;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -425,6 +568,8 @@ const resetFilters = () => {
   margin-top: 12px;
   display: grid;
   gap: 8px;
+  flex: 1;
+  overflow: hidden;
 }
 
 .meta-row {
@@ -436,23 +581,48 @@ const resetFilters = () => {
 
 .meta-k {
   font-size: 12px;
-  color: rgba(15, 23, 42, 0.55);
+  color: #64748b;
+  font-weight: 500;
+  flex-shrink: 0;
 }
 
 .meta-v {
   font-size: 13px;
-  color: rgba(15, 23, 42, 0.86);
-  word-break: break-word;
+  color: #475569;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .meta-entry {
-  color: rgba(15, 23, 42, 0.72);
+  color: #94a3b8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
 }
 
 .app-actions {
-  margin-top: 14px;
+  margin-top: auto;
+  padding-top: 12px;
   display: flex;
   gap: 10px;
+  flex-shrink: 0;
+}
+
+.app-actions .el-button {
+  border-radius: 10px;
+  font-weight: 500;
+  flex: 1;
+}
+
+/* Table View */
+.apps-table :deep(.el-table__header-wrapper) {
+  border-radius: 12px 12px 0 0;
+}
+
+.apps-table :deep(.el-table th) {
+  background: #f8fafc;
+  color: #475569;
+  font-weight: 600;
 }
 
 .apps-table .entry-cell {
@@ -470,17 +640,19 @@ const resetFilters = () => {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  color: rgba(15, 23, 42, 0.75);
+  color: #64748b;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
 }
 
-@media (max-width: 960px) {
-  .hero-top {
-    flex-direction: column;
-    align-items: stretch;
-  }
+/* Responsive */
+@media (max-width: 1200px) {
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+}
 
-  .hero-stats {
-    grid-template-columns: repeat(2, minmax(90px, 1fr));
-  }
+@media (max-width: 768px) {
+  .kpi-grid { grid-template-columns: 1fr; }
+  .filters-panel { flex-direction: column; align-items: stretch; }
+  .filter-search, .styled-select { width: 100%; }
 }
 </style>
