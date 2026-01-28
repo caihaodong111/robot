@@ -5,7 +5,7 @@ Bokeh图表生成模块 - 静态嵌入Django使用
 from bokeh.plotting import figure
 from bokeh.models import (
     ColumnDataSource, HoverTool, Select,
-    CustomJS, LabelSet, BoxAnnotation, Band, DateRangeSlider
+    CustomJS, LabelSet, BoxAnnotation, Band, DatePicker
 )
 from bokeh.embed import components
 import pandas as pd
@@ -240,16 +240,6 @@ def create_bi_charts(
         sizing_mode="stretch_width"
     )
 
-    date_range_slider = DateRangeSlider(
-        title="Data Range:",
-        start=db_start_time,
-        end=db_end_time,
-        value=(start_time, end_time),
-        width=400,
-        sizing_mode="stretch_width",
-        format="%Y-%m-%d"
-    )
-
     axis_select = Select(
         title="Axis:",
         value=default_axis,
@@ -257,6 +247,89 @@ def create_bi_charts(
         sizing_mode="stretch_width"
     )
 
+    # 日期范围选择器 - 合成一个框显示
+    import uuid
+    unique_id = uuid.uuid4().hex[:8]
+    start_date_val = start_time.strftime('%Y-%m-%d') if start_time else ''
+    end_date_val = end_time.strftime('%Y-%m-%d') if end_time else ''
+
+    date_range_html = f'''
+    <div style="position: relative; display: inline-block; width: 100%;">
+        <div id="dateDisplay_{unique_id}"
+            onclick="toggleDatePopup_{unique_id}()"
+            style="padding: 6px 12px; border: 1px solid #e2e8f0; border-radius: 4px;
+                   background: white; cursor: pointer; font-size: 12px; min-height: 32px;
+                   display: flex; align-items: center;">
+            📅 {start_date_val} ~ {end_date_val}
+        </div>
+        <div id="datePopup_{unique_id}" style="display: none; position: absolute; top: 100%; left: 0;
+            margin-top: 4px; padding: 12px; background: white; border: 1px solid #e2e8f0;
+            border-radius: 6px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); z-index: 100;
+            min-width: 280px;">
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <label style="font-size: 12px; color: #64748b; min-width: 40px;">开始</label>
+                    <input type="date" id="start_{unique_id}" value="{start_date_val}"
+                        style="flex: 1; padding: 4px 8px; border: 1px solid #e2e8f0; border-radius: 4px;
+                               font-size: 12px; font-family: inherit; cursor: pointer;">
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <label style="font-size: 12px; color: #64748b; min-width: 40px;">结束</label>
+                    <input type="date" id="end_{unique_id}" value="{end_date_val}"
+                        style="flex: 1; padding: 4px 8px; border: 1px solid #e2e8f0; border-radius: 4px;
+                               font-size: 12px; font-family: inherit; cursor: pointer;">
+                </div>
+                <div style="display: flex; gap: 8px; margin-top: 4px;">
+                    <button onclick="applyDateRange_{unique_id}()"
+                        style="flex: 1; padding: 6px 12px; background: linear-gradient(135deg, #3b82f6, #2563eb);
+                               color: white; border: none; border-radius: 4px; font-size: 12px;
+                               font-weight: 600; cursor: pointer;">
+                        应用
+                    </button>
+                    <button onclick="toggleDatePopup_{unique_id}()"
+                        style="flex: 1; padding: 6px 12px; background: #f1f5f9; color: #64748b;
+                               border: 1px solid #e2e8f0; border-radius: 4px; font-size: 12px;
+                               font-weight: 600; cursor: pointer;">
+                        取消
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+    function toggleDatePopup_{unique_id}() {{
+        const popup = document.getElementById('datePopup_{unique_id}');
+        const display = document.getElementById('dateDisplay_{unique_id}');
+        popup.style.display = popup.style.display === 'none' ? 'block' : 'none';
+    }}
+    // 点击外部关闭弹窗
+    document.addEventListener('click', function(e) {{
+        const container = document.getElementById('datePopup_{unique_id}').parentElement;
+        if (!container.contains(e.target)) {{
+            document.getElementById('datePopup_{unique_id}').style.display = 'none';
+        }}
+    }});
+    window.applyDateRange_{unique_id} = function() {{
+        const startDate = document.getElementById('start_{unique_id}').value;
+        const endDate = document.getElementById('end_{unique_id}').value;
+        if (startDate && endDate) {{
+            const url = new URL(window.location.href);
+            url.searchParams.set('start_date', startDate);
+            url.searchParams.set('end_date', endDate);
+            // 更新显示
+            document.getElementById('dateDisplay_{unique_id}').innerHTML = '📅 ' + startDate + ' ~ ' + endDate;
+            document.getElementById('datePopup_{unique_id}').style.display = 'none';
+            if (window.parent !== window) {{
+                window.parent.postMessage({{type: 'updateBIUrl', url: url.toString()}}, '*');
+            }} else {{
+                window.location.href = url.toString();
+            }}
+        }}
+    }};
+    </script>
+    '''
+
+    date_picker_div = Div(text=date_range_html, sizing_mode="stretch_width", width=200)
 
     # ============ 创建图表 ============
     # 创建代理数据源，使用固定的列名，这样渲染器不需要修改列引用
@@ -355,92 +428,133 @@ def create_bi_charts(
     p_curr = figure(
         title=f'{default_axis} - 电流分析',
         sizing_mode="stretch_width",
-        width=1400,
-        height=200,
+        width=2100,
+        height=220,
         x_axis_label='运动时间',
         y_axis_label='电流百分比 %',
-        tools=[hover, 'pan', 'wheel_zoom', 'box_zoom', 'reset', 'save']
+        tools=[hover, 'pan', 'wheel_zoom', 'box_zoom', 'reset', 'save'],
+        min_border_left=40,
+        min_border_right=10,
+        min_border_top=20,
+        min_border_bottom=10,
+        margin=(5, 10, 5, 10)
     )
     p_curr.step(x='sort', y='min_curr_value', source=proxy_source, line_width=2, mode="center", color='red', legend_label='最小电流')
     p_curr.step(x='sort', y='max_curr_value', source=proxy_source, line_width=2, mode="center", color='red', legend_label='最大电流')
-    p_curr.scatter(x='sort', y='curr_value', source=proxy_source, size=4, alpha=0.6, color='navy', legend_label='实时电流')
+    p_curr.scatter(x='sort', y='curr_value', source=proxy_source, size=2, alpha=0.6, color='navy', legend_label='实时电流')
     p_curr.legend.location = 'top_right'
     p_curr.legend.click_policy = "hide"
+    p_curr.xaxis.visible = False
 
     p_temp = figure(
         x_range=p_curr.x_range,
         y_range=(15, 100),
         sizing_mode="stretch_width",
-        width=1400,
-        height=150,
+        width=2100,
+        height=180,
         x_axis_label='运动时间',
         y_axis_label='温度 (°C)',
-        tools=[hover_temp, 'pan', 'wheel_zoom', 'box_zoom', 'reset', 'save']
+        tools=[hover_temp, 'pan', 'wheel_zoom', 'box_zoom', 'reset', 'save'],
+        min_border_left=40,
+        min_border_right=10,
+        min_border_top=20,
+        min_border_bottom=10,
+        margin=(5, 10, 5, 10)
     )
-    p_temp.scatter(x='sort', y='Tem_1', source=proxy_source, size=4, color='orange', legend_label='温度')
+    p_temp.scatter(x='sort', y='Tem_1', source=proxy_source, size=2, color='orange', legend_label='温度')
     p_temp.legend.location = 'top_right'
     p_temp.legend.click_policy = "hide"
+    p_temp.xaxis.visible = False
 
     p_pos = figure(
         x_range=p_curr.x_range,
         sizing_mode="stretch_width",
-        width=1400,
-        height=150,
+        width=2100,
+        height=180,
         x_axis_label='运动时间',
         y_axis_label='轴位置',
-        tools=[hover_axisp, 'pan', 'wheel_zoom', 'box_zoom', 'reset', 'save']
+        tools=[hover_axisp, 'pan', 'wheel_zoom', 'box_zoom', 'reset', 'save'],
+        min_border_left=40,
+        min_border_right=10,
+        min_border_top=20,
+        min_border_bottom=10,
+        margin=(5, 10, 5, 10)
     )
-    p_pos.scatter(x='sort', y='axisp_value', source=proxy_source, size=4, color='green', legend_label='位置')
+    p_pos.scatter(x='sort', y='axisp_value', source=proxy_source, size=2, color='green', legend_label='位置')
     p_pos.legend.location = 'top_right'
     p_pos.legend.click_policy = "hide"
+    p_pos.xaxis.visible = False
 
     p_speed = figure(
         x_range=p_curr.x_range,
         sizing_mode="stretch_width",
-        width=1400,
-        height=150,
+        width=2100,
+        height=180,
         x_axis_label='运动时间',
         y_axis_label='电机速度',
-        tools=[hover_speed, 'pan', 'wheel_zoom', 'box_zoom', 'reset', 'save']
+        tools=[hover_speed, 'pan', 'wheel_zoom', 'box_zoom', 'reset', 'save'],
+        min_border_left=40,
+        min_border_right=10,
+        min_border_top=20,
+        min_border_bottom=10,
+        margin=(5, 10, 5, 10)
     )
-    p_speed.scatter(x='sort', y='speed_value', source=proxy_source, size=4, color='blue', legend_label='速度')
+    p_speed.scatter(x='sort', y='speed_value', source=proxy_source, size=2, color='blue', legend_label='速度')
     p_speed.legend.location = 'top_right'
     p_speed.legend.click_policy = "hide"
+    p_speed.xaxis.visible = False
 
     p_fol = figure(
         x_range=p_curr.x_range,
         sizing_mode="stretch_width",
-        width=1400,
-        height=150,
+        width=2100,
+        height=180,
         x_axis_label='运动时间',
         y_axis_label='跟随误差',
-        tools=[hover_fol, 'pan', 'wheel_zoom', 'box_zoom', 'reset', 'save']
+        tools=[hover_fol, 'pan', 'wheel_zoom', 'box_zoom', 'reset', 'save'],
+        min_border_left=40,
+        min_border_right=10,
+        min_border_top=20,
+        min_border_bottom=10,
+        margin=(5, 10, 5, 10)
     )
-    p_fol.scatter(x='sort', y='fol_value', source=proxy_source, size=4, color='lime', legend_label='跟随误差')
+    p_fol.scatter(x='sort', y='fol_value', source=proxy_source, size=2, color='lime', legend_label='跟随误差')
     p_fol.legend.location = 'top_right'
     p_fol.legend.click_policy = "hide"
+    p_fol.xaxis.visible = False
 
     p_torque = figure(
         x_range=p_curr.x_range,
         sizing_mode="stretch_width",
-        width=1400,
-        height=150,
+        width=2100,
+        height=180,
         x_axis_label='运动时间',
         y_axis_label='扭矩',
-        tools=[hover_torque, 'pan', 'wheel_zoom', 'box_zoom', 'reset', 'save']
+        tools=[hover_torque, 'pan', 'wheel_zoom', 'box_zoom', 'reset', 'save'],
+        min_border_left=40,
+        min_border_right=10,
+        min_border_top=20,
+        min_border_bottom=10,
+        margin=(5, 10, 5, 10)
     )
-    p_torque.scatter(x='sort', y='torque_value', source=proxy_source, size=4, color='sienna', legend_label='扭矩')
+    p_torque.scatter(x='sort', y='torque_value', source=proxy_source, size=2, color='sienna', legend_label='扭矩')
     p_torque.legend.location = 'top_right'
     p_torque.legend.click_policy = "hide"
+    p_torque.xaxis.visible = False
 
     # 聚合分析图 - 使用代理数据源和固定列名
     line_plot = figure(
         title=f"聚合分析 - {default_program}",
         sizing_mode="stretch_width",
-        width=1400,
-        height=250,
+        width=2100,
+        height=280,
         x_range=x_tex,
-        tools=['pan', 'wheel_zoom', 'box_zoom', 'reset', 'save']
+        tools=['pan', 'wheel_zoom', 'box_zoom', 'reset', 'save'],
+        min_border_left=40,
+        min_border_right=10,
+        min_border_top=20,
+        min_border_bottom=40,
+        margin=(5, 10, 5, 10)
     )
 
     hover_line = HoverTool(
@@ -484,11 +598,15 @@ def create_bi_charts(
             x_axis_type="datetime",
             title='能耗分析',
             sizing_mode="stretch_width",
-            width=400,
+            width=280,
             height=300,
             x_axis_label='时间',
             y_axis_label='能量',
-            tools=['pan', 'wheel_zoom', 'box_zoom', 'reset', 'save']
+            tools=['pan', 'wheel_zoom', 'box_zoom', 'reset', 'save'],
+            min_border_left=40,
+            min_border_right=10,
+            min_border_top=20,
+            min_border_bottom=40
         )
         EnergyP.line(x="TimeStamp2", y="ENERGY", source=energy_source,
                      line_color="orange", line_width=2, legend_label="能耗", alpha=1)
@@ -584,31 +702,103 @@ def create_bi_charts(
     # ============ 创建布局 ============
     from bokeh.layouts import row, column
 
-    # 左侧 - 能量图 + 控件
-    if EnergyP:
-        widgets1 = column(
-            EnergyP,
-            program_select,
-            date_range_slider,
-            axis_select,
-            sizing_mode="stretch_height",
-            height=1000,
-            width=400
-        )
-    else:
-        placeholder = Div(text='<div style="padding:20px;text-align:center;color:#999;">暂无能耗数据</div>')
-        widgets1 = column(
-            placeholder,
-            program_select,
-            date_range_slider,
-            axis_select,
-            sizing_mode="stretch_height",
-            height=1000,
-            width=400
-        )
+    # 能量分析图脚本和div（用于模态框）
+    energy_script_content = ''
+    energy_div_content = ''
+    energy_modal_id = f"energy_modal_{uuid.uuid4().hex[:8]}"
 
-    # 右侧图表区域
-    widgets2 = column(
+    if EnergyP:
+        energy_script_content, energy_div_content = components(EnergyP)
+
+    # 能耗模态框HTML（包含样式、模态框、脚本）
+    energy_modal_html = f'''
+    <style>
+    .energy-modal-bg-{energy_modal_id} {{
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.5);
+        z-index: 9999;
+    }}
+    .energy-modal-bg-{energy_modal_id}.show {{
+        display: block;
+    }}
+    .energy-modal-content-{energy_modal_id} {{
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: white;
+        border-radius: 12px;
+        padding: 20px;
+        max-width: 90%;
+        max-height: 90%;
+        overflow: auto;
+        box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);
+        z-index: 10000;
+    }}
+    </style>
+    <div id="{energy_modal_id}" class="energy-modal-bg-{energy_modal_id}"></div>
+    <div id="{energy_modal_id}_content" class="energy-modal-content-{energy_modal_id}" style="display: none;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h2 style="margin: 0; font-size: 18px; font-weight: 600;">能耗分析</h2>
+            <button onclick="closeEnergyModal_{energy_modal_id}()"
+                style="padding: 6px 12px; background: #ef4444; color: white; border: none;
+                       border-radius: 6px; cursor: pointer; font-size: 14px;">关闭</button>
+        </div>
+        <div id="{energy_modal_id}_chart">{energy_div_content}</div>
+    </div>
+    <script>
+    function showEnergyModal_{energy_modal_id}() {{
+        document.getElementById('{energy_modal_id}').classList.add('show');
+        document.getElementById('{energy_modal_id}_content').style.display = 'block';
+    }}
+    function closeEnergyModal_{energy_modal_id}() {{
+        document.getElementById('{energy_modal_id}').classList.remove('show');
+        document.getElementById('{energy_modal_id}_content').style.display = 'none';
+    }}
+    // 点击背景关闭
+    document.getElementById('{energy_modal_id}').addEventListener('click', function(e) {{
+        if (e.target === this) {{
+            closeEnergyModal_{energy_modal_id}();
+        }}
+    }});
+    </script>
+    {energy_script_content}
+    '''
+
+    # 能耗按钮
+    energy_button_div = None
+    if EnergyP:
+        button_html = f'''
+        <div style="padding: 4px 8px;">
+            <button onclick="showEnergyModal_{energy_modal_id}()"
+                style="padding: 6px 16px; background: linear-gradient(135deg, #f59e0b, #d97706);
+                       color: white; border: none; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer;">
+                能耗分析
+            </button>
+        </div>
+        '''
+        energy_button_div = Div(text=button_html, width=100, sizing_mode="fixed")
+
+    # 顶部控件栏 - 水平排列
+    top_controls = row(
+        program_select,
+        axis_select,
+        date_picker_div,
+        energy_button_div if energy_button_div else Div(text='', width=10),
+        sizing_mode="stretch_width",
+        width=2100
+    )
+
+    # 能耗模态框（放在顶部，使用绝对定位，高度为0不影响布局）
+    energy_modal_div = Div(text=energy_modal_html, sizing_mode="fixed", width=2100, height=0)
+
+    # 图表区域 - 只拉伸宽度，保持各自高度
+    charts_column = column(
         line_plot,   # 聚合分析图
         p_curr,      # 电流图
         p_temp,      # 温度图
@@ -616,13 +806,12 @@ def create_bi_charts(
         p_speed,     # 速度图
         p_fol,       # 跟随误差图
         p_torque,    # 扭矩图
-        sizing_mode="stretch_both",
-        height=1000,
-        width=1400
+        sizing_mode="stretch_width",
+        width=2100
     )
 
-    # 主布局
-    main_layout = row(widgets2, widgets1, sizing_mode="stretch_both", width=1800)
+    # 主布局 - 垂直排列：模态框 + 顶部控件 + 图表区域
+    main_layout = column(energy_modal_div, top_controls, charts_column, sizing_mode="stretch_width", width=2100)
 
     # 使用components生成图表脚本和div
     script, div = components(main_layout)

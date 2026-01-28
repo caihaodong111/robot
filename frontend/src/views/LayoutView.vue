@@ -93,22 +93,24 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import {
   Odometer, Cpu, TrendCharts, Bell, User, SwitchButton, Grid, Expand, Fold
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
+import { useLayoutStore } from '@/stores/layout'
 
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
+const layoutStore = useLayoutStore()
 
-const isCollapsed = ref(false)
+const isCollapsed = computed(() => layoutStore.isCollapsed)
 
 const toggleCollapse = () => {
-  isCollapsed.value = !isCollapsed.value
+  layoutStore.toggleCollapse()
 }
 
 const activeMenu = computed(() => route.path)
@@ -232,7 +234,7 @@ const handleLogout = async () => {
 }
 
 .page-shell {
-  max-width: 1200px;
   margin: 0 auto;
+  transition: max-width 0.25s ease;
 }
 </style>

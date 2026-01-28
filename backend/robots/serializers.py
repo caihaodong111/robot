@@ -117,6 +117,21 @@ class GripperCheckSerializer(serializers.Serializer):
         help_text="关键路径关键字列表，如 ['R1/CO', 'R1/DO']"
     )
 
+    def validate(self, attrs):
+        """验证时间范围"""
+        start_time = attrs.get('start_time')
+        end_time = attrs.get('end_time')
+
+        if start_time and end_time:
+            time_span = end_time - start_time
+
+            if time_span.total_seconds() <= 0:
+                raise serializers.ValidationError(
+                    "结束时间必须大于开始时间"
+                )
+
+        return attrs
+
 
 class GripperCheckResultSerializer(serializers.Serializer):
     """关键轨迹检查结果序列化器"""

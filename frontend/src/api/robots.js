@@ -90,11 +90,13 @@ export function getGripperRobotTables(params) {
 }
 
 // 执行关键轨迹检查
+// 注意：此接口需要较长的超时时间，因为可能需要处理大量数据
 export function executeGripperCheck(data) {
   return request({
     url: '/robots/gripper-check/execute/',
     method: 'post',
-    data
+    data,
+    timeout: 60000  // 设置60秒超时，避免处理大量数据时超时
   })
 }
 

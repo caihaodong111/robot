@@ -133,8 +133,8 @@ class RobotComponentViewSet(
                 | Q(part_no__icontains=keyword)
             )
 
-        # 按robot_id去重并排序
-        robots = qs.values("robot_id", "part_no", "name").distinct().order_by("robot_id")
+        # 按robot_id去重并排序，同时包含group_key
+        robots = qs.values("robot_id", "part_no", "name", "group__key").distinct().order_by("robot_id")
 
         # 手动构建返回数据
         results = []
@@ -144,6 +144,7 @@ class RobotComponentViewSet(
                 "label": f"{r['robot_id']} ({r['part_no']})",
                 "robot_id": r["robot_id"],
                 "name": r.get("name", ""),
+                "group_key": r.get("group__key", ""),
             })
 
         return Response({"results": results})
@@ -217,7 +218,8 @@ def bi_view(request):
     logger = logging.getLogger(__name__)
 
     # 从查询参数获取参数
-    table_name = request.GET.get('table', 'as33_020rb_400')
+    # 优先使用robot参数（来自MonitoringView的跳转），其次使用table参数
+    table_name = request.GET.get('robot', request.GET.get('table', 'as33_020rb_400'))
     # 检测是否为嵌入模式
     embed_mode = request.GET.get('embed', '0') == '1'
     # 注意：create_bi_charts 现在会自动获取数据库实际时间范围
@@ -319,27 +321,37 @@ class GripperCheckViewSet(viewsets.GenericViewSet):
     def robot_tables(self, request):
         """
         获取可用的机器人表名列表（从RobotComponent获取part_no）
-        支持按车间(group_key)筛选
+        支持按车间(group_key)筛选和关键词(keyword)搜索
 
         参数:
             group: 车间key（可选）
+            keyword: 搜索关键词（可选，支持part_no、robot_id、name模糊搜索）
 
         返回:
         {
             "results": [
-                {"value": "as33_020rb_400", "label": "as33_020rb_400"},
+                {"value": "as33_020rb_400", "label": "as33_020rb_400", "robot_id": "RB001", "group_key": "plant_a"},
                 ...
             ]
         }
         """
         # 获取车间筛选参数
         group_key = request.query_params.get('group')
+        keyword = request.query_params.get('keyword', '').strip()
 
         # 构建查询
-        qs = RobotComponent.objects.values('part_no').distinct()
+        qs = RobotComponent.objects.values('part_no', 'robot_id', 'group__key', 'name').distinct()
 
         if group_key:
             qs = qs.filter(group__key=group_key)
+
+        # 支持关键词搜索
+        if keyword:
+            qs = qs.filter(
+                Q(part_no__icontains=keyword)
+                | Q(robot_id__icontains=keyword)
+                | Q(name__icontains=keyword)
+            )
 
         tables = qs.order_by('part_no')
 
@@ -347,7 +359,9 @@ class GripperCheckViewSet(viewsets.GenericViewSet):
         for t in tables:
             results.append({
                 'value': t['part_no'],
-                'label': t['part_no']
+                'label': t['part_no'],
+                'robot_id': t.get('robot_id', ''),
+                'group_key': t.get('group__key', ''),
             })
 
         return Response({'results': results})

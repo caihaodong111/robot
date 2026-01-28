@@ -55,12 +55,16 @@
           </label>
           <el-select
             v-model="selectedRobots"
-            placeholder="请选择或全选"
+            placeholder="请输入机器人名称搜索或全选"
             multiple
             collapse-tags
             collapse-tags-tooltip
             filterable
-            :disabled="!selectedPlant"
+            remote
+            reserve-keyword
+            :remote-method="searchRobots"
+            :loading="robotsLoading"
+            @change="handleRobotsChange"
           >
             <template #header>
               <div class="select-header">
@@ -106,6 +110,7 @@
             start-placeholder="开始"
             end-placeholder="结束"
             :shortcuts="shortcuts"
+            :disabled-date="disabledDate"
             unlink-panels
           />
         </div>
@@ -179,14 +184,14 @@
             @sort-change="handleSortChange"
             class="custom-table"
             :default-sort="{ prop: 'robot', order: 'ascending' }"
-            height="500"
+            :height="tableHeight"
           >
             <!-- 固定列：基本信息 -->
             <el-table-column prop="robot" label="机器人" min-width="140" sortable fixed="left" class-name="fixed-left-col">
               <template #default="{ row }">
-                <div class="robot-info">
+                <div class="robot-info" @click="goToRobotBI(row.robot)">
                   <el-icon><Monitor /></el-icon>
-                  <span>{{ row.robot }}</span>
+                  <span class="robot-link">{{ row.robot }}</span>
                 </div>
               </template>
             </el-table-column>
@@ -387,15 +392,32 @@ import {
   Download, Search, Refresh, Location, Cpu, Calendar,
   Operation, Monitor, Warning
 } from '@element-plus/icons-vue'
-import { DEMO_MODE } from '@/config/appConfig'
+import { DEMO_MODE, API_BASE_URL } from '@/config/appConfig'
 import { getRobotGroups, getGripperRobotTables, executeGripperCheck } from '@/api/robots'
+import { useLayoutStore } from '@/stores/layout'
+
+const layoutStore = useLayoutStore()
+
+// 默认时间跨度
+const DEFAULT_TIME_SPAN_DAYS = 7
+
+// 表格高度随侧边栏状态动态变化
+const tableHeight = computed(() => layoutStore.isCollapsed ? 600 : 500)
 
 // Shortcuts for Date Picker
 const shortcuts = [
   { text: '最近 24 小时', value: () => [new Date(Date.now() - 24 * 3600 * 1000), new Date()] },
   { text: '最近 3 天', value: () => [new Date(Date.now() - 3 * 24 * 3600 * 1000), new Date()] },
   { text: '最近 7 天', value: () => [new Date(Date.now() - 7 * 24 * 3600 * 1000), new Date()] },
+  { text: '最近 10 天', value: () => [new Date(Date.now() - 10 * 24 * 3600 * 1000), new Date()] },
 ]
+
+// 禁用未来日期
+const disabledDate = (time) => {
+  // 只禁用未来日期
+  if (time.getTime() > Date.now()) return true
+  return false
+}
 
 // State
 const availablePlants = ref([])
@@ -406,7 +428,7 @@ const availableRobots = ref([])
 const selectedRobots = ref([])
 const robotsLoading = ref(false)
 
-const timeRange = ref([new Date(Date.now() - 7 * 24 * 3600_000), new Date()])
+const timeRange = ref([new Date(Date.now() - DEFAULT_TIME_SPAN_DAYS * 24 * 3600_000), new Date()])
 
 // Key Paths (Improved Dynamic tags)
 const activePaths = ref(['XLHP', 'PWLD'])
@@ -480,27 +502,59 @@ const loadPlantGroups = async () => {
 }
 
 const handlePlantChange = async () => {
-  selectedRobots.value = []
-  availableRobots.value = []
-  if (!selectedPlant.value) return
+  // 车间变化时重新搜索机器人
+  await searchRobots('')
+}
 
+// 远程搜索机器人
+const searchRobots = async (query) => {
   robotsLoading.value = true
   try {
+    const params = {}
+    if (query) {
+      params.keyword = query
+    }
+    if (selectedPlant.value) {
+      params.group = selectedPlant.value
+    }
+
     if (DEMO_MODE) {
-      const mock = { 
-        plant_a: ['RB101', 'RB102', 'RB103', 'RB104'], 
-        plant_b: ['RB201', 'RB202'], 
-        plant_c: ['RB301'] 
+      // 模拟数据
+      const allRobots = [
+        { value: 'as33_020rb_400', label: 'as33_020rb_400', group_key: 'plant_a' },
+        { value: 'as33_020rb_401', label: 'as33_020rb_401', group_key: 'plant_a' },
+        { value: 'as33_020rb_402', label: 'as33_020rb_402', group_key: 'plant_a' },
+        { value: 'as34_020rb_400', label: 'as34_020rb_400', group_key: 'plant_b' },
+        { value: 'as34_020rb_401', label: 'as34_020rb_401', group_key: 'plant_b' },
+        { value: 'as35_020rb_400', label: 'as35_020rb_400', group_key: 'plant_c' },
+      ]
+      let filtered = allRobots
+      if (query) {
+        filtered = allRobots.filter(r => r.value.toLowerCase().includes(query.toLowerCase()))
       }
-      availableRobots.value = (mock[selectedPlant.value] || []).map(r => ({ value: r, label: r }))
+      if (selectedPlant.value) {
+        filtered = filtered.filter(r => r.group_key === selectedPlant.value)
+      }
+      availableRobots.value = filtered
     } else {
-      const resp = await getGripperRobotTables({ group: selectedPlant.value })
-      availableRobots.value = (resp.results || []).map(r => ({ value: r.value, label: r.label }))
+      const resp = await getGripperRobotTables(params)
+      availableRobots.value = resp.results || []
     }
   } catch (e) {
-    ElMessage.error('获取机器人失败')
+    ElMessage.error('搜索机器人失败')
   } finally {
     robotsLoading.value = false
+  }
+}
+
+// 机器人选择变化，自动设置对应车间
+const handleRobotsChange = (value) => {
+  if (value.length === 0) return
+
+  // 获取第一个选中机器人的车间信息
+  const firstRobot = availableRobots.value.find(r => r.value === value[0])
+  if (firstRobot && firstRobot.group_key && firstRobot.group_key !== selectedPlant.value) {
+    selectedPlant.value = firstRobot.group_key
   }
 }
 
@@ -570,10 +624,16 @@ const getStatusClass = (val) => {
 }
 
 const generateMockData = (count) => {
+  // 使用真实的机器人表名（与availableRobots中的值一致）
+  const mockRobotNames = [
+    'as33_020rb_400', 'as33_020rb_401', 'as33_020rb_402',
+    'as34_020rb_400', 'as34_020rb_401', 'as35_020rb_400'
+  ]
+
   return Array.from({ length: count }, (_, i) => {
-    const robotNum = 100 + (i % 8)
+    const robotIndex = i % mockRobotNames.length
     return {
-      robot: `RB_${robotNum}`,
+      robot: mockRobotNames[robotIndex],
       Name_C: `R${i % 4 + 1}/${['PICK', 'PLACE', 'WELD', 'CHECK'][i % 4]}`,
       SNR_C: `SNR${100 + i}`,
       SUB: `S${i % 3}`,
@@ -643,6 +703,18 @@ const handleExport = () => {
   link.href = URL.createObjectURL(blob)
   link.download = `trajectory_report_${Date.now()}.csv`
   link.click()
+}
+
+const goToRobotBI = (robotName) => {
+  // 从机器人名称中获取车间信息（如果可能）
+  let group = ''
+  const robot = availableRobots.value.find(r => r.value === robotName)
+  if (robot && robot.group_key) {
+    group = robot.group_key
+  }
+  
+  const biUrl = `/api/robots/bi/?robot=${encodeURIComponent(robotName)}&group=${encodeURIComponent(group)}&embed=1`
+  window.open(biUrl, '_blank')
 }
 
 onMounted(loadPlantGroups)
@@ -925,6 +997,21 @@ onMounted(loadPlantGroups)
   font-weight: 600;
   color: #334155;
   font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.robot-info:hover {
+  color: #3b82f6;
+}
+
+.robot-link {
+  text-decoration: none;
+  position: relative;
+}
+
+.robot-info:hover .robot-link {
+  text-decoration: underline;
 }
 
 .robot-info .el-icon {

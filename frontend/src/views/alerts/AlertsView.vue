@@ -42,10 +42,12 @@
           <label><el-icon><Monitor /></el-icon> 机器人</label>
           <el-select
             v-model="selectedRobot"
-            placeholder="请选择机器人"
+            placeholder="请输入机器人名称搜索"
             filterable
             clearable
-            :disabled="!selectedGroup"
+            remote
+            reserve-keyword
+            :remote-method="searchRobots"
             :loading="robotsLoading"
             @change="handleRobotChange"
             class="styled-select"
@@ -107,6 +109,7 @@
           </Transition>
 
           <iframe
+            ref="biFrame"
             class="bi-frame"
             :src="biUrl"
             title="BI 可视化"
@@ -135,6 +138,7 @@ const groups = ref([])
 const robots = ref([])
 const robotsLoading = ref(false)
 const isLoading = ref(false)
+const biFrame = ref(null)
 
 const biUrl = computed(() => {
   const name = activeName.value.trim()
@@ -151,41 +155,40 @@ const loadGroups = async () => {
   }
 }
 
-// 车间变化时加载该车间所有机器人
+// 车间变化时重新搜索机器人
 const handleGroupChange = async () => {
   selectedRobot.value = ''
-  robots.value = []
   activeName.value = ''
   currentRobotLabel.value = ''
   isLoading.value = false
 
-  if (!selectedGroup.value) return
-
-  // 自动加载该车间的所有机器人
-  await loadRobots()
+  // 重新搜索机器人
+  await searchRobots('')
 }
 
-// 加载车间的所有机器人
-const loadRobots = async () => {
-  if (!selectedGroup.value) return
-
+// 远程搜索机器人
+const searchRobots = async (query) => {
   robotsLoading.value = true
   try {
-    const response = await request.get('/robots/components/bi_robots/', {
-      params: {
-        group: selectedGroup.value
-      }
-    })
+    const params = {}
+    if (query) {
+      params.keyword = query
+    }
+    if (selectedGroup.value) {
+      params.group = selectedGroup.value
+    }
+
+    const response = await request.get('/robots/components/bi_robots/', { params })
     robots.value = response.results || []
   } catch (error) {
-    console.error('加载机器人列表失败:', error)
+    console.error('搜索机器人失败:', error)
     robots.value = []
   } finally {
     robotsLoading.value = false
   }
 }
 
-// 机器人选择变化
+// 机器人选择变化，自动设置对应车间并加载
 const handleRobotChange = (value) => {
   if (!value) {
     activeName.value = ''
@@ -193,8 +196,14 @@ const handleRobotChange = (value) => {
     isLoading.value = false
     return
   }
+
   const robot = robots.value.find(r => r.value === value)
   if (robot) {
+    // 如果机器人有group_key信息且与当前选中车间不同，自动设置车间
+    if (robot.group_key && robot.group_key !== selectedGroup.value) {
+      selectedGroup.value = robot.group_key
+    }
+
     activeName.value = value
     currentRobotLabel.value = robot.label
     // 自动开始加载
@@ -237,7 +246,7 @@ const initFromQuery = async () => {
     selectedGroup.value = queryGroup
 
     // 加载该车间的所有机器人
-    await loadRobots()
+    await searchRobots('')
 
     // 找到并设置选中的机器人
     const robot = robots.value.find(r => r.value === queryRobot)
@@ -253,6 +262,16 @@ onMounted(async () => {
   await loadGroups()
   // 等待groups加载后再初始化query参数
   await initFromQuery()
+
+  // 监听来自iframe的postMessage（用于日期范围更新）
+  window.addEventListener('message', (event) => {
+    if (event.data && event.data.type === 'updateBIUrl') {
+      // 更新iframe的src来重新加载图表
+      if (biFrame.value) {
+        biFrame.value.src = event.data.url
+      }
+    }
+  })
 })
 </script>
 

@@ -6,6 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BI可视化分析 - {{ table_name }}</title>
 
+    <!-- Element Plus CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css" />
+
     <!-- Bokeh CSS -->
     <link rel="stylesheet" href="https://cdn.pydata.org/bokeh/release/bokeh-3.8.0.min.css" type="text/css" />
     <link rel="stylesheet" href="https://cdn.pydata.org/bokeh/release/bokeh-widgets-3.8.0.min.css" type="text/css" />
@@ -25,12 +28,113 @@
             overflow-x: auto;
         }
         .bk-root { width: 100% !important; }
+
+        /* Element Plus 样式覆盖 - 匹配关键轨迹检查界面 */
+        .el-input__wrapper {
+            background: rgba(255, 255, 255, 0.9) !important;
+            border: 1px solid rgba(0, 0, 0, 0.06) !important;
+            border-radius: 10px !important;
+            box-shadow: none !important;
+            transition: all 0.2s ease !important;
+        }
+
+        .el-input__wrapper:hover {
+            border-color: rgba(59, 130, 246, 0.3) !important;
+        }
+
+        .el-input__wrapper.is-focus {
+            border-color: #3b82f6 !important;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
+        }
+
+        .el-button--primary {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            border: none;
+            box-shadow: 0 4px 14px rgba(37, 99, 235, 0.2);
+            border-radius: 12px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .el-button--primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(37, 99, 235, 0.35);
+        }
+
+        .el-button--small {
+            padding: 0 16px;
+            height: 32px;
+        }
+
+        /* 日历弹出层样式 */
+        .el-picker__popper {
+            border-radius: 12px !important;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12) !important;
+            border: 1px solid #e2e8f0 !important;
+        }
+
+        .el-date-range-picker {
+            border-radius: 12px !important;
+        }
+
+        /* 日期选择器内样式 */
+        .el-date-picker__header {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+            color: #fff !important;
+            border-radius: 12px 12px 0 0 !important;
+        }
+
+        .el-date-picker__header-label {
+            color: #fff !important;
+            font-weight: 600 !important;
+        }
+
+        .el-picker-panel__icon-btn {
+            color: #fff !important;
+        }
+
+        .el-picker-panel__icon-btn:hover {
+            background: rgba(255, 255, 255, 0.2) !important;
+        }
+
+        .el-date-table th {
+            color: #64748b !important;
+            font-weight: 600 !important;
+            font-size: 11px !important;
+        }
+
+        .el-date-table td.in-range div {
+            background: #eff6ff !important;
+        }
+
+        .el-date-table td.start-date div,
+        .el-date-table td.end-date div {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+            color: #fff !important;
+        }
+
+        .el-date-table td.today div {
+            color: #3b82f6 !important;
+            font-weight: 600 !important;
+        }
+
+        .el-date-table td.available:hover div {
+            background: #eff6ff !important;
+            color: #3b82f6 !important;
+        }
     </style>
 </head>
 <body>
     <div class="bi-container">
         {{ bokeh_div|safe }}
     </div>
+
+    <!-- Vue 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- Element Plus -->
+    <script src="https://unpkg.com/element-plus"></script>
+    <!-- Element Plus 中文语言包 -->
+    <script src="https://unpkg.com/element-plus/dist/locale/zh-cn.min.js"></script>
 
     <!-- Bokeh JS -->
     <script src="https://cdn.pydata.org/bokeh/release/bokeh-3.8.0.min.js"></script>

@@ -67,7 +67,7 @@
             </div>
           </template>
           <div class="pie-grid-container">
-            <div ref="chartRef" class="main-chart-item full-width-chart"></div>
+            <div ref="chartRef" class="main-chart-item full-width-chart" :style="{ height: (chartHeight * 0.8) + 'px' }"></div>
           </div>
         </el-card>
       </div>
@@ -80,7 +80,7 @@
               <span class="title">运行脉搏 <small>Operational Pulse</small></span>
             </div>
           </template>
-          <div ref="statusChartRef" class="main-chart-item"></div>
+          <div ref="statusChartRef" class="main-chart-item" :style="{ height: chartHeight + 'px' }"></div>
         </el-card>
       </div>
 
@@ -92,7 +92,7 @@
               <span class="title">风险态势趋势 <small>Risk Trend (7D)</small></span>
             </div>
           </template>
-          <div ref="trendChartRef" class="main-chart-item"></div>
+          <div ref="trendChartRef" class="main-chart-item" :style="{ height: chartHeight + 'px' }"></div>
         </el-card>
       </div>
 
@@ -104,7 +104,7 @@
               <el-link type="primary" @click="goTo('/alerts')">全部</el-link>
             </div>
           </template>
-          <div class="alert-list-styled">
+          <div class="alert-list-styled" :style="{ height: chartHeight + 'px' }">
             <div v-if="alertLoading" class="loading-shimmer">加载中...</div>
             <template v-else-if="recentAlerts.length">
               <div v-for="alert in recentAlerts.slice(0, 5)" :key="alert.id" class="alert-item-mini">
@@ -164,7 +164,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
@@ -175,8 +175,12 @@ import * as echarts from 'echarts'
 import { DEMO_MODE } from '@/config/appConfig'
 import { getRobotComponents, getRobotGroups, getRiskEventStatistics } from '@/api/robots'
 import { createRiskEvents, getGroupStats, getRobotsByGroup, robotGroups as mockGroups } from '@/mock/robots'
+import { useLayoutStore } from '@/stores/layout'
 
 const router = useRouter()
+const layoutStore = useLayoutStore()
+
+const chartHeight = computed(() => layoutStore.isCollapsed ? 360 : 300)
 
 const loading = ref(false)
 const alertLoading = ref(false)
@@ -504,6 +508,12 @@ onBeforeUnmount(() => {
 })
 
 watch(groupRows, renderAllCharts, { deep: true })
+
+watch(() => layoutStore.isCollapsed, () => {
+  nextTick(() => {
+    chartInstances.forEach(c => c.resize())
+  })
+})
 </script>
 
 <style scoped>
@@ -695,6 +705,7 @@ watch(groupRows, renderAllCharts, { deep: true })
 .main-chart-item {
   width: 100%;
   height: 300px;
+  transition: height 0.25s ease;
 }
 
 .pie-grid-container {
@@ -710,6 +721,7 @@ watch(groupRows, renderAllCharts, { deep: true })
   height: 300px;
   overflow-y: auto;
   padding-right: 8px;
+  transition: height 0.25s ease;
 }
 
 .alert-item-mini {
