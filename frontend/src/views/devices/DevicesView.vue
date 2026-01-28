@@ -56,6 +56,8 @@
               <el-option label="H" value="H" />
               <el-option label="M" value="M" />
               <el-option label="L" value="L" />
+              <el-option label="T" value="T" />
+              <el-option label="C" value="C" />
             </el-select>
           </el-col>
           <el-col :span="4">
@@ -261,6 +263,8 @@
                 <el-option label="H" value="H" />
                 <el-option label="M" value="M" />
                 <el-option label="L" value="L" />
+                <el-option label="T" value="T" />
+                <el-option label="C" value="C" />
               </el-select>
             </el-form-item>
           </el-col>

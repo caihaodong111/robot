@@ -13,46 +13,6 @@
       </div>
     </header>
 
-    <!-- KPI Metrics -->
-    <div class="kpi-grid">
-      <div class="kpi-card glass-card">
-        <div class="kpi-icon total"><el-icon><Cpu /></el-icon></div>
-        <div class="kpi-info">
-          <label>机器人总数</label>
-          <div class="value">{{ summary.total }}</div>
-          <div class="trend positive">
-            <span class="online-dot"></span> 在线 {{ summary.online }}
-          </div>
-        </div>
-      </div>
-      <div class="kpi-card glass-card warning">
-        <div class="kpi-icon risk"><el-icon><Warning /></el-icon></div>
-        <div class="kpi-info">
-          <label>高风险设备</label>
-          <div class="value">{{ summary.highRisk }}</div>
-          <div class="trend negative">占比 {{ highRiskRate }}%</div>
-        </div>
-      </div>
-      <div class="kpi-card glass-card muted">
-        <div class="kpi-icon offline"><el-icon><CircleClose /></el-icon></div>
-        <div class="kpi-info">
-          <label>离线设备</label>
-          <div class="value">{{ summary.offline }}</div>
-          <div class="trend">离线率 {{ summary.offlineRate }}%</div>
-        </div>
-      </div>
-      <div class="kpi-card glass-card primary">
-        <div class="kpi-icon health"><el-icon><Odometer /></el-icon></div>
-        <div class="kpi-info">
-          <label>综合健康指数</label>
-          <div class="value">{{ summary.healthIndex }}</div>
-          <div class="trend-bar">
-            <div class="fill" :style="{ width: summary.healthIndex + '%' }"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <!-- Main Charts Layout -->
     <div class="chart-layout-grid">
       <!-- Section 1: Risk Ratio Pie Charts (User Requested) -->
@@ -168,8 +128,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
-  Refresh, Cpu, Warning, CircleClose, Odometer,
-  InfoFilled, Monitor, LocationInformation, PieChart, RefreshRight
+  Refresh, InfoFilled, Monitor, LocationInformation, PieChart, RefreshRight
 } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import { DEMO_MODE } from '@/config/appConfig'
@@ -578,93 +537,6 @@ watch(() => layoutStore.isCollapsed, () => {
   box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
 }
 
-/* KPI Cards */
-.kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 20px;
-}
-
-.glass-card {
-  background: rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.5);
-  border-radius: 20px;
-  padding: 20px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05);
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
-}
-
-.glass-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 20px 30px -10px rgba(0, 0, 0, 0.1);
-}
-
-.kpi-icon {
-  width: 52px;
-  height: 52px;
-  border-radius: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 24px;
-}
-
-.kpi-icon.total { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
-.kpi-icon.risk { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
-.kpi-icon.offline { background: rgba(148, 163, 184, 0.1); color: #64748b; }
-.kpi-icon.health { background: rgba(16, 185, 129, 0.1); color: #10b981; }
-
-.kpi-info label {
-  display: block;
-  font-size: 13px;
-  color: #64748b;
-  margin-bottom: 4px;
-}
-
-.kpi-info .value {
-  font-size: 24px;
-  font-weight: 800;
-  color: #1e293b;
-}
-
-.trend {
-  font-size: 12px;
-  margin-top: 4px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.trend.positive { color: #10b981; }
-.trend.negative { color: #ef4444; }
-
-.online-dot {
-  width: 6px;
-  height: 6px;
-  background: #10b981;
-  border-radius: 50%;
-  box-shadow: 0 0 8px #10b981;
-}
-
-.trend-bar {
-  height: 4px;
-  width: 100px;
-  background: #e2e8f0;
-  border-radius: 2px;
-  margin-top: 8px;
-  overflow: hidden;
-}
-
-.trend-bar .fill {
-  height: 100%;
-  background: #10b981;
-  transition: width 1s ease-out;
-}
-
 /* Charts Grid */
 .chart-layout-grid {
   display: grid;
@@ -805,7 +677,6 @@ watch(() => layoutStore.isCollapsed, () => {
 .status-indicator.maintenance { background: #fef3c7; color: #92400e; }
 
 @media (max-width: 1200px) {
-  .kpi-grid { grid-template-columns: repeat(2, 1fr); }
   .chart-layout-grid { grid-template-columns: 1fr; }
   .ratio-section, .pulse-section, .trend-section, .alerts-section { grid-column: span 1; }
 }

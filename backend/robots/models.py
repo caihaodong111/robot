@@ -36,6 +36,8 @@ class RobotComponent(models.Model):
         ("H", "H"),
         ("M", "M"),
         ("L", "L"),
+        ("T", "T"),
+        ("C", "C"),
     ]
 
     group = models.ForeignKey(RobotGroup, on_delete=models.PROTECT, related_name="components", verbose_name="组")

@@ -179,7 +179,29 @@ const searchRobots = async (query) => {
     }
 
     const response = await request.get('/robots/components/bi_robots/', { params })
-    robots.value = response.results || []
+    let results = response.results || []
+    
+    // 处理机器人名称，只保留括号前的内容
+    robots.value = results.map(robot => {
+      // 提取括号前的机器人名称
+      let cleanLabel = robot.label
+      if (cleanLabel.includes('(')) {
+        cleanLabel = cleanLabel.split('(')[0].trim()
+      }
+      
+      return {
+        ...robot,
+        label: cleanLabel
+      }
+    })
+    
+    // 如果有搜索关键词，在前端进一步过滤确保结果包含关键词
+    if (query) {
+      const lowerQuery = query.toLowerCase()
+      robots.value = robots.value.filter(robot => 
+        robot.label.toLowerCase().includes(lowerQuery)
+      )
+    }
   } catch (error) {
     console.error('搜索机器人失败:', error)
     robots.value = []
@@ -334,7 +356,7 @@ onMounted(async () => {
   backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.5);
   border-radius: 20px;
-  padding: 20px;
+  padding: 16px 20px;
   box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05);
 }
 
@@ -349,15 +371,15 @@ onMounted(async () => {
 .control-row {
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: 20px;
   flex-wrap: wrap;
 }
 
 .control-item {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 200px;
+  align-items: center;
+  gap: 10px;
+  min-width: 280px;
   flex: 1;
 }
 
@@ -368,10 +390,13 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 4px;
+  white-space: nowrap;
+  min-width: 80px;
 }
 
 .styled-select {
-  width: 100%;
+  flex: 1;
+  min-width: 180px;
 }
 
 .styled-select :deep(.el-input__wrapper) {
