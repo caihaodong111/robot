@@ -255,75 +255,122 @@ const initChart = (key, el) => {
 const renderPieChart = () => {
   const chart = initChart('pie', chartRef.value)
   if (!chart) return
-  
-  const rows = groupRows.value
-  const series = []
-  const titles = []
-  
-  rows.forEach((row, index) => {
-    const highRisk = row.stats?.highRisk || 0
-    const total = row.total || 1
-    const ratio = Math.round((highRisk / total) * 100)
-    
-    const centerX = (index * 25 + 12.5) + '%'
-    const centerY = '50%'
-    
-    // Dynamic color based on risk ratio
-    const riskColor = ratio > 40 ? '#ef4444' : ratio > 20 ? '#f59e0b' : '#3b82f6'
 
+  const rows = groupRows.value.slice(0, 4)
+  const series = []
+
+  // 4个饼图中心位置
+  const positions = [
+    { center: ['15%', '50%'], title: '各车间\n高风险' },
+    { center: ['40%', '50%'], title: '开发中' },
+    { center: ['65%', '50%'], title: '开发中' },
+    { center: ['90%', '50%'], title: '开发中' }
+  ]
+
+  const colors = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6']
+
+  // 第1个饼图：显示4个车间的高风险数据
+  const pieData = rows.map((row, index) => ({
+    value: row.stats?.highRisk || 0,
+    name: row.name,
+    itemStyle: { color: colors[index] }
+  }))
+
+  series.push({
+    type: 'pie',
+    radius: ['55%', '75%'],
+    center: positions[0].center,
+    avoidLabelOverlap: true,
+    label: {
+      show: true,
+      formatter: '{b}\n{c}台',
+      fontSize: 11,
+      color: '#475569'
+    },
+    emphasis: { scale: true },
+    labelLine: { show: true },
+    data: pieData
+  })
+
+  // 第1个饼图中心文字（使用空白数据系列）
+  series.push({
+    type: 'pie',
+    radius: [0, '35%'],
+    center: positions[0].center,
+    label: {
+      show: true,
+      formatter: positions[0].title,
+      fontSize: 13,
+      fontWeight: 'bold',
+      color: '#64748b',
+      position: 'center'
+    },
+    data: [{ value: 1, itemStyle: { color: 'transparent' } }],
+    silent: true
+  })
+
+  // 后面3个占位饼图
+  for (let i = 1; i < 4; i++) {
     series.push({
       type: 'pie',
       radius: ['55%', '75%'],
-      center: [centerX, centerY],
-      avoidLabelOverlap: false,
+      center: positions[i].center,
       label: { show: false },
-      emphasis: { scale: true },
-      data: [
-        { value: highRisk, name: '高风险', itemStyle: { color: '#ef4444' } },
-        { value: total - highRisk, name: '正常', itemStyle: { color: '#e2e8f0' } }
-      ]
+      itemStyle: {
+        color: '#f1f5f9',
+        borderColor: '#e2e8f0',
+        borderWidth: 1
+      },
+      data: [{ value: 100 }],
+      hoverAnimation: false
     })
-    
-    // Inner center text using graphic or label for custom look
-    titles.push({
-      text: ratio + '%',
-      left: centerX,
-      top: '48%',
-      textAlign: 'center',
-      textStyle: {
-        fontSize: 20,
-        fontWeight: 'bold',
-        color: ratio > 0 ? '#ef4444' : '#64748b'
-      }
-    }, {
-      text: row.name,
-      left: centerX,
-      top: '85%',
-      textAlign: 'center',
-      textStyle: {
+
+    series.push({
+      type: 'pie',
+      radius: [0, '35%'],
+      center: positions[i].center,
+      label: {
+        show: true,
+        formatter: positions[i].title,
         fontSize: 12,
-        color: '#64748b',
-        fontWeight: 'normal'
-      }
+        color: '#94a3b8',
+        position: 'center'
+      },
+      data: [{ value: 1, itemStyle: { color: 'transparent' } }],
+      silent: true
     })
-  })
+  }
 
   chart.setOption({
     tooltip: {
       trigger: 'item',
-      formatter: '{b}: {c} ({d}%)'
+      formatter: (params) => {
+        if (params.seriesIndex === 0) {
+          return `${params.name}: ${params.value}台 (${params.percent}%)`
+        }
+        return '开发中'
+      }
     },
-    title: titles,
     series: series
   })
 
   chart.off('click')
   chart.on('click', (params) => {
-    const group = rows[params.seriesIndex]
-    openDetail({
-      seriesName: `${group.name} - 高风险详情`,
-      data: { key: group.key, name: group.name }
-    })
+    console.log('[PieChart Click] params:', params)
+    if (params.seriesIndex === 0) {
+      const row = rows[params.dataIndex]
+      console.log('[PieChart Click] Selected row:', row)
+      if (!row) {
+        console.error('[PieChart Click] Row not found for dataIndex:', params.dataIndex, 'rows:', rows)
+        return
+      }
+      openDetail({
+        seriesName: `${params.name} - 高风险详情`,
+        data: { key: row.key, name: params.name }
+      })
+    } else {
+      ElMessage.info('开发中')
+    }
   })
 }
 
@@ -436,20 +483,25 @@ const renderAllCharts = () => {
 const openDetail = async (payload) => {
   const groupKey = payload.data.key
   const groupName = payload.data.name
+  console.log('[openDetail] Opening detail for:', { groupKey, groupName, payload })
   detailTitle.value = `${groupName} - 高风险设备列表`
   detailVisible.value = true
   detailLoading.value = true
-  
+
   try {
     if (DEMO_MODE) {
       const list = getRobotsByGroup(groupKey)
       detailRows.value = list.filter(r => r.isHighRisk)
+      console.log('[openDetail] Demo mode, filtered rows:', detailRows.value.length)
     } else {
       const data = await getRobotComponents({ group: groupKey, tab: 'highRisk' })
+      console.log('[openDetail] API response:', data)
       detailRows.value = data?.results || []
+      console.log('[openDetail] Detail rows set:', detailRows.value.length)
     }
   } catch (error) {
-    ElMessage.error('加载详情失败')
+    console.error('[openDetail] Error loading details:', error)
+    ElMessage.error('加载详情失败: ' + (error?.message || '未知错误'))
   } finally {
     detailLoading.value = false
   }
