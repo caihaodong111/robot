@@ -65,6 +65,7 @@
       </footer>
     </div>
 
+    //饼状图弹出的列表68-90行
     <el-dialog v-model="detailVisible" :title="detailTitle" width="850px" class="premium-dialog">
       <el-table :data="detailRows" stripe v-loading="detailLoading" height="400">
         <el-table-column prop="name" label="机器人" width="180" />
