@@ -65,17 +65,45 @@
       </footer>
     </div>
 
-    <el-dialog v-model="detailVisible" :title="detailTitle" width="850px" class="premium-dialog">
-      <el-table :data="detailRows" stripe v-loading="detailLoading" height="400">
-        <el-table-column prop="name" label="机器人" width="180" />
-        <el-table-column prop="status" label="状态" width="100">
-          <template #default="{ row }">
-             <span class="status-indicator" :class="row.status">{{ row.status }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="riskScore" label="风险分" width="90" align="center" />
-        <el-table-column prop="remark" label="风险描述" show-overflow-tooltip />
-      </el-table>
+    <el-dialog v-model="detailVisible" width="860px" class="premium-dialog">
+      <template #header>
+        <div class="dialog-header">
+          <div class="dialog-title">
+            <span class="dialog-chip"></span>
+            {{ detailTitle || '高风险机器人列表' }}
+          </div>
+          <div class="dialog-subtitle">HIGH RISK ROBOT INSIGHTS</div>
+        </div>
+      </template>
+      <div class="dialog-body">
+        <div class="dialog-summary">
+          <div class="summary-metric">
+            <div class="summary-label">记录数量</div>
+            <div class="summary-value">{{ detailRows.length }}</div>
+          </div>
+          <div class="summary-divider"></div>
+          <div class="summary-metric">
+            <div class="summary-label">数据刷新</div>
+            <div class="summary-value">{{ lastUpdateTime }}</div>
+          </div>
+        </div>
+
+        <el-table :data="detailRows" stripe v-loading="detailLoading" height="420" class="premium-table">
+          <el-table-column prop="name" label="机器人" width="160" />
+          <el-table-column prop="level" label="等级(level)" width="80" align="center">
+            <template #default="{ row }">
+               <el-tag :type="levelTagType(row.level)" effect="light">{{ row.level }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="referenceNo" label="参考编号(reference)" width="150" show-overflow-tooltip />
+          <el-table-column prop="remark" label="风险描述" min-width="200" show-overflow-tooltip />
+        </el-table>
+
+        <div v-if="!detailLoading && !detailRows.length" class="dialog-empty">
+          <div class="empty-dot"></div>
+          当前暂无高风险记录
+        </div>
+      </div>
     </el-dialog>
   </div>
 </template>
@@ -149,6 +177,11 @@ const formatTimeOnly = (value) => {
   return new Date(value).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
 }
 
+const levelTagType = (level) => {
+  const types = { H: 'danger', M: 'warning', L: 'info', T: 'success', C: '' }
+  return types[level] || 'info'
+}
+
 const initChart = (key, el) => {
   if (!el) return null
   if (!chartInstances.has(key)) {
@@ -172,8 +205,8 @@ const showGroupDetail = async (groupKey, groupName) => {
         .filter(r => r.isHighRisk)
         .map(r => ({
           name: r.name,
-          status: r.status,
-          riskScore: r.riskScore,
+          level: r.level,
+          referenceNo: r.referenceNo,
           remark: r.remark
         }))
     } else {
@@ -182,8 +215,8 @@ const showGroupDetail = async (groupKey, groupName) => {
       const data = response?.results || response || []
       detailRows.value = data.map(r => ({
         name: r.name || r.robot_id,
-        status: r.status,
-        riskScore: r.riskScore,
+        level: r.level,
+        referenceNo: r.referenceNo,
         remark: r.remark
       }))
     }
@@ -404,12 +437,122 @@ watch(groupRows, () => {
 .footer-layout { display: grid; grid-template-columns: 2fr 1fr; gap: 30px; margin-top: 30px; }
 .mini-chart { height: 200px; width: 100%; }
 
-/* 详情弹窗与状态标签 */
-.status-indicator {
-  padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: bold;
+/* === 弹窗内部内容样式（scoped 可以作用） === */
+.dialog-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
-.status-indicator.online { background: rgba(0, 255, 204, 0.2); color: #00ffcc; border: 1px solid #00ffcc; }
-.status-indicator.offline { background: rgba(255, 68, 68, 0.2); color: #ff4444; border: 1px solid #ff4444; }
+.dialog-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #e9f0ff;
+}
+.dialog-chip {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #6dd5ff, #1e66ff);
+  box-shadow: 0 0 10px rgba(0, 195, 255, 0.35);
+}
+.dialog-subtitle {
+  font-size: 10px;
+  letter-spacing: 1.6px;
+  color: #6f7f97;
+}
+
+/* === 弹窗内部内容样式（赛博朋克科技风格） === */
+.dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* 统计摘要区域 */
+.dialog-summary {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 18px;
+  border-radius: 10px;
+  background: rgba(0, 102, 255, 0.08);
+  border: 1px solid rgba(0, 204, 255, 0.15);
+  box-shadow: inset 0 1px 0 rgba(0, 204, 255, 0.1);
+}
+
+.summary-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.summary-label {
+  font-size: 10px;
+  color: #00ccff;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.summary-value {
+  font-size: 16px;
+  font-weight: 800;
+  color: #fff;
+  text-shadow: 0 0 15px rgba(0, 204, 255, 0.3);
+}
+
+.summary-value.accent {
+  color: #ffae00;
+  text-shadow: 0 0 15px rgba(255, 174, 0, 0.4);
+}
+
+.summary-divider {
+  width: 1px;
+  height: 32px;
+  background: linear-gradient(to bottom,
+    transparent,
+    rgba(0, 204, 255, 0.3),
+    transparent
+  );
+}
+
+/* 空状态样式 */
+.dialog-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 30px 0;
+  color: #666;
+  font-size: 12px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+
+.empty-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #00ccff;
+  box-shadow: 0 0 15px rgba(0, 204, 255, 0.6);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.2);
+  }
+}
 
 /* 星空背景 */
 .star-field {
@@ -507,4 +650,157 @@ watch(groupRows, () => {
 }
 @keyframes gridMove { from { background-position: 0 0; } to { background-position: 0 50px; } }
 
+</style>
+
+<!-- 非 scoped 样式：用于覆盖弹窗（挂载到 body 下）的 Element Plus 默认样式 -->
+<style>
+/* === 弹窗容器样式（赛博朋克科技发布会风格） === */
+.el-dialog.premium-dialog {
+  background: rgba(15, 20, 35, 0.88) !important;
+  border: 1px solid rgba(0, 204, 255, 0.25) !important;
+  box-shadow:
+    0 0 40px rgba(0, 204, 255, 0.15),
+    0 20px 50px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+  backdrop-filter: blur(30px) !important;
+  border-radius: 16px !important;
+}
+
+/* 弹窗顶部青色光晕装饰 */
+.el-dialog.premium-dialog::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60%;
+  height: 2px;
+  background: linear-gradient(90deg,
+    transparent,
+    rgba(0, 204, 255, 0.6),
+    rgba(0, 102, 255, 0.8),
+    rgba(0, 204, 255, 0.6),
+    transparent
+  );
+  box-shadow: 0 0 15px rgba(0, 204, 255, 0.5);
+}
+
+.el-dialog.premium-dialog .el-dialog__header {
+  margin-right: 0;
+  padding: 20px 28px 16px;
+  border-bottom: 1px solid rgba(0, 204, 255, 0.12);
+}
+
+.el-dialog.premium-dialog .el-dialog__title {
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.el-dialog.premium-dialog .el-dialog__body {
+  padding: 20px 28px 28px;
+  color: #aaa;
+}
+
+.el-dialog.premium-dialog .el-dialog__close {
+  color: #00ccff;
+  font-size: 20px;
+  transition: all 0.3s ease;
+}
+
+.el-dialog.premium-dialog .el-dialog__close:hover {
+  color: #fff;
+  text-shadow: 0 0 10px rgba(0, 204, 255, 0.8);
+}
+
+/* === 表格样式（科技风格，背景调亮） === */
+.el-table.premium-table {
+  --el-table-bg-color: transparent !important;
+  --el-table-tr-bg-color: rgba(20, 30, 50, 0.4) !important;
+  --el-table-row-hover-bg-color: rgba(0, 204, 255, 0.12) !important;
+  --el-table-header-bg-color: rgba(0, 102, 255, 0.15) !important;
+  --el-table-border-color: rgba(0, 204, 255, 0.1) !important;
+  color: #e0e8f5 !important;
+  background: transparent !important;
+}
+
+.el-table.premium-table .el-table__inner-wrapper {
+  background: transparent !important;
+}
+
+/* 表头样式 */
+.el-table.premium-table .el-table__header-wrapper {
+  background: transparent !important;
+}
+
+.el-table.premium-table .el-table__header th {
+  background: rgba(0, 102, 255, 0.18) !important;
+  border-color: rgba(0, 204, 255, 0.15) !important;
+  color: #00ccff !important;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 14px 0;
+}
+
+.el-table.premium-table .el-table__header th .cell {
+  padding: 0 12px;
+}
+
+/* 表格主体样式 */
+.el-table.premium-table .el-table__body-wrapper {
+  background: transparent !important;
+}
+
+.el-table.premium-table .el-table__body tr {
+  background: rgba(20, 30, 50, 0.35) !important;
+  transition: all 0.25s ease;
+}
+
+.el-table.premium-table .el-table__body tr.el-table__row--striped {
+  background: rgba(30, 45, 70, 0.4) !important;
+}
+
+.el-table.premium-table .el-table__body td {
+  border-bottom: 1px solid rgba(0, 204, 255, 0.08) !important;
+  background-color: transparent !important;
+  color: #d0d8e8 !important;
+  padding: 12px 0;
+}
+
+.el-table.premium-table .el-table__body td .cell {
+  padding: 0 12px;
+}
+
+/* 悬停效果 */
+.el-table.premium-table .el-table__row:hover td {
+  background: rgba(0, 204, 255, 0.12) !important;
+  color: #fff !important;
+}
+
+.el-table.premium-table .el-table__row.current-row td {
+  background: rgba(0, 204, 255, 0.18) !important;
+}
+
+/* 空状态样式 */
+.el-table.premium-table .el-table__empty-block {
+  background: transparent !important;
+}
+
+.el-table.premium-table .el-table__empty-text {
+  color: #666 !important;
+}
+
+/* 加载遮罩 */
+.el-table.premium-table .el-loading-mask {
+  background: rgba(15, 20, 35, 0.7) !important;
+}
+
+/* 固定列样式 */
+.el-table.premium-table .el-table-fixed-column--right,
+.el-table.premium-table .el-table-fixed--right .el-table__fixed-body-wrapper {
+  background: rgba(15, 20, 35, 0.88) !important;
+}
 </style>

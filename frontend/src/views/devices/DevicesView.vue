@@ -1,186 +1,205 @@
 <template>
-  <div class="robot-status">
-    <!-- Header Section -->
-    <header class="status-header">
-      <div class="title-area">
-        <h1>机器人状态 <small>Robot Status</small></h1>
-        <p class="subtitle">实时监控各车间机器人运行状态与风险等级</p>
-      </div>
-      <div class="header-actions">
-        <el-button :icon="Refresh" @click="handleRefresh" class="refresh-btn">载入数据</el-button>
-      </div>
-    </header>
-
-    <!-- KPI Metrics Grid -->
-    <div class="kpi-grid">
-      <button
-        v-for="group in groups"
-        :key="group.key"
-        type="button"
-        class="kpi-card glass-card"
-        :class="{ active: group.key === selectedGroup }"
-        @click="selectedGroup = group.key"
-      >
-        <div class="kpi-icon" :class="getIconClass(group.key)">
-          <el-icon><Monitor /></el-icon>
-        </div>
-        <div class="kpi-info">
-          <label>{{ group.name }}</label>
-          <div class="value">{{ group.total }}</div>
-          <div class="trend-row">
-            <span class="trend risk">
-              <span class="risk-dot"></span> 高风险 {{ group.stats.highRisk }}
-            </span>
-            <span class="trend normal">
-              <span class="normal-dot"></span> 正常 {{ group.stats.online - group.stats.highRisk }}
-            </span>
-          </div>
-        </div>
-      </button>
+  <div class="robot-status-viewport">
+    <!-- 背景流光特效 -->
+    <div class="space-ambient">
+      <div class="nebula blue"></div>
+      <div class="nebula gold"></div>
+      <div class="scan-grid"></div>
     </div>
 
-    <el-card class="list-card">
-      <el-tabs v-model="activeTab" class="status-tabs">
-        <el-tab-pane name="highRisk" label="高风险机器人列表" />
-        <el-tab-pane name="all" label="所有机器人信息列表" />
-        <el-tab-pane name="history" label="历史高风险机器人列表" />
-      </el-tabs>
+    <div class="layout-wrapper">
+      <!-- Header Section -->
+      <header class="page-header">
+        <div class="title-area">
+          <h1 class="metallic-title">机器人状态 <span>ROBOT STATUS</span></h1>
+        </div>
+        <div class="header-actions">
+          <el-button :icon="Refresh" @click="handleRefresh" class="action-btn">同步数据</el-button>
+        </div>
+      </header>
 
-      <div class="filters">
-        <el-row :gutter="12" align="middle">
-          <el-col :span="10">
-            <el-input v-model="keyword" placeholder="搜索：部件编号 / 参考编号 / 类型 / 工艺 / 备注" clearable />
-          </el-col>
-          <el-col :span="4">
-            <el-select v-model="levelFilter" placeholder="等级(level)" clearable>
-              <el-option label="H" value="H" />
-              <el-option label="M" value="M" />
-              <el-option label="L" value="L" />
-              <el-option label="T" value="T" />
-              <el-option label="C" value="C" />
-            </el-select>
-          </el-col>
-          <el-col :span="4">
-            <el-select
-              v-model="axisKeysFilter"
-              placeholder="Axis(A1-A7)"
-              multiple
-              collapse-tags
-              collapse-tags-tooltip
-              clearable
-            >
-              <el-option v-for="k in CHECK_KEYS" :key="k" :label="k" :value="k" />
-            </el-select>
-          </el-col>
-          <el-col :span="3">
-            <el-select
-              v-model="axisStateFilter"
-              placeholder="Axis状态"
-              clearable
-              :disabled="!axisKeysFilter.length"
-            >
-              <el-option label="正常" value="ok" />
-              <el-option label="异常" value="bad" />
-            </el-select>
-          </el-col>
-          <el-col :span="3">
-            <el-select v-model="markMode" placeholder="标记(mark)" clearable>
-              <el-option label="0" value="zero" />
-              <el-option label="非0" value="nonzero" />
-            </el-select>
-          </el-col>
-          <el-col :span="24" class="filters-right">
-            <el-button type="primary" :icon="Search" @click="currentPage = 1">查询</el-button>
-            <el-button :icon="Close" @click="resetFilters">重置</el-button>
-          </el-col>
-        </el-row>
+      <!-- KPI Metrics Grid -->
+      <div class="kpi-grid">
+        <button
+          v-for="group in groups"
+          :key="group.key"
+          type="button"
+          class="kpi-card glass-card"
+          :class="{ active: group.key === selectedGroup }"
+          @click="selectedGroup = group.key"
+        >
+          <div class="active-glow"></div>
+          <div class="kpi-icon-box">
+            <el-icon><Monitor /></el-icon>
+          </div>
+          <div class="kpi-content">
+            <label>{{ group.name }}</label>
+            <div class="main-value">{{ group.total }} <small>UNITS</small></div>
+            <div class="status-mini-tags">
+              <span class="tag risk">高风险 {{ group.stats.highRisk }}</span>
+              <span class="tag online">在线 {{ group.stats.online }}</span>
+            </div>
+          </div>
+        </button>
       </div>
 
-      <div class="table-legend">
-        <span class="legend-item"><span class="dot dot-ok"></span>正常/符合要求</span>
-        <span class="legend-item"><span class="dot dot-bad"></span>该项异常/待处理</span>
-      </div>
+      <!-- Data Table Section -->
+      <section class="data-table-section glass-card">
+        <div class="table-header">
+          <span class="decor-line"></span>
+          <span>{{ activeGroupName }} - 实时状态列表</span>
+        </div>
 
-      <el-table :data="pagedRows" stripe height="520" v-loading="loading">
-        <el-table-column prop="partNo" label="部件编号(robot)" width="190" show-overflow-tooltip>
-          <template #default="{ row }">
-            <el-button type="primary" link class="mono" @click="openBI(row)">
-              {{ row.partNo }}
-            </el-button>
-          </template>
-        </el-table-column>
-        <el-table-column label="参考编号(reference)" width="170" show-overflow-tooltip>
-          <template #default="{ row }">
-            <el-button type="primary" link class="mono" @click="openEdit(row, 'referenceNo')">
-              {{ row.referenceNo }}
-            </el-button>
-          </template>
-        </el-table-column>
-        <el-table-column prop="number" label="Number" width="110" align="center">
-          <template #default="{ row }">
-            <span class="mono">{{ row.number ?? 0 }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="typeSpec" label="类型(type)" min-width="170" show-overflow-tooltip />
-        <el-table-column prop="tech" label="工艺(tech)" min-width="140" show-overflow-tooltip />
-        <el-table-column prop="mark" label="标记(mark)" width="110" align="center">
-          <template #default="{ row }">
-            <el-button type="primary" link class="mono" @click="openEdit(row, 'mark')">
-              {{ row.mark ?? 0 }}
-            </el-button>
-          </template>
-        </el-table-column>
-        <el-table-column label="备注(remark)" min-width="220" show-overflow-tooltip>
-          <template #default="{ row }">
-            <el-button type="primary" link class="remark-link" @click="openEdit(row, 'remark')">
-              {{ row.remark || '-' }}
-            </el-button>
-          </template>
-        </el-table-column>
+        <!-- Tabs -->
+        <el-tabs v-model="activeTab" class="status-tabs-dark">
+          <el-tab-pane name="highRisk" label="高风险机器人列表" />
+          <el-tab-pane name="all" label="所有机器人信息列表" />
+          <el-tab-pane name="history" label="历史高风险机器人列表" />
+        </el-tabs>
 
-        <el-table-column v-for="key in CHECK_KEYS" :key="key" :label="key" width="58" align="center">
-          <template #default="{ row }">
-            <el-tooltip
-              :content="checkTooltip(row, key)"
-              placement="top"
-              :show-after="120"
-            >
-              <span class="dot" :class="row.checks?.[key]?.ok ? 'dot-ok' : 'dot-bad'"></span>
-            </el-tooltip>
-          </template>
-        </el-table-column>
+        <!-- Filters -->
+        <div class="filters">
+          <el-row :gutter="12" align="middle">
+            <el-col :span="10">
+              <el-input v-model="keyword" placeholder="搜索：部件编号 / 参考编号 / 类型 / 工艺 / 备注" clearable class="dark-input" />
+            </el-col>
+            <el-col :span="4">
+              <el-select v-model="levelFilter" placeholder="等级(level)" clearable class="dark-select">
+                <el-option label="H" value="H" />
+                <el-option label="M" value="M" />
+                <el-option label="L" value="L" />
+                <el-option label="T" value="T" />
+                <el-option label="C" value="C" />
+              </el-select>
+            </el-col>
+            <el-col :span="4">
+              <el-select
+                v-model="axisKeysFilter"
+                placeholder="Axis(A1-A7)"
+                multiple
+                collapse-tags
+                collapse-tags-tooltip
+                clearable
+                class="dark-select"
+              >
+                <el-option v-for="k in CHECK_KEYS" :key="k" :label="k" :value="k" />
+              </el-select>
+            </el-col>
+            <el-col :span="3">
+              <el-select
+                v-model="axisStateFilter"
+                placeholder="Axis状态"
+                clearable
+                :disabled="!axisKeysFilter.length"
+                class="dark-select"
+              >
+                <el-option label="正常" value="ok" />
+                <el-option label="异常" value="bad" />
+              </el-select>
+            </el-col>
+            <el-col :span="3">
+              <el-select v-model="markMode" placeholder="标记(mark)" clearable class="dark-select">
+                <el-option label="0" value="zero" />
+                <el-option label="非0" value="nonzero" />
+              </el-select>
+            </el-col>
+            <el-col :span="24" class="filters-right">
+              <el-button type="primary" :icon="Search" @click="currentPage = 1">查询</el-button>
+              <el-button :icon="Close" @click="resetFilters">重置</el-button>
+            </el-col>
+          </el-row>
+        </div>
 
-        <el-table-column label="等级(level)" width="110" align="center">
-          <template #default="{ row }">
-            <el-button type="primary" link @click="openEdit(row, 'level')">
-              <el-tag :type="levelTagType(row.level)" effect="light">{{ row.level }}</el-tag>
-            </el-button>
-          </template>
-        </el-table-column>
+        <!-- Table Legend -->
+        <div class="table-legend">
+          <span class="legend-item"><span class="dot dot-ok"></span>正常/符合要求</span>
+          <span class="legend-item"><span class="dot dot-bad"></span>该项异常/待处理</span>
+        </div>
 
-        <el-table-column label="操作" width="110" fixed="right" align="center">
-          <template #default="{ row }">
-            <el-button type="primary" link @click="openDetail(row)">详情</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+        <!-- Table -->
+        <el-table :data="pagedRows" class="premium-table" stripe height="520" v-loading="loading">
+          <el-table-column prop="partNo" label="部件编号(robot)" width="190" show-overflow-tooltip>
+            <template #default="{ row }">
+              <el-button type="primary" link class="mono robot-name-cell" @click="openBI(row)">
+                {{ row.partNo }}
+              </el-button>
+            </template>
+          </el-table-column>
+          <el-table-column label="参考编号(reference)" width="170" show-overflow-tooltip>
+            <template #default="{ row }">
+              <el-button type="primary" link class="mono" @click="openEdit(row, 'referenceNo')">
+                {{ row.referenceNo }}
+              </el-button>
+            </template>
+          </el-table-column>
+          <el-table-column prop="number" label="Number" width="110" align="center">
+            <template #default="{ row }">
+              <span class="mono">{{ row.number ?? 0 }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="typeSpec" label="类型(type)" min-width="170" show-overflow-tooltip />
+          <el-table-column prop="tech" label="工艺(tech)" min-width="140" show-overflow-tooltip />
+          <el-table-column prop="mark" label="标记(mark)" width="110" align="center">
+            <template #default="{ row }">
+              <el-button type="primary" link class="mono" @click="openEdit(row, 'mark')">
+                {{ row.mark ?? 0 }}
+              </el-button>
+            </template>
+          </el-table-column>
+          <el-table-column label="备注(remark)" min-width="220" show-overflow-tooltip>
+            <template #default="{ row }">
+              <el-button type="primary" link class="remark-link" @click="openEdit(row, 'remark')">
+                {{ row.remark || '-' }}
+              </el-button>
+            </template>
+          </el-table-column>
 
-      <el-pagination
-        v-model:current-page="currentPage"
-        v-model:page-size="pageSize"
-        :total="DEMO_MODE ? filteredRows.length : serverTotal"
-        :page-sizes="[10, 20, 50, 100]"
-        layout="total, sizes, prev, pager, next, jumper"
-        class="pager"
-      />
-    </el-card>
+          <el-table-column v-for="key in CHECK_KEYS" :key="key" :label="key" width="58" align="center">
+            <template #default="{ row }">
+              <el-tooltip
+                :content="checkTooltip(row, key)"
+                placement="top"
+                :show-after="120"
+              >
+                <span class="dot" :class="row.checks?.[key]?.ok ? 'dot-ok' : 'dot-bad'"></span>
+              </el-tooltip>
+            </template>
+          </el-table-column>
 
-    <el-dialog v-model="detailVisible" title="部件详情" width="760px">
+          <el-table-column label="等级(level)" width="110" align="center">
+            <template #default="{ row }">
+              <el-button type="primary" link @click="openEdit(row, 'level')">
+                <el-tag :type="levelTagType(row.level)" effect="light">{{ row.level }}</el-tag>
+              </el-button>
+            </template>
+          </el-table-column>
+
+          <el-table-column label="操作" width="110" fixed="right" align="center">
+            <template #default="{ row }">
+              <el-button type="primary" link @click="openDetail(row)">详情</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+
+        <!-- Pagination -->
+        <el-pagination
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          :total="DEMO_MODE ? filteredRows.length : serverTotal"
+          :page-sizes="[10, 20, 50, 100]"
+          layout="total, sizes, prev, pager, next, jumper"
+          class="pager"
+        />
+      </section>
+    </div>
+
+    <!-- Detail Dialog -->
+    <el-dialog v-model="detailVisible" title="部件详情" width="760px" class="dark-dialog">
       <div v-if="detailRobot" class="detail">
         <el-descriptions :column="2" border>
           <el-descriptions-item label="部件编号(robot)"><span class="mono">{{ detailRobot.partNo }}</span></el-descriptions-item>
-        <el-descriptions-item label="参考编号(reference)"><span class="mono">{{ detailRobot.referenceNo }}</span></el-descriptions-item>
-        <el-descriptions-item label="Number"><span class="mono">{{ detailRobot.number ?? 0 }}</span></el-descriptions-item>
+          <el-descriptions-item label="参考编号(reference)"><span class="mono">{{ detailRobot.referenceNo }}</span></el-descriptions-item>
+          <el-descriptions-item label="Number"><span class="mono">{{ detailRobot.number ?? 0 }}</span></el-descriptions-item>
           <el-descriptions-item label="类型(type)">{{ detailRobot.typeSpec }}</el-descriptions-item>
           <el-descriptions-item label="工艺(tech)">{{ detailRobot.tech }}</el-descriptions-item>
           <el-descriptions-item label="标记(mark)"><span class="mono">{{ detailRobot.mark ?? 0 }}</span></el-descriptions-item>
@@ -210,7 +229,8 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="editVisible" title="编辑字段" width="560px">
+    <!-- Edit Dialog -->
+    <el-dialog v-model="editVisible" title="编辑字段" width="560px" class="dark-dialog">
       <el-form v-if="editTarget" :model="editForm" label-position="top" class="edit-form">
         <el-row :gutter="14">
           <el-col :span="16">
@@ -285,7 +305,6 @@
         <el-button type="primary" :loading="editSaving" @click="saveEdit">保存</el-button>
       </template>
     </el-dialog>
-
   </div>
 </template>
 
@@ -501,7 +520,6 @@ const openEdit = (row, focusField) => {
   editTarget.value = row
   editForm.value = { ...next }
   editVisible.value = true
-  // focusField kept for future focus handling
 }
 
 const applyEditToRow = (row, patch) => {
@@ -548,7 +566,6 @@ const saveEdit = async () => {
     ElMessage.success('保存成功')
     editVisible.value = false
 
-    // If currently in highRisk tab, level change can affect visibility; refresh.
     if (activeTab.value === 'highRisk' || activeTab.value === 'history') {
       loadGroups()
       loadRows()
@@ -568,10 +585,8 @@ const checkTooltip = (robot, key) => {
 }
 
 const openBI = (robot) => {
-  // 跳转到BI可视化页面，传递车间和机器人参数
   const partNo = robot?.partNo || robot?.part_no || ''
   const groupKey = robot?.group || selectedGroup.value || ''
-  // 跳转到alerts页面，带上参数
   router.push({
     path: '/alerts',
     query: {
@@ -654,44 +669,117 @@ if (!DEMO_MODE) {
 </script>
 
 <style scoped>
-.robot-status {
-  padding: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  background-color: #f8fafc;
-  min-height: calc(100vh - 100px);
-  color: #1e293b;
+/* === 基础布局与背景 === */
+.robot-status-viewport {
+  background: radial-gradient(circle at 50% 30%, #0d1a2d 0%, #030508 100%);
+  min-height: 100vh;
+  position: relative;
+  overflow-x: hidden;
+  color: #fff;
 }
 
-/* Header */
+.layout-wrapper {
+  position: relative;
+  z-index: 1;
+  padding: 40px;
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+/* === 背景流光元素 === */
+.space-ambient {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.nebula {
+  position: absolute;
+  filter: blur(120px);
+  opacity: 0.28;
+  mix-blend-mode: screen;
+}
+
+.nebula.blue {
+  width: 80vw;
+  height: 70vh;
+  background: radial-gradient(circle, #0066ff, transparent 75%);
+  top: -10%;
+  left: -5%;
+}
+
+.nebula.gold {
+  width: 80vw;
+  height: 70vh;
+  background: radial-gradient(circle, #ffaa00, transparent 75%);
+  bottom: -10%;
+  right: -5%;
+}
+
+.scan-grid {
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* === Header === */
 .status-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 20px;
 }
 
-.title-area h1 {
-  font-size: 28px;
-  font-weight: 800;
-  margin: 0;
-  background: linear-gradient(135deg, #1e293b 0%, #3b82f6 100%);
+/* === Header === */
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.title-area {
+  display: flex;
+  flex-direction: column;
+}
+
+.metallic-title {
+  font-size: 36px;
+  font-weight: 900;
+  letter-spacing: 5px;
+  background: linear-gradient(180deg, #ffffff 30%, #a0a0a0 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  text-shadow: 0 0 40px rgba(0, 195, 255, 0.5);
+  margin: 0 0 8px 0;
 }
 
-.title-area h1 small {
+.metallic-title span {
   font-size: 14px;
-  color: #64748b;
-  font-weight: 400;
-  margin-left: 8px;
-  -webkit-text-fill-color: #64748b;
+  color: #636e72;
+  margin-left: 15px;
+  letter-spacing: 2px;
 }
 
-.subtitle {
-  margin: 4px 0 0;
-  color: #64748b;
-  font-size: 14px;
+.system-status {
+  font-size: 11px;
+  color: #a0aec0;
+  letter-spacing: 2px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.pulse-line {
+  width: 30px;
+  height: 2px;
+  background: #00ffcc;
+  box-shadow: 0 0 10px #00ffcc;
 }
 
 .header-actions {
@@ -700,132 +788,183 @@ if (!DEMO_MODE) {
   gap: 16px;
 }
 
-.refresh-btn {
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+.action-btn {
+  background: linear-gradient(135deg, #00c3ff 0%, #0080ff 100%);
   border: none;
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+  box-shadow: 0 4px 15px rgba(0, 195, 255, 0.3);
 }
 
-/* KPI Grid */
+.action-btn:hover {
+  box-shadow: 0 6px 20px rgba(0, 195, 255, 0.5);
+}
+
+/* === KPI 卡片 === */
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 20px;
+  margin: 40px 0;
 }
 
 .kpi-card {
+  padding: 24px;
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 20px;
+  gap: 20px;
   cursor: pointer;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  position: relative;
+  overflow: hidden;
   text-align: left;
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
   border: none;
-  background: transparent;
   width: 100%;
 }
 
-.kpi-card:hover {
-  transform: translateY(-4px);
-}
-
+.kpi-card:hover,
 .kpi-card.active {
-  border: 1px solid rgba(37, 99, 235, 0.4);
-  background: rgba(37, 99, 235, 0.04);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: #00c3ff;
+  transform: translateY(-5px);
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5), 0 0 15px rgba(0, 195, 255, 0.2);
 }
 
-.kpi-icon {
-  width: 52px;
-  height: 52px;
+.kpi-card.active .active-glow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: #00c3ff;
+  box-shadow: 0 0 15px #00c3ff;
+}
+
+.kpi-icon-box {
+  width: 56px;
+  height: 56px;
   border-radius: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
+  font-size: 26px;
   flex-shrink: 0;
+  background: rgba(0, 195, 255, 0.1);
+  color: #00c3ff;
 }
 
-.kpi-icon.blue { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
-.kpi-icon.purple { background: rgba(139, 92, 246, 0.1); color: #8b5cf6; }
-.kpi-icon.green { background: rgba(16, 185, 129, 0.1); color: #10b981; }
-.kpi-icon.orange { background: rgba(249, 115, 22, 0.1); color: #f97316; }
-
-.kpi-info {
+.kpi-content {
   flex: 1;
   min-width: 0;
 }
 
-.kpi-info label {
+.kpi-content label {
   display: block;
-  font-size: 13px;
-  color: #64748b;
-  margin-bottom: 4px;
-  font-weight: 500;
-}
-
-.kpi-info .value {
-  font-size: 24px;
-  font-weight: 800;
-  color: #1e293b;
-  line-height: 1.2;
-}
-
-.kpi-info .trend-row {
-  margin-top: 4px;
-  display: flex;
-  gap: 12px;
-}
-
-.kpi-info .trend {
   font-size: 12px;
+  color: #8899aa;
+  margin-bottom: 6px;
+  font-weight: 500;
+  letter-spacing: 1px;
+}
+
+.main-value {
+  font-size: 28px;
+  font-weight: 900;
+  color: #fff;
+  margin: 4px 0;
+}
+
+.main-value small {
+  font-size: 10px;
+  color: #555;
+  margin-left: 5px;
+}
+
+.status-mini-tags {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.tag {
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+.tag.risk {
+  color: #ff4444;
+  border-color: rgba(255, 68, 68, 0.3);
+  background: rgba(255, 68, 68, 0.1);
+}
+
+.tag.online {
+  color: #00ffcc;
+  border-color: rgba(0, 255, 204, 0.3);
+  background: rgba(0, 255, 204, 0.1);
+}
+
+/* === 数据表格区域 === */
+.data-table-section {
+  padding: 0;
+  overflow: hidden;
+}
+
+.table-header {
+  padding: 15px 25px;
+  font-size: 12px;
+  color: #c0ccda;
+  letter-spacing: 1px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
   display: flex;
   align-items: center;
-  gap: 4px;
-  font-weight: 500;
+  gap: 10px;
 }
 
-.kpi-info .trend.risk {
-  color: #ef4444;
+.decor-line {
+  width: 3px;
+  height: 14px;
+  background: #00c3ff;
+  box-shadow: 0 0 10px #00c3ff;
 }
 
-.kpi-info .trend.normal {
-  color: #10b981;
-}
-
-.risk-dot {
-  width: 6px;
-  height: 6px;
-  background: #ef4444;
-  border-radius: 50%;
-  box-shadow: 0 0 8px #ef4444;
-  flex-shrink: 0;
-}
-
-.normal-dot {
-  width: 6px;
-  height: 6px;
-  background: #10b981;
-  border-radius: 50%;
-  box-shadow: 0 0 8px #10b981;
-  flex-shrink: 0;
-}
-
-/* Glass Card */
+/* === Glass Card === */
 .glass-card {
-  background: rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.5);
-  border-radius: 20px;
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05);
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(40px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  transition: all 0.4s ease;
 }
 
-.glass-card :deep(.el-card__body) {
-  padding: 20px;
+/* === Tabs Dark === */
+:deep(.status-tabs-dark) {
+  --el-tabs-nav-wrap-bg-color: transparent;
+  background: transparent;
 }
 
+:deep(.status-tabs-dark .el-tabs__nav-wrap::after) {
+  display: none;
+}
+
+:deep(.status-tabs-dark .el-tabs__item) {
+  color: #8899aa;
+}
+
+:deep(.status-tabs-dark .el-tabs__item.is-active) {
+  color: #00c3ff;
+}
+
+:deep(.status-tabs-dark .el-tabs__active-bar) {
+  background: #00c3ff;
+}
+
+/* === Filters === */
 .filters {
-  margin: 6px 0 14px;
+  padding: 15px 25px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
 }
 
 .filters-right {
@@ -835,12 +974,50 @@ if (!DEMO_MODE) {
   margin-top: 10px;
 }
 
+/* Dark inputs */
+:deep(.dark-input .el-input__wrapper) {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: none;
+}
+
+:deep(.dark-input .el-input__wrapper:hover) {
+  border-color: rgba(0, 195, 255, 0.3);
+}
+
+:deep(.dark-input .el-input__wrapper.is-focus) {
+  border-color: #00c3ff;
+}
+
+:deep(.dark-input .el-input__inner) {
+  color: #fff;
+}
+
+:deep(.dark-select .el-select__wrapper) {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: none;
+}
+
+:deep(.dark-select .el-select__wrapper:hover) {
+  border-color: rgba(0, 195, 255, 0.3);
+}
+
+:deep(.dark-select .el-select__wrapper.is-focus) {
+  border-color: #00c3ff;
+}
+
+:deep(.dark-select .el-select__selected-item) {
+  color: #fff;
+}
+
+/* === Table Legend === */
 .table-legend {
   display: flex;
   gap: 16px;
   align-items: center;
-  margin: 4px 0 10px;
-  color: rgba(15, 23, 42, 0.7);
+  padding: 10px 25px;
+  color: #8899aa;
   font-size: 12px;
 }
 
@@ -855,31 +1032,77 @@ if (!DEMO_MODE) {
   height: 10px;
   border-radius: 50%;
   display: inline-block;
-  box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.06);
-}
-
-.dot-button {
-  border: none;
-  background: transparent;
-  padding: 0;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.dot-button:focus-visible {
-  outline: 2px solid rgba(37, 99, 235, 0.55);
-  outline-offset: 2px;
-  border-radius: 999px;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.2);
 }
 
 .dot-ok {
   background: #22c55e;
+  box-shadow: 0 0 8px #22c55e;
 }
 
 .dot-bad {
   background: #ef4444;
+  box-shadow: 0 0 8px #ef4444;
+}
+
+/* === Table === */
+/* 表格 CSS 变量覆盖 - 参考平台概览的半透明风格 */
+.data-table-section :deep(.el-table) {
+  --el-table-bg-color: rgba(6, 10, 18, 0.9);
+  --el-table-tr-bg-color: rgba(8, 12, 20, 0.45);
+  --el-table-row-hover-bg-color: rgba(0, 195, 255, 0.06);
+  --el-table-header-bg-color: rgba(255, 255, 255, 0.04);
+  --el-table-border-color: rgba(255, 255, 255, 0.06);
+  color: #dbe6f5;
+}
+
+.data-table-section :deep(.el-table__header th) {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-color: rgba(255, 255, 255, 0.06) !important;
+  color: #8da0b7 !important;
+  font-size: 10px;
+  letter-spacing: 1.2px;
+  font-weight: 600;
+}
+
+.data-table-section :deep(.el-table__body tr) {
+  background: rgba(8, 12, 20, 0.5) !important;
+}
+
+.data-table-section :deep(.el-table__body tr.el-table__row--striped) {
+  background: rgba(14, 20, 32, 0.65) !important;
+}
+
+.data-table-section :deep(.el-table__body td) {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04) !important;
+  background-color: transparent !important;
+  color: #dbe6f5 !important;
+}
+
+.data-table-section :deep(.el-table__row:hover td) {
+  background: rgba(0, 195, 255, 0.06) !important;
+}
+
+.data-table-section :deep(.el-table__row.current-row td) {
+  background: rgba(0, 195, 255, 0.12) !important;
+}
+
+/* 固定列样式 */
+.data-table-section :deep(.el-table-fixed-column--right) {
+  background: rgba(6, 10, 18, 0.92) !important;
+}
+
+.data-table-section :deep(.el-table-fixed--right .el-table__fixed-body-wrapper) {
+  background: rgba(6, 10, 18, 0.92) !important;
+}
+
+.robot-name-cell {
+  color: #00c3ff;
+  font-weight: 600;
+}
+
+.robot-name-cell:hover {
+  text-shadow: 0 0 10px rgba(0, 195, 255, 0.5);
 }
 
 .mono {
@@ -896,6 +1119,34 @@ if (!DEMO_MODE) {
   line-height: 1.2;
 }
 
+/* === Pagination === */
+.pager {
+  display: flex;
+  justify-content: center;
+  padding: 20px;
+}
+
+:deep(.pager .el-pagination) {
+  --el-pagination-button-bg-color: transparent;
+  --el-pagination-button-color: #8899aa;
+  --el-pagination-hover-color: #00c3ff;
+}
+
+:deep(.pager .el-pagination button) {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+:deep(.pager .el-pagination button:hover) {
+  border-color: #00c3ff;
+}
+
+:deep(.pager .el-pager li.is-active) {
+  background: #00c3ff;
+  border-color: #00c3ff;
+}
+
+/* === Detail === */
 .detail {
   display: flex;
   flex-direction: column;
@@ -903,16 +1154,16 @@ if (!DEMO_MODE) {
 }
 
 .detail-checks {
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
   padding: 14px;
-  background: rgba(148, 163, 184, 0.06);
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .detail-checks-title {
   font-weight: 800;
   margin-bottom: 12px;
-  color: rgba(15, 23, 42, 0.84);
+  color: #fff;
 }
 
 .detail-checks-grid {
@@ -926,9 +1177,9 @@ if (!DEMO_MODE) {
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.82);
-  border: 1px solid rgba(15, 23, 42, 0.06);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .detail-check-key {
@@ -938,13 +1189,14 @@ if (!DEMO_MODE) {
 
 .detail-check-label {
   flex: 1;
-  color: rgba(15, 23, 42, 0.7);
+  color: #8899aa;
   font-size: 12px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/* === Edit Form === */
 .edit-form :deep(.el-form-item) {
   margin-bottom: 14px;
 }
@@ -952,7 +1204,7 @@ if (!DEMO_MODE) {
 .edit-form :deep(.el-input__wrapper),
 .edit-form :deep(.el-select__wrapper),
 .edit-form :deep(.el-textarea__inner) {
-  border-radius: 12px;
+  border-radius: 10px;
 }
 
 .form-label {
@@ -964,27 +1216,197 @@ if (!DEMO_MODE) {
 
 .form-label-title {
   font-weight: 800;
-  color: rgba(15, 23, 42, 0.86);
+  color: #fff;
 }
 
 .form-label-hint {
-  color: var(--app-muted);
+  color: #8899aa;
   font-size: 12px;
   font-weight: 600;
 }
 
-.pager {
-  margin-top: 16px;
-  justify-content: center;
+/* === Dark Dialog === */
+:deep(.dark-dialog) {
+  background: rgba(6, 10, 18, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(22px);
 }
 
-.low {
-  color: #b91c1c;
-  font-weight: 700;
+:deep(.dark-dialog .el-dialog__header) {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  margin-right: 0;
+  padding: 18px 24px 8px;
+}
+
+:deep(.dark-dialog .el-dialog__title) {
+  color: #fff;
+}
+
+:deep(.dark-dialog .el-dialog__body) {
+  color: #eee;
+  padding: 14px 24px 24px;
+}
+
+:deep(.dark-dialog .el-dialog__close) {
+  color: #9fb3c8;
+}
+
+:deep(.dark-dialog .el-dialog__close:hover) {
+  color: #00c3ff;
+}
+
+:deep(.dark-dialog .el-descriptions) {
+  --el-descriptions-table-border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+:deep(.dark-dialog .el-descriptions__label) {
+  background: rgba(255, 255, 255, 0.03) !important;
+  color: #7f93a8;
+}
+
+:deep(.dark-dialog .el-descriptions__content) {
+  background: transparent !important;
+  color: #dfe8f7;
+}
+
+:deep(.dark-dialog .el-input__wrapper) {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+:deep(.dark-dialog .el-input__inner) {
+  color: #fff;
+}
+
+:deep(.dark-dialog .el-textarea__inner) {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #fff;
 }
 
 /* Responsive */
 @media (max-width: 1200px) {
-  .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  .kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+</style>
+
+<!-- 全局样式：下拉菜单深色主题 -->
+<style>
+/* Select Dropdown - 玻璃质感 */
+.el-select-dropdown {
+  background: rgba(10, 10, 15, 0.85) !important;
+  backdrop-filter: blur(30px) !important;
+  border: 1px solid rgba(0, 204, 255, 0.2) !important;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5) !important;
+}
+
+.el-select-dropdown__item {
+  color: #aaa !important;
+  background: transparent !important;
+}
+
+.el-select-dropdown__item.hover,
+.el-select-dropdown__item:hover {
+  background: rgba(0, 204, 255, 0.15) !important;
+  color: #00ccff !important;
+}
+
+.el-select-dropdown__item.is-selected {
+  color: #00ccff !important;
+  background: rgba(0, 204, 255, 0.2) !important;
+  font-weight: 600;
+}
+
+.el-select-dropdown__item.is-disabled {
+  color: #666 !important;
+}
+
+.el-select-dropdown__empty-panel {
+  color: #666 !important;
+}
+
+.el-select-dropdown__wrap {
+  background: transparent !important;
+}
+
+.el-select-dropdown__list {
+  background: transparent !important;
+}
+
+.el-popper.is-light .el-popper__arrow::before {
+  background: rgba(10, 10, 15, 0.85) !important;
+  border: 1px solid rgba(0, 204, 255, 0.2) !important;
+}
+
+.el-popper .el-popper__arrow::before {
+  background: rgba(10, 10, 15, 0.85) !important;
+  border: 1px solid rgba(0, 204, 255, 0.2) !important;
+}
+
+/* Checkbox Dark Theme in Dropdown */
+.el-select-dropdown__item .el-checkbox {
+  color: #aaa !important;
+}
+
+.el-checkbox {
+  color: #aaa !important;
+}
+
+.el-checkbox__input.is-checked .el-checkbox__inner {
+  background-color: #00ccff !important;
+  border-color: #00ccff !important;
+}
+
+.el-checkbox__inner {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+.el-checkbox__inner:hover {
+  border-color: #00ccff !important;
+}
+
+.el-checkbox__label {
+  color: #aaa !important;
+}
+
+/* Tag Dark Theme */
+.el-tag {
+  background: rgba(0, 204, 255, 0.1) !important;
+  border-color: rgba(0, 204, 255, 0.3) !important;
+  color: #00ccff !important;
+}
+
+.el-tag--success {
+  background: rgba(0, 255, 136, 0.15) !important;
+  border-color: rgba(0, 255, 136, 0.3) !important;
+  color: #00ff88 !important;
+}
+
+.el-tag--warning {
+  background: rgba(255, 174, 0, 0.15) !important;
+  border-color: rgba(255, 174, 0, 0.3) !important;
+  color: #ffae00 !important;
+}
+
+.el-tag--danger {
+  background: rgba(255, 68, 68, 0.15) !important;
+  border-color: rgba(255, 68, 68, 0.3) !important;
+  color: #ff4444 !important;
+}
+
+.el-tag--info {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  color: #888 !important;
+}
+
+.el-tag.el-tag--light {
+  background: rgba(0, 204, 255, 0.1) !important;
+  border-color: rgba(0, 204, 255, 0.3) !important;
+  color: #00ccff !important;
 }
 </style>
