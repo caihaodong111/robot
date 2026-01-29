@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Metal Tech Dashboard</title>
+    <style>
+        :root {
+            --metal-border: linear-gradient(145deg, #666, #222, #555);
+            --glow-blue: rgba(0, 150, 255, 0.5);
+            --glow-gold: rgba(255, 160, 0, 0.5);
+        }
+
+        body {
+            background-color: #000;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: 'Segoe UI', sans-serif;
+            overflow: hidden;
+        }
+
+        /* 背景大环境：承袭第一张图的流光 */
+        .ambient-light {
+            position: absolute;
+            width: 150%;
+            height: 100%;
+            background:
+                linear-gradient(10deg, transparent 40%, var(--glow-blue) 45%, var(--glow-gold) 50%, transparent 55%);
+            filter: blur(60px);
+            opacity: 0.3;
+            animation: drift 10s infinite alternate;
+        }
+
+        @keyframes drift {
+            from { transform: translateX(-10%) rotate(-5deg); }
+            to { transform: translateX(10%) rotate(-5deg); }
+        }
+
+        /* --- 金属质感面板 --- */
+        .metal-panel {
+            position: relative;
+            width: 850px;
+            padding: 2px; /* 边框厚度 */
+            background: var(--metal-border); /* 模拟金属边框 */
+            border-radius: 8px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.8);
+        }
+
+        .panel-content {
+            background: linear-gradient(135deg, #0f1115 0%, #050505 100%);
+            border-radius: 6px;
+            padding: 25px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* 面板表面微弱的金属拉丝纹理 */
+        .panel-content::before {
+            content: "";
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.02) 3px);
+            pointer-events: none;
+        }
+
+        /* --- 标题：金属渐变风格 --- */
+        .panel-header {
+            border-left: 4px solid #ffaa00;
+            padding-left: 15px;
+            margin-bottom: 30px;
+        }
+
+        .panel-title {
+            font-size: 20px;
+            font-weight: 800;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            /* 关键：金属渐变文字 */
+            background: linear-gradient(to bottom, #ffffff 0%, #888888 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            display: flex;
+            align-items: center;
+        }
+
+        /* --- 数据环样式：带发光感 --- */
+        .data-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+        }
+
+        .data-item {
+            text-align: center;
+            position: relative;
+        }
+
+        .circle-container {
+            width: 130px;
+            height: 130px;
+            margin: 0 auto 15px;
+            border-radius: 50%;
+            /* 内嵌深邃感 */
+            background: radial-gradient(circle, #1a1c20 0%, #000 100%);
+            border: 1px solid rgba(255,255,255,0.1);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            box-shadow: inset 0 0 15px rgba(0,0,0,0.8), 0 0 10px rgba(0, 195, 255, 0.1);
+        }
+
+        .value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 0 0 10px rgba(255,255,255,0.5);
+        }
+
+        .label {
+            font-size: 11px;
+            color: #666;
+            margin-top: 5px;
+            letter-spacing: 1px;
+        }
+
+        /* 重点：数据框上的高光切面 */
+        .highlight {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            border-radius: 6px;
+            box-shadow: inset 1px 1px 1px rgba(255,255,255,0.1), inset -1px -1px 1px rgba(0,0,0,0.5);
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="ambient-light"></div>
+
+    <div class="metal-panel">
+        <div class="panel-content">
+            <div class="highlight"></div>
+
+            <div class="panel-header">
+                <div class="panel-title">
+                    平台概览 <span style="font-size: 12px; margin-left: 10px; color: #555;">PLATFORM OVERVIEW</span>
+                </div>
+            </div>
+
+            <div class="data-grid">
+                <div class="data-item">
+                    <div class="circle-container" style="border-top: 3px solid #00c3ff;">
+                        <div class="value">254</div>
+                        <div class="label">各车间高风险</div>
+                    </div>
+                </div>
+                <div class="data-item">
+                    <div class="circle-container" style="border-top: 3px solid #ffaa00;">
+                        <div class="value">214</div>
+                        <div class="label">开发中</div>
+                    </div>
+                </div>
+                <div class="data-item">
+                    <div class="circle-container" style="border-top: 3px solid #eee;">
+                        <div class="value">85%</div>
+                        <div class="label">集群健康度</div>
+                    </div>
+                </div>
+                <div class="data-item">
+                    <div class="circle-container" style="border-top: 3px solid #00ff88;">
+                        <div class="value">10台</div>
+                        <div class="label">实时监控</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>

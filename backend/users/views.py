@@ -63,6 +63,7 @@ def login(request):
 
 
 @api_view(['POST'])
+@permission_classes([AllowAny])
 def logout(request):
     """用户登出"""
     try:
@@ -73,6 +74,7 @@ def logout(request):
 
 
 @api_view(['GET'])
+@permission_classes([AllowAny])
 def profile(request):
     """获取用户信息"""
     return Response({

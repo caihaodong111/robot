@@ -1,240 +1,262 @@
 <template>
-  <el-container class="layout-container">
-    <!-- 侧边栏 -->
-    <el-aside :width="isCollapsed ? '60px' : '220px'" class="app-aside" :class="{ collapsed: isCollapsed }">
-      <el-tooltip content="机器人技术管理平台" placement="right" :show-after="500" :disabled="!isCollapsed">
-        <div class="logo">
-          <el-icon :size="isCollapsed ? 28 : 30"><Cpu /></el-icon>
-          <span v-show="!isCollapsed">机器人技术管理平台</span>
+  <div class="layout-container">
+    <!-- 左侧触发条 -->
+    <div class="hover-trigger" @mouseenter="handleMouseEnter" @mouseleave="handleMouseLeave"></div>
+
+    <!-- 隐藏式侧边栏 -->
+    <transition name="slide-fade">
+      <aside v-show="isSidebarVisible" class="app-sidebar" @mouseenter="handleMouseEnter" @mouseleave="handleMouseLeave">
+        <div class="sidebar-content">
+          <div class="logo">
+            <el-icon :size="24"><Cpu /></el-icon>
+            <span>RobotOps</span>
+          </div>
+          <nav class="sidebar-nav">
+            <router-link to="/" class="nav-item" :class="{ active: route.path === '/' }">
+              <el-icon><Odometer /></el-icon>
+              <span>平台概览</span>
+            </router-link>
+            <router-link to="/devices" class="nav-item" :class="{ active: route.path === '/devices' }">
+              <el-icon><Cpu /></el-icon>
+              <span>机器人状态</span>
+            </router-link>
+            <router-link to="/monitoring" class="nav-item" :class="{ active: route.path === '/monitoring' }">
+              <el-icon><TrendCharts /></el-icon>
+              <span>关键轨迹检查</span>
+            </router-link>
+            <router-link to="/alerts" class="nav-item" :class="{ active: route.path === '/alerts' }">
+              <el-icon><Bell /></el-icon>
+              <span>可视化BI</span>
+            </router-link>
+            <router-link to="/portal" class="nav-item" :class="{ active: route.path === '/portal' }">
+              <el-icon><Grid /></el-icon>
+              <span>应用门户</span>
+            </router-link>
+          </nav>
         </div>
-      </el-tooltip>
-      <el-menu
-        class="app-menu"
-        :default-active="activeMenu"
-        :collapse="isCollapsed"
-        :collapse-transition="false"
-        router
-      >
-        <el-tooltip content="平台概览" placement="right" :show-after="500" :disabled="!isCollapsed">
-          <el-menu-item index="/dashboard">
-            <el-icon><Odometer /></el-icon>
-            <span>平台概览</span>
-          </el-menu-item>
-        </el-tooltip>
-        <el-tooltip content="机器人状态" placement="right" :show-after="500" :disabled="!isCollapsed">
-          <el-menu-item index="/devices">
-            <el-icon><Cpu /></el-icon>
-            <span>机器人状态</span>
-          </el-menu-item>
-        </el-tooltip>
-        <el-tooltip content="关键轨迹检查" placement="right" :show-after="500" :disabled="!isCollapsed">
-          <el-menu-item index="/monitoring">
-            <el-icon><TrendCharts /></el-icon>
-            <span>关键轨迹检查</span>
-          </el-menu-item>
-        </el-tooltip>
-        <el-tooltip content="可视化BI" placement="right" :show-after="500" :disabled="!isCollapsed">
-          <el-menu-item index="/alerts">
-            <el-icon><Bell /></el-icon>
-            <span>可视化BI</span>
-          </el-menu-item>
-        </el-tooltip>
-        <el-tooltip content="应用门户" placement="right" :show-after="500" :disabled="!isCollapsed">
-          <el-menu-item index="/portal">
-            <el-icon><Grid /></el-icon>
-            <span>应用门户</span>
-          </el-menu-item>
-        </el-tooltip>
-      </el-menu>
-    </el-aside>
+      </aside>
+    </transition>
 
     <!-- 主内容区 -->
-    <el-container>
-      <!-- 顶部导航 -->
-      <el-header>
-        <div class="header-content">
-          <div class="header-left">
-            <el-icon class="collapse-btn" @click="toggleCollapse">
-              <Expand v-if="isCollapsed" />
-              <Fold v-else />
-            </el-icon>
-            <el-breadcrumb separator="/">
-              <el-breadcrumb-item :to="{ path: '/' }">首页</el-breadcrumb-item>
-              <el-breadcrumb-item>{{ currentPageName }}</el-breadcrumb-item>
-            </el-breadcrumb>
-          </div>
-          <div class="user-info">
-            <el-dropdown>
-              <span class="user-name">
-                <el-icon><User /></el-icon>
-                {{ userStore.username }}
-              </span>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item @click="handleLogout">
-                    <el-icon><SwitchButton /></el-icon>
-                    退出登录
-                  </el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
-          </div>
-        </div>
-      </el-header>
-
-      <!-- 页面内容 -->
-      <el-main class="app-main">
-        <div class="page-shell">
-          <RouterView />
-        </div>
-      </el-main>
-    </el-container>
-  </el-container>
+    <main class="app-main">
+      <RouterView />
+    </main>
+  </div>
 </template>
 
 <script setup>
-import { computed } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
-import { ElMessageBox, ElMessage } from 'element-plus'
+import { ref } from 'vue'
+import { useRoute, RouterView } from 'vue-router'
 import {
-  Odometer, Cpu, TrendCharts, Bell, User, SwitchButton, Grid, Expand, Fold
+  Odometer, Cpu, TrendCharts, Bell, Grid
 } from '@element-plus/icons-vue'
-import { useUserStore } from '@/stores/user'
-import { useLayoutStore } from '@/stores/layout'
 
-const router = useRouter()
 const route = useRoute()
-const userStore = useUserStore()
-const layoutStore = useLayoutStore()
 
-const isCollapsed = computed(() => layoutStore.isCollapsed)
+const isSidebarVisible = ref(false)
+let hoverTimer = null
 
-const toggleCollapse = () => {
-  layoutStore.toggleCollapse()
+const handleMouseEnter = () => {
+  if (hoverTimer) clearTimeout(hoverTimer)
+  hoverTimer = setTimeout(() => {
+    isSidebarVisible.value = true
+  }, 100)
 }
 
-const activeMenu = computed(() => route.path)
-
-const currentPageName = computed(() => {
-  const names = {
-    '/dashboard': '平台概览',
-    '/devices': '机器人状态',
-    '/monitoring': '关键轨迹检查',
-    '/alerts': '可视化BI',
-    '/portal': '应用门户'
-  }
-  return names[route.path] || '首页'
-})
-
-const handleLogout = async () => {
-  try {
-    await ElMessageBox.confirm('确定要退出登录吗？', '提示', {
-      type: 'warning'
-    })
-    await userStore.logout()
-    ElMessage.success('已退出登录')
-    router.push('/login')
-  } catch (error) {
-    // 用户取消操作
-  }
+const handleMouseLeave = () => {
+  if (hoverTimer) clearTimeout(hoverTimer)
+  hoverTimer = setTimeout(() => {
+    isSidebarVisible.value = false
+  }, 100)
 }
 </script>
 
 <style scoped>
 .layout-container {
+  height: 100vh;
+  display: flex;
+  background: #000;
+}
+
+/* === 触发条 === */
+.hover-trigger {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 8px;
   height: 100%;
+  z-index: 999;
+  cursor: pointer;
 }
 
-.app-aside {
-  background: var(--app-surface);
-  border-right: 1px solid var(--app-border);
-  color: var(--app-text);
-  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  overflow: hidden;
-  position: relative;
-  will-change: width;
-}
-
-.logo {
+.hover-trigger::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
   height: 60px;
+  background: linear-gradient(180deg,
+    transparent,
+    rgba(0, 204, 255, 0.3) 50%,
+    transparent
+  );
+  border-radius: 0 2px 2px 0;
+  transition: all 0.3s ease;
+}
+
+.hover-trigger:hover::after {
+  background: linear-gradient(180deg,
+    transparent,
+    rgba(0, 204, 255, 0.6) 50%,
+    transparent
+  );
+  box-shadow: 0 0 12px rgba(0, 204, 255, 0.4);
+}
+
+/* === 侧边栏 === */
+.app-sidebar {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 220px;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.95);
+  backdrop-filter: blur(30px);
+  border-right: 1px solid rgba(0, 204, 255, 0.2);
+  box-shadow:
+    4px 0 24px rgba(0, 0, 0, 0.6),
+    inset -1px 0 0 rgba(0, 204, 255, 0.1);
+  z-index: 1000;
+}
+
+/* 侧边栏发光边框 */
+.app-sidebar::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 1px;
+  height: 100%;
+  background: linear-gradient(180deg,
+    transparent,
+    rgba(0, 204, 255, 0.5) 30%,
+    rgba(0, 204, 255, 0.7) 50%,
+    rgba(0, 204, 255, 0.5) 70%,
+    transparent
+  );
+}
+
+/* === 侧边栏内容 === */
+.sidebar-content {
+  padding: 20px 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Logo */
+.logo {
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 10px;
+  padding: 0 16px 20px;
+  border-bottom: 1px solid rgba(0, 204, 255, 0.1);
+  margin-bottom: 12px;
+}
+
+.logo .el-icon {
+  color: #0066ff;
+  filter: drop-shadow(0 0 10px rgba(0, 102, 255, 0.6));
+}
+
+.logo span {
   font-size: 16px;
-  font-weight: bold;
-  color: var(--app-text);
-  gap: 8px;
-  border-bottom: 1px solid var(--app-border);
-  padding: 0 10px;
-  white-space: nowrap;
+  font-weight: 800;
+  letter-spacing: 1px;
+  background: linear-gradient(180deg, #fff 30%, #888 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
-.app-aside.collapsed .logo {
-  padding: 0;
+/* 导航 */
+.sidebar-nav {
+  flex: 1;
+  padding: 0 12px;
+  overflow-y: auto;
 }
 
-.app-menu {
-  border-right: none;
-}
-
-.app-menu :deep(.el-menu-item),
-.app-menu :deep(.el-sub-menu__title) {
-  color: rgba(15, 23, 42, 0.8);
-}
-
-.app-menu :deep(.el-menu-item.is-active) {
-  color: var(--app-primary);
-  background: rgba(37, 99, 235, 0.08);
-}
-
-.el-header {
-  background: rgba(255, 255, 255, 0.85);
-  border-bottom: 1px solid var(--app-border);
-  backdrop-filter: saturate(180%) blur(10px);
-  display: flex;
-  align-items: center;
-  padding: 0 20px;
-}
-
-.header-content {
-  width: 100%;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.header-left {
+.nav-item {
   display: flex;
   align-items: center;
   gap: 12px;
-}
-
-.collapse-btn {
-  font-size: 18px;
-  cursor: pointer;
+  padding: 12px 16px;
+  margin: 4px 0;
+  border-radius: 10px;
+  color: #888;
+  text-decoration: none;
   transition: all 0.3s ease;
-  color: var(--app-text);
-}
-
-.collapse-btn:hover {
-  color: var(--app-primary);
-}
-
-.user-name {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  cursor: pointer;
   font-size: 14px;
 }
 
-.app-main {
-  background: var(--app-bg);
-  padding: 20px;
+.nav-item:hover {
+  color: #00ccff;
+  background: rgba(0, 204, 255, 0.08);
 }
 
-.page-shell {
-  margin: 0 auto;
-  transition: max-width 0.25s ease;
+.nav-item.active {
+  color: #00ccff;
+  background: rgba(0, 204, 255, 0.12);
+  border: 1px solid rgba(0, 204, 255, 0.25);
+  box-shadow:
+    0 0 20px rgba(0, 204, 255, 0.15),
+    inset 0 0 20px rgba(0, 204, 255, 0.05);
+}
+
+.nav-item .el-icon {
+  font-size: 18px;
+  color: #666;
+  transition: all 0.3s ease;
+}
+
+.nav-item:hover .el-icon,
+.nav-item.active .el-icon {
+  color: #00ccff;
+  filter: drop-shadow(0 0 8px rgba(0, 204, 255, 0.5));
+}
+
+/* 滚动条 */
+.sidebar-nav::-webkit-scrollbar {
+  width: 4px;
+}
+
+.sidebar-nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-nav::-webkit-scrollbar-thumb {
+  background: rgba(0, 204, 255, 0.3);
+  border-radius: 2px;
+}
+
+/* === 主内容区 === */
+.app-main {
+  flex: 1;
+  min-height: 100vh;
+  background: #000;
+}
+
+/* === 过渡动画 === */
+.slide-fade-enter-active,
+.slide-fade-leave-active {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.slide-fade-enter-from,
+.slide-fade-leave-to {
+  transform: translateX(-100%);
+  opacity: 0;
 }
 </style>

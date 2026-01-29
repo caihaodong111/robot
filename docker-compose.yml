@@ -5,7 +5,7 @@
 
 services:
   backend:
-    image: sg-backend:v0.2
+    image: sg-backend:v0.3
     container_name: iot-backend
     ports:
       - "8000:8000"
@@ -14,7 +14,7 @@ services:
       - iot-network
 
   frontend:
-    image: sg-frontend:v0.2
+    image: sg-frontend:v0.3
     container_name: iot-frontend
     ports:
       - "80:80"

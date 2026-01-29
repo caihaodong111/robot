@@ -2,7 +2,6 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
 from django.db.models import Count, Q
 from .models import AlertRule, AlertRecord, NotificationConfig
@@ -15,7 +14,6 @@ from .serializers import (
 class AlertRuleViewSet(viewsets.ModelViewSet):
     """报警规则视图集"""
     serializer_class = AlertRuleSerializer
-    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         return AlertRule.objects.filter(device__owner=self.request.user)
@@ -35,7 +33,6 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
 class AlertRecordViewSet(viewsets.ReadOnlyModelViewSet):
     """报警记录视图集"""
     serializer_class = AlertRecordSerializer
-    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         queryset = AlertRecord.objects.filter(
@@ -88,7 +85,6 @@ class AlertRecordViewSet(viewsets.ReadOnlyModelViewSet):
 
 class AlertAcknowledgeView(APIView):
     """报警确认视图"""
-    permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
         """确认报警"""
@@ -112,7 +108,6 @@ class AlertAcknowledgeView(APIView):
 
 class AlertResolveView(APIView):
     """报警解决视图"""
-    permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
         """解决报警"""
@@ -135,7 +130,6 @@ class AlertResolveView(APIView):
 
 class AlertStatisticsView(APIView):
     """报警统计视图"""
-    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         """获取报警统计数据"""

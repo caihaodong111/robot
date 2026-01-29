@@ -2,7 +2,6 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
 from .models import Device, DeviceConfig
 from .serializers import DeviceSerializer, DeviceListSerializer, DeviceCreateSerializer, DeviceConfigSerializer
@@ -10,7 +9,6 @@ from .serializers import DeviceSerializer, DeviceListSerializer, DeviceCreateSer
 
 class DeviceViewSet(viewsets.ModelViewSet):
     """设备视图集"""
-    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         return Device.objects.filter(owner=self.request.user)
@@ -61,7 +59,6 @@ class DeviceViewSet(viewsets.ModelViewSet):
 
 class DeviceToggleStatusView(APIView):
     """设备状态切换视图"""
-    permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
         try:

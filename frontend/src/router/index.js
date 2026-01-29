@@ -1,25 +1,12 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { useUserStore } from '@/stores/user'
-import { DEMO_MODE } from '@/config/appConfig'
 
 const routes = [
   {
-    path: '/login',
-    name: 'Login',
-    component: () => import('@/views/auth/LoginView.vue'),
-    meta: { requiresAuth: false }
-  },
-  {
     path: '/',
     component: () => import('@/views/LayoutView.vue'),
-    meta: { requiresAuth: true },
     children: [
       {
         path: '',
-        redirect: '/dashboard'
-      },
-      {
-        path: 'dashboard',
         name: 'Dashboard',
         component: () => import('@/views/dashboard/DashboardView.vue')
       },
@@ -50,25 +37,6 @@ const routes = [
 const router = createRouter({
   history: createWebHistory(),
   routes
-})
-
-// 路由守卫
-router.beforeEach((to, from, next) => {
-  if (DEMO_MODE) {
-    next()
-    return
-  }
-
-  const userStore = useUserStore()
-  const isAuthenticated = userStore.isAuthenticated
-
-  if (to.meta.requiresAuth !== false && !isAuthenticated) {
-    next('/login')
-  } else if (to.path === '/login' && isAuthenticated) {
-    next('/devices')
-  } else {
-    next()
-  }
 })
 
 export default router

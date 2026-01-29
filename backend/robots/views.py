@@ -4,11 +4,9 @@ from django.db.models import Count, Q
 from django.views.decorators.clickjacking import xframe_options_exempt
 from rest_framework import mixins, viewsets, status
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from .models import RiskEvent, RobotComponent, RobotGroup
-from .permissions import IsStaffOrReadOnly
 from .serializers import (
     RiskEventSerializer,
     RobotComponentSerializer,
@@ -22,7 +20,6 @@ from .gripper_service import check_gripper_from_config
 class RobotGroupViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     queryset = RobotGroup.objects.all()
     serializer_class = RobotGroupSerializer
-    permission_classes = [IsStaffOrReadOnly]
 
     def list(self, request, *args, **kwargs):
         groups = list(self.get_queryset())
@@ -48,7 +45,6 @@ class RobotComponentViewSet(
 ):
     queryset = RobotComponent.objects.select_related("group").all()
     serializer_class = RobotComponentSerializer
-    permission_classes = [IsStaffOrReadOnly]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -273,7 +269,6 @@ class GripperCheckViewSet(viewsets.GenericViewSet):
     关键轨迹检查API ViewSet
     提供执行关键轨迹检查和获取机器人列表的接口
     """
-    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         return RobotComponent.objects.all()

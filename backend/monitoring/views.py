@@ -2,7 +2,6 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.permissions import IsAuthenticated
 from django.db.models import Avg, Max, Min, Count
 from django.db.models.functions import TruncHour, TruncDay
 from django.utils import timezone
@@ -20,7 +19,6 @@ import json
 class SensorDataViewSet(viewsets.ReadOnlyModelViewSet):
     """传感器数据视图集"""
     serializer_class = SensorDataSerializer
-    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         device_id = self.request.query_params.get('device_id')
@@ -63,7 +61,6 @@ class SensorDataViewSet(viewsets.ReadOnlyModelViewSet):
 
 class DataUploadView(APIView):
     """数据上报视图"""
-    permission_classes = [IsAuthenticated]
 
     def post(self, request):
         """接收设备上报的数据"""
@@ -91,7 +88,6 @@ class DataUploadView(APIView):
 
 class DataQueryView(APIView):
     """数据查询视图"""
-    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         """查询历史数据"""
@@ -134,7 +130,6 @@ class DataQueryView(APIView):
 
 class DataExportView(APIView):
     """数据导出视图"""
-    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         """导出数据为Excel"""
@@ -206,7 +201,6 @@ class DataExportView(APIView):
 
 class RealTimeDataView(APIView):
     """实时数据视图"""
-    permission_classes = [IsAuthenticated]
 
     def get(self, request, device_id):
         """获取指定设备的实时数据"""
@@ -234,7 +228,6 @@ class RealTimeDataView(APIView):
 
 class DataStatisticsView(APIView):
     """数据统计视图"""
-    permission_classes = [IsAuthenticated]
 
     def get(self, request, device_id):
         """获取设备数据统计"""

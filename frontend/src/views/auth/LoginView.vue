@@ -1,6 +1,24 @@
 <template>
   <div class="grid-wrapper login-page">
     <div class="grid-background"></div>
+    <div class="light-gold"></div>
+
+    <!-- 扫描光束 -->
+    <div class="light-beam"></div>
+    <div class="light-beam"></div>
+    <div class="light-beam"></div>
+
+    <!-- 浮动粒子 -->
+    <div class="particles">
+      <div class="particle"></div>
+      <div class="particle"></div>
+      <div class="particle"></div>
+      <div class="particle"></div>
+      <div class="particle"></div>
+      <div class="particle"></div>
+      <div class="particle"></div>
+      <div class="particle"></div>
+    </div>
 
     <header class="top-nav">
       <div class="brand">
@@ -158,7 +176,7 @@ const handleLogin = async () => {
   min-height: 100vh;
   width: 100%;
   position: relative;
-  background: #f8fafc;
+  background: #000;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -168,21 +186,177 @@ const handleLogin = async () => {
   position: absolute;
   inset: 0;
   z-index: 0;
-  background-image: 
-    radial-gradient(at 0% 0%, rgba(37, 99, 235, 0.08) 0px, transparent 50%),
-    radial-gradient(at 100% 100%, rgba(14, 165, 233, 0.08) 0px, transparent 50%);
-  background-size: 100% 100%;
 }
 
+/* 透视网格地面 - 增强版 */
 .grid-background::before {
   content: '';
   position: absolute;
-  inset: 0;
-  background-image: linear-gradient(#e2e8f0 1px, transparent 1px),
-    linear-gradient(to right, #e2e8f0 1px, transparent 1px);
-  background-size: 32px 32px;
-  mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, #000 40%, transparent 100%);
+  width: 200%;
+  height: 200%;
+  bottom: -30%;
+  left: -50%;
+  background-image:
+    linear-gradient(to right, rgba(0, 204, 255, 0.15) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 204, 255, 0.15) 1px, transparent 1px);
+  background-size: 60px 60px;
+  transform: perspective(600px) rotateX(65deg);
   opacity: 0.6;
+  animation: gridMove 20s linear infinite;
+}
+
+@keyframes gridMove {
+  0% { background-position: 0 0; }
+  100% { background-position: 0 60px; }
+}
+
+/* 蓝色主光 - 增强版 */
+.grid-background::after {
+  content: '';
+  position: absolute;
+  width: 150%;
+  height: 300px;
+  background: radial-gradient(ellipse at center, rgba(0, 102, 255, 0.5) 0%, rgba(0, 204, 255, 0.2) 40%, transparent 70%);
+  top: 20%;
+  left: -25%;
+  transform: rotate(-8deg);
+  filter: blur(50px);
+  mix-blend-mode: screen;
+  animation: bluePulse 4s ease-in-out infinite alternate;
+}
+
+@keyframes bluePulse {
+  0% { opacity: 0.5; transform: rotate(-8deg) scale(1); }
+  100% { opacity: 0.8; transform: rotate(-8deg) scale(1.1); }
+}
+
+/* 橙金亮线 - 增强版 */
+.light-gold {
+  position: absolute;
+  width: 150%;
+  height: 80px;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(255, 174, 0, 0.1) 20%,
+    rgba(255, 174, 0, 0.8) 45%,
+    rgba(0, 204, 255, 0.8) 55%,
+    rgba(0, 204, 255, 0.1) 80%,
+    transparent 100%
+  );
+  top: 50%;
+  left: -25%;
+  transform: rotate(-8deg);
+  filter: blur(25px);
+  mix-blend-mode: screen;
+  animation: moveLight 6s ease-in-out infinite alternate;
+  z-index: 5;
+  pointer-events: none;
+}
+
+@keyframes moveLight {
+  0% {
+    transform: rotate(-8deg) translateX(-8%) translateY(0);
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    transform: rotate(-8deg) translateX(8%) translateY(5px);
+    opacity: 0.6;
+  }
+}
+
+/* 额外的光束效果 */
+.light-beam {
+  position: absolute;
+  width: 3px;
+  height: 100vh;
+  background: linear-gradient(to bottom,
+    transparent,
+    rgba(0, 204, 255, 0.6) 30%,
+    rgba(0, 204, 255, 0.8) 50%,
+    rgba(0, 204, 255, 0.6) 70%,
+    transparent
+  );
+  filter: blur(2px);
+  z-index: 3;
+  pointer-events: none;
+  animation: beamScan 8s ease-in-out infinite;
+}
+
+.light-beam:nth-child(1) {
+  left: 20%;
+  animation-delay: 0s;
+}
+
+.light-beam:nth-child(2) {
+  left: 50%;
+  animation-delay: 2s;
+}
+
+.light-beam:nth-child(3) {
+  left: 80%;
+  animation-delay: 4s;
+}
+
+@keyframes beamScan {
+  0%, 100% {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  10%, 90% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.8;
+    transform: translateX(20px);
+  }
+}
+
+/* 粒子效果 */
+.particles {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.particle {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  background: rgba(0, 204, 255, 0.8);
+  border-radius: 50%;
+  animation: particleFloat 15s linear infinite;
+}
+
+.particle:nth-child(1) { left: 10%; animation-delay: 0s; }
+.particle:nth-child(2) { left: 25%; animation-delay: 2s; }
+.particle:nth-child(3) { left: 40%; animation-delay: 4s; }
+.particle:nth-child(4) { left: 55%; animation-delay: 6s; }
+.particle:nth-child(5) { left: 70%; animation-delay: 8s; }
+.particle:nth-child(6) { left: 85%; animation-delay: 10s; }
+.particle:nth-child(7) { left: 15%; animation-delay: 12s; }
+.particle:nth-child(8) { left: 60%; animation-delay: 14s; }
+
+@keyframes particleFloat {
+  0% {
+    transform: translateY(100vh) scale(0);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+    transform: translateY(90vh) scale(1);
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-10vh) scale(0);
+    opacity: 0;
+  }
 }
 
 .top-nav {
@@ -198,29 +372,33 @@ const handleLogin = async () => {
   display: flex;
   align-items: center;
   gap: 12px;
-  color: #0f172a;
+  color: #fff;
 }
 
 .brand-icon {
-  color: #2563eb;
-  filter: drop-shadow(0 4px 6px rgba(37, 99, 235, 0.2));
+  color: #0066ff;
+  filter: drop-shadow(0 0 10px rgba(0, 102, 255, 0.6));
 }
 
 .brand-text {
-  font-size: 20px;
-  font-weight: 700;
-  letter-spacing: -0.5px;
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  background: linear-gradient(180deg, #FFFFFF 30%, #999999 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .brand-divider {
-  color: #cbd5e1;
+  color: #444;
   font-weight: 300;
 }
 
 .brand-subtext {
-  font-size: 14px;
-  color: #64748b;
+  font-size: 13px;
+  color: #888;
   font-weight: 500;
+  letter-spacing: 1px;
 }
 
 .nav-links {
@@ -233,19 +411,20 @@ const handleLogin = async () => {
   align-items: center;
   gap: 6px;
   text-decoration: none;
-  color: #64748b;
+  color: #888;
   font-size: 14px;
   font-weight: 500;
   transition: color 0.2s;
 }
 
 .nav-link:hover {
-  color: #2563eb;
+  color: #00ccff;
+  text-shadow: 0 0 10px rgba(0, 204, 255, 0.5);
 }
 
 .login-container {
   position: relative;
-  z-index: 1;
+  z-index: 20;
   flex: 1;
   display: flex;
   align-items: center;
@@ -260,89 +439,124 @@ const handleLogin = async () => {
 .hero-section {
   flex: 1;
   max-width: 600px;
+  animation: heroSlideIn 1s ease-out;
+}
+
+@keyframes heroSlideIn {
+  0% {
+    opacity: 0;
+    transform: translateX(-50px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 .hero-badge {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 16px;
-  background: rgba(255, 255, 255, 0.8);
-  border: 1px solid rgba(14, 165, 233, 0.2);
+  padding: 8px 20px;
+  background: rgba(0, 102, 255, 0.15);
+  border: 1px solid rgba(0, 204, 255, 0.3);
   border-radius: 99px;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
-  color: #0369a1;
-  margin-bottom: 24px;
-  backdrop-filter: blur(4px);
+  color: #00ccff;
+  margin-bottom: 30px;
+  backdrop-filter: blur(8px);
+  text-transform: uppercase;
+  letter-spacing: 2px;
 }
 
 .pulse-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #10b981;
-  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  background: #00ff88;
+  box-shadow: 0 0 0 0 rgba(0, 255, 136, 0.7);
   animation: pulse 2s infinite;
 }
 
 @keyframes pulse {
-  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
-  70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
-  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 255, 136, 0.7); }
+  70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(0, 255, 136, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 255, 136, 0); }
 }
 
 .hero-title {
-  font-size: 56px;
+  font-size: clamp(48px, 6vw, 72px);
   line-height: 1.1;
   font-weight: 800;
-  color: #0f172a;
-  margin: 0 0 24px;
-  letter-spacing: -1.5px;
+  margin: 0 0 20px;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  background: linear-gradient(180deg, #FFFFFF 30%, #888888 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: titleGlow 3s ease-in-out infinite alternate;
+}
+
+@keyframes titleGlow {
+  0% { filter: drop-shadow(0 0 10px rgba(0, 204, 255, 0.3)); }
+  100% { filter: drop-shadow(0 0 25px rgba(0, 204, 255, 0.6)); }
 }
 
 .text-gradient {
-  background: linear-gradient(135deg, #2563eb 0%, #0ea5e9 100%);
+  background: linear-gradient(135deg, #00ccff 0%, #0066ff 100%);
   -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation: textShine 4s ease-in-out infinite;
+}
+
+@keyframes textShine {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.3); }
 }
 
 .hero-desc {
-  font-size: 18px;
-  line-height: 1.6;
-  color: #475569;
-  margin-bottom: 48px;
+  font-size: 16px;
+  line-height: 1.8;
+  color: #aaa;
+  margin-bottom: 50px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
 }
 
 .hero-stats {
   display: flex;
   align-items: center;
-  gap: 32px;
+  gap: 40px;
 }
 
 .stat-item {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .stat-value {
-  font-size: 24px;
+  font-size: 28px;
   font-weight: 700;
-  color: #0f172a;
+  background: linear-gradient(135deg, #00ccff 0%, #0066ff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: 1px;
 }
 
 .stat-label {
-  font-size: 13px;
-  color: #64748b;
+  font-size: 11px;
+  color: #666;
   font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 2px;
 }
 
 .stat-divider {
   width: 1px;
-  height: 40px;
-  background: #e2e8f0;
+  height: 50px;
+  background: linear-gradient(to bottom, transparent, #333, transparent);
 }
 
 .login-card-wrapper {
@@ -350,78 +564,140 @@ const handleLogin = async () => {
 }
 
 .login-card {
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(20px);
-  padding: 40px;
-  border-radius: 24px;
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  box-shadow: 
-    0 4px 6px -1px rgba(0, 0, 0, 0.05),
-    0 20px 25px -5px rgba(0, 0, 0, 0.05),
-    0 0 0 1px rgba(0,0,0,0.02);
+  background: rgba(10, 10, 15, 0.85);
+  backdrop-filter: blur(30px);
+  padding: 45px;
+  border-radius: 20px;
+  border: 1px solid rgba(0, 204, 255, 0.2);
+  box-shadow:
+    0 0 40px rgba(0, 102, 255, 0.1),
+    0 20px 40px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  animation: cardFadeIn 0.8s ease-out;
+  transition: all 0.3s ease;
+}
+
+.login-card:hover {
+  border-color: rgba(0, 204, 255, 0.4);
+  box-shadow:
+    0 0 60px rgba(0, 102, 255, 0.2),
+    0 20px 40px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+@keyframes cardFadeIn {
+  0% {
+    opacity: 0;
+    transform: translateY(30px) scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .login-header {
-  margin-bottom: 32px;
+  margin-bottom: 35px;
   text-align: center;
 }
 
 .login-header h3 {
-  font-size: 24px;
+  font-size: 26px;
   font-weight: 700;
-  color: #0f172a;
-  margin: 0 0 8px;
+  color: #fff;
+  margin: 0 0 10px;
+  letter-spacing: 1px;
 }
 
 .login-header p {
-  color: #64748b;
-  font-size: 14px;
+  color: #666;
+  font-size: 13px;
+  letter-spacing: 0.5px;
 }
 
 .login-form :deep(.el-input__wrapper) {
-  background: #f8fafc;
+  background: rgba(255, 255, 255, 0.03);
   box-shadow: none;
-  border: 1px solid #e2e8f0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 12px;
-  padding: 12px 16px;
-  height: 48px;
-  transition: all 0.2s;
+  padding: 14px 18px;
+  height: 52px;
+  transition: all 0.3s;
+}
+
+.login-form :deep(.el-input__wrapper:hover) {
+  border-color: rgba(0, 204, 255, 0.3);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .login-form :deep(.el-input__wrapper.is-focus) {
-  background: #fff;
-  border-color: #2563eb;
-  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  border-color: #00ccff;
+  box-shadow: 0 0 20px rgba(0, 204, 255, 0.15);
+}
+
+.login-form :deep(.el-input__inner) {
+  color: #fff;
+}
+
+.login-form :deep(.el-input__inner::placeholder) {
+  color: #555;
+}
+
+.login-form :deep(.el-input__prefix) {
+  color: #666;
+}
+
+.login-form :deep(.el-input__prefix-inner) {
+  color: #666;
 }
 
 .form-options {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
+  margin-bottom: 28px;
+}
+
+.form-options :deep(.el-checkbox__label) {
+  color: #888;
+  font-size: 13px;
+}
+
+.form-options :deep(.el-checkbox__input.is-checked .el-checkbox__inner) {
+  background-color: #0066ff;
+  border-color: #0066ff;
 }
 
 .forgot-password {
-  font-size: 14px;
-  color: #2563eb;
+  font-size: 13px;
+  color: #00ccff;
   text-decoration: none;
   font-weight: 500;
+  transition: all 0.2s;
+}
+
+.forgot-password:hover {
+  color: #00aadd;
+  text-shadow: 0 0 10px rgba(0, 204, 255, 0.4);
 }
 
 .login-button {
   width: 100%;
-  height: 48px;
+  height: 52px;
   font-size: 16px;
   border-radius: 12px;
-  background: linear-gradient(135deg, #2563eb 0%, #0ea5e9 100%);
+  background: linear-gradient(135deg, #0066ff 0%, #00ccff 100%);
   border: none;
   font-weight: 600;
-  transition: transform 0.1s, box-shadow 0.2s;
+  letter-spacing: 1px;
+  transition: all 0.3s;
+  box-shadow: 0 4px 20px rgba(0, 102, 255, 0.3);
 }
 
 .login-button:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 8px 16px -4px rgba(37, 99, 235, 0.3);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(0, 204, 255, 0.4);
 }
 
 .login-button:active {
@@ -431,7 +707,7 @@ const handleLogin = async () => {
 .login-footer {
   margin-top: 32px;
   padding-top: 24px;
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -439,7 +715,7 @@ const handleLogin = async () => {
 
 .login-footer span {
   font-size: 13px;
-  color: #64748b;
+  color: #666;
 }
 
 .other-methods {
@@ -451,9 +727,9 @@ const handleLogin = async () => {
   width: 36px;
   height: 36px;
   border-radius: 10px;
-  border: 1px solid #e2e8f0;
-  background: #fff;
-  color: #64748b;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  color: #666;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -462,18 +738,20 @@ const handleLogin = async () => {
 }
 
 .icon-btn:hover {
-  border-color: #cbd5e1;
-  color: #0f172a;
-  background: #f8fafc;
+  border-color: rgba(0, 204, 255, 0.3);
+  color: #00ccff;
+  background: rgba(0, 204, 255, 0.1);
 }
 
 .simple-footer {
   text-align: center;
   padding: 24px;
-  font-size: 12px;
-  color: #94a3b8;
+  font-size: 11px;
+  color: #444;
   position: relative;
-  z-index: 1;
+  z-index: 10;
+  letter-spacing: 1px;
+  text-transform: uppercase;
 }
 
 @media (max-width: 1024px) {
