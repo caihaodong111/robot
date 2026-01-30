@@ -9,13 +9,13 @@
 
     <div class="layout-wrapper">
       <!-- Header Section -->
-      <header class="page-header">
+      <header class="page-header entrance-slide-in">
         <div class="title-area">
           <h1 class="metallic-title">可视化BI <span>VISUAL ANALYTICS</span></h1>
         </div>
         <div class="header-actions">
-          <el-button :icon="Refresh" circle @click="handleLoad" :disabled="!activeName" class="refresh-btn"></el-button>
-          <el-button type="primary" class="action-btn" :disabled="!activeName" @click="handleLoad">
+          <el-button :icon="Refresh" circle @click="handleLoad" :disabled="!activeName" class="refresh-btn btn-entrance-1"></el-button>
+          <el-button type="primary" class="action-btn btn-entrance-2" :disabled="!activeName" @click="handleLoad">
             <el-icon v-if="!isLoading"><Search /></el-icon>
             {{ isLoading ? '加载中...' : '加载分析' }}
           </el-button>
@@ -23,71 +23,79 @@
       </header>
 
       <!-- Control Panel -->
-      <div class="control-panel glass-card">
-        <div class="control-row">
-          <!-- 车间选择 -->
-          <div class="control-item">
-            <label><el-icon><Location /></el-icon> 目标车间</label>
-            <el-select
-              v-model="selectedGroup"
-              placeholder="请选择车间"
-              clearable
-              @change="handleGroupChange"
-              class="styled-select"
-            >
-              <el-option
-                v-for="group in groups"
-                :key="group.key"
-                :label="group.name"
-                :value="group.key"
-              />
-            </el-select>
-          </div>
+      <div class="control-panel ios-glass entrance-scale-up">
+        <div class="border-glow"></div>
+        <div class="cell-header">
+          <span class="accent-bar"></span>
+          分析配置中心 (ANALYSIS CONFIGURATION)
+        </div>
+        <div class="control-content">
+          <div class="control-row">
+            <!-- 车间选择 -->
+            <div class="control-item entrance-fade-right-1">
+              <label><el-icon><Location /></el-icon> 目标车间</label>
+              <el-select
+                v-model="selectedGroup"
+                placeholder="请选择车间"
+                clearable
+                @change="handleGroupChange"
+                class="styled-select"
+              >
+                <el-option
+                  v-for="group in groups"
+                  :key="group.key"
+                  :label="group.name"
+                  :value="group.key"
+                />
+              </el-select>
+            </div>
 
-          <!-- 机器人选择 -->
-          <div class="control-item">
-            <label><el-icon><Monitor /></el-icon> 机器人</label>
-            <el-select
-              v-model="selectedRobot"
-              placeholder="请输入机器人名称搜索"
-              filterable
-              clearable
-              remote
-              reserve-keyword
-              :remote-method="searchRobots"
-              :loading="robotsLoading"
-              @change="handleRobotChange"
-              class="styled-select"
-            >
-              <el-option
-                v-for="robot in robots"
-                :key="robot.value"
-                :label="robot.label"
-                :value="robot.value"
-              />
-            </el-select>
-          </div>
+            <!-- 机器人选择 -->
+            <div class="control-item entrance-fade-right-2">
+              <label><el-icon><Monitor /></el-icon> 机器人</label>
+              <el-select
+                v-model="selectedRobot"
+                placeholder="请输入机器人名称搜索"
+                filterable
+                clearable
+                remote
+                reserve-keyword
+                :remote-method="searchRobots"
+                :loading="robotsLoading"
+                @change="handleRobotChange"
+                class="styled-select"
+              >
+                <el-option
+                  v-for="robot in robots"
+                  :key="robot.value"
+                  :label="robot.label"
+                  :value="robot.value"
+                />
+              </el-select>
+            </div>
 
-          <!-- 当前选择显示 -->
-          <div v-if="activeName" class="current-selection-info">
-            <div class="selection-icon"><el-icon><DataAnalysis /></el-icon></div>
-            <div class="selection-text">
-              <span class="selection-label">当前分析</span>
-              <span class="selection-value">{{ currentRobotLabel }}</span>
+            <!-- 当前选择显示 -->
+            <div v-if="activeName" class="current-selection-info entrance-fade-right-3">
+              <div class="selection-icon"><el-icon><DataAnalysis /></el-icon></div>
+              <div class="selection-text">
+                <span class="selection-label">当前分析</span>
+                <span class="selection-value">{{ currentRobotLabel }}</span>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
       <!-- Content Area -->
-      <div class="bi-content">
-        <div v-if="!activeName" class="bi-empty-state">
+      <div class="bi-content entrance-delayed-fade">
+        <div v-if="!activeName" class="bi-empty-state ios-glass">
           <div class="empty-icon"><el-icon><PieChart /></el-icon></div>
           <div class="empty-text">请选择车间和机器人后加载 BI 可视化界面</div>
         </div>
 
         <!-- BI图表容器 -->
-        <div v-else class="bi-card glass-card">
+        <div v-else class="bi-card ios-glass">
+          <div class="border-glow"></div>
           <div class="bi-frame-wrapper">
             <!-- 加载遮罩层 -->
             <Transition name="fade">
@@ -306,6 +314,99 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+/* === 入场动画系统 === */
+
+/* 标题滑入淡入动画 */
+.entrance-slide-in {
+  animation: slideInFade 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  opacity: 0;
+  transform: translateX(-40px);
+}
+
+@keyframes slideInFade {
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* 卡片缩放淡入动画 */
+.entrance-scale-up {
+  animation: scaleUpFade 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.2s forwards;
+  opacity: 0;
+  transform: scale(0.96) translateY(25px);
+}
+
+@keyframes scaleUpFade {
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* 按钮淡入效果 */
+.btn-entrance-1 {
+  animation: btnFadeIn 0.5s ease-out 0.6s forwards;
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+.btn-entrance-2 {
+  animation: btnFadeIn 0.5s ease-out 0.7s forwards;
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+@keyframes btnFadeIn {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 控制元素从右侧淡入 */
+.entrance-fade-right-1 {
+  animation: fadeRightIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.4s forwards;
+  opacity: 0;
+  transform: translateX(30px);
+}
+
+.entrance-fade-right-2 {
+  animation: fadeRightIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.5s forwards;
+  opacity: 0;
+  transform: translateX(30px);
+}
+
+.entrance-fade-right-3 {
+  animation: fadeRightIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.6s forwards;
+  opacity: 0;
+  transform: translateX(30px);
+}
+
+@keyframes fadeRightIn {
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* 主内容区域延迟淡入 */
+.entrance-delayed-fade {
+  animation: delayedFadeIn 0.8s ease-out 0.8s forwards;
+  opacity: 0;
+}
+
+@keyframes delayedFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* === 基础布局与背景 === */
 .bi-viewport {
   background: radial-gradient(circle at 50% 35%, #0d1a2d 0%, #030508 100%);
@@ -386,6 +487,23 @@ onMounted(async () => {
   -webkit-text-fill-color: transparent;
   text-shadow: 0 0 40px rgba(0, 195, 255, 0.5);
   margin: 0 0 8px 0;
+  position: relative;
+  animation: titleGlow 2s ease-out forwards;
+}
+
+@keyframes titleGlow {
+  0% {
+    text-shadow: 0 0 20px rgba(255, 170, 0, 0), 0 0 40px rgba(255, 170, 0, 0), 0 0 40px rgba(0, 195, 255, 0.5);
+    filter: brightness(0.8);
+  }
+  50% {
+    text-shadow: 0 0 20px rgba(255, 170, 0, 0.4), 0 0 40px rgba(255, 170, 0, 0.2), 0 0 40px rgba(0, 195, 255, 0.5);
+    filter: brightness(1.2);
+  }
+  100% {
+    text-shadow: 0 0 20px rgba(255, 170, 0, 0), 0 0 40px rgba(255, 170, 0, 0), 0 0 40px rgba(0, 195, 255, 0.5);
+    filter: brightness(1);
+  }
 }
 
 .metallic-title span {
@@ -424,20 +542,81 @@ onMounted(async () => {
   color: #fff;
 }
 
-/* === Glass Card === */
-.glass-card {
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(40px);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 4px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-  transition: all 0.4s ease;
+/* === iOS 超透明玻璃卡片 === */
+.ios-glass {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(50px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
+}
+
+.border-glow {
+  position: absolute;
+  inset: 0;
+  border-radius: 24px;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(255, 170, 0, 0.4), transparent 40%, rgba(255, 170, 0, 0.1));
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  animation: borderBreathe 6s infinite ease-in-out, borderGlowEnter 1.2s ease-out forwards;
+  opacity: 0;
+}
+
+@keyframes borderBreathe {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.8; box-shadow: inset 0 0 15px rgba(255, 170, 0, 0.2); }
+}
+
+@keyframes borderGlowEnter {
+  0% {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  50% {
+    opacity: 0.6;
+  }
+  100% {
+    opacity: 0.3;
+    transform: scale(1);
+  }
+}
+
+/* 卡片标题 */
+.cell-header {
+  padding: 15px 20px;
+  font-size: 11px;
+  color: #c0ccda;
+  font-weight: bold;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  letter-spacing: 1px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  position: relative;
+  z-index: 1;
+}
+
+.accent-bar {
+  width: 4px;
+  height: 16px;
+  background: #ffaa00;
+  border-radius: 10px;
+  box-shadow: 0 0 10px #ffaa00;
 }
 
 /* === 控制面板 === */
 .control-panel {
+  margin-bottom: 24px;
+  overflow: visible;
+}
+
+.control-content {
   padding: 20px;
-  margin-bottom: 20px;
+  position: relative;
+  z-index: 1;
 }
 
 .control-row {
@@ -549,10 +728,7 @@ onMounted(async () => {
   justify-content: center;
   gap: 16px;
   min-height: 560px;
-  background: rgba(255, 255, 255, 0.03);
-  backdrop-filter: blur(40px);
-  border-radius: 4px;
-  border: 2px dashed rgba(255, 255, 255, 0.1);
+  padding: 40px;
 }
 
 .empty-icon {
@@ -574,9 +750,6 @@ onMounted(async () => {
 
 /* === BI卡片 === */
 .bi-card {
-  border-radius: 4px;
-  border: none;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
   padding: 0;
   overflow: hidden;
 }
@@ -585,7 +758,7 @@ onMounted(async () => {
   position: relative;
   width: 100%;
   height: 720px;
-  border-radius: 4px;
+  border-radius: 24px;
   overflow: hidden;
   background: #000;
 }

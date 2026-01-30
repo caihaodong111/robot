@@ -9,56 +9,56 @@
     </div>
 
     <div class="layout-wrapper">
-      <header class="page-header">
+      <header class="page-header entrance-slide-in">
         <div class="title-group">
           <h1 class="ios-title">平台概览 <small>PLATFORM MONITORING</small></h1>
-          <div class="status-tag">
+          <div class="status-tag status-tag-entrance">
             <span class="dot pulse"></span> 系统运行中 | {{ lastUpdateTime }}
           </div>
         </div>
         <div class="header-glass-actions">
-          <el-button class="ios-btn" @click="handleRefresh">
+          <el-button class="ios-btn btn-entrance" @click="handleRefresh">
             <el-icon><Refresh /></el-icon> 重置视图
           </el-button>
         </div>
       </header>
 
       <section class="metrics-grid">
-        <div class="data-cell ios-glass main-chart-card">
-          <div class="border-glow"></div>
+        <div class="data-cell ios-glass main-chart-card entrance-scale-up">
+          <div class="border-glow entrance-border-glow"></div>
           <div class="cell-header">
             <span class="accent-bar"></span>
             高风险机器人分布 (HIGH-RISK CLUSTER)
           </div>
-          <div ref="chartRef" class="main-chart-box"></div>
+          <div ref="chartRef" class="main-chart-box entrance-chart-fade"></div>
         </div>
 
-        <div class="data-cell ios-glass dev-card" v-for="i in 3" :key="i">
-          <div class="border-glow slow"></div>
+        <div class="data-cell ios-glass dev-card entrance-scale-up-delay-1" v-for="i in 3" :key="i">
+          <div class="border-glow slow entrance-border-glow"></div>
           <div class="cell-header">
             <span class="accent-bar gray"></span>
             监控模块_0{{ i }}
           </div>
           <div class="dev-placeholder">
-            <div class="dev-icon">⚙</div>
+            <div class="dev-icon dev-icon-entrance">⚙</div>
             <div class="dev-label">MODULE_PENDING</div>
           </div>
         </div>
       </section>
 
       <footer class="footer-layout">
-        <div class="ios-glass trend-panel">
-          <div class="border-glow gold-tint"></div>
+        <div class="ios-glass trend-panel entrance-scale-up-delay-2">
+          <div class="border-glow gold-tint entrance-border-glow"></div>
           <div class="cell-header">运行脉搏趋势</div>
-          <div ref="statusChartRef" class="mini-chart"></div>
+          <div ref="statusChartRef" class="mini-chart entrance-chart-fade"></div>
         </div>
-        <div class="ios-glass feed-panel">
-          <div class="border-glow blue-tint"></div>
+        <div class="ios-glass feed-panel entrance-scale-up-delay-3">
+          <div class="border-glow blue-tint entrance-border-glow"></div>
           <div class="cell-header">实时预警流</div>
-          <div class="log-stream">
+          <div class="log-stream entrance-content-fade">
             <div v-if="alertLoading" class="loading-state">载入中...</div>
             <template v-else-if="recentAlerts.length">
-              <div v-for="alert in recentAlerts.slice(0, 5)" :key="alert.id" class="log-row">
+              <div v-for="(alert, idx) in recentAlerts.slice(0, 5)" :key="alert.id" class="log-row log-row-entrance" :style="{ animationDelay: `${0.9 + idx * 0.12}s` }">
                 <span class="log-tag" :class="alert.severity"></span>
                 <p>{{ alert.message || alert.robot_name }}</p>
                 <span class="log-time">{{ formatTimeOnly(alert.triggered_at) }}</span>
@@ -383,6 +383,108 @@ watch(groupRows, () => {
 </script>
 
 <style scoped>
+/* === 入场动画系统 === */
+
+/* 标题滑入淡入动画 */
+.entrance-slide-in {
+  animation: slideInFade 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  opacity: 0;
+  transform: translateX(-40px);
+}
+
+@keyframes slideInFade {
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* 卡片缩放淡入动画 - 主卡片 */
+.entrance-scale-up {
+  animation: scaleUpFade 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.2s forwards;
+  opacity: 0;
+  transform: scale(0.92) translateY(30px);
+}
+
+/* 卡片缩放淡入动画 - 延迟1 */
+.entrance-scale-up-delay-1 {
+  animation: scaleUpFade 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.35s forwards;
+  opacity: 0;
+  transform: scale(0.92) translateY(30px);
+}
+
+/* 卡片缩放淡入动画 - 延迟2 */
+.entrance-scale-up-delay-2 {
+  animation: scaleUpFade 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.5s forwards;
+  opacity: 0;
+  transform: scale(0.92) translateY(30px);
+}
+
+/* 卡片缩放淡入动画 - 延迟3 */
+.entrance-scale-up-delay-3 {
+  animation: scaleUpFade 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.65s forwards;
+  opacity: 0;
+  transform: scale(0.92) translateY(30px);
+}
+
+@keyframes scaleUpFade {
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* 边框光效入场 */
+.entrance-border-glow {
+  animation: borderBreathe 6s infinite ease-in-out, borderGlowEnter 1.2s ease-out forwards;
+  opacity: 0;
+}
+
+@keyframes borderGlowEnter {
+  0% {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  50% {
+    opacity: 0.6;
+  }
+  100% {
+    opacity: 0.3;
+    transform: scale(1);
+  }
+}
+
+/* 图表淡入缩放效果 */
+.entrance-chart-fade {
+  animation: chartFadeIn 1s cubic-bezier(0.16, 1, 0.3, 1) 0.6s forwards;
+  opacity: 0;
+  transform: scale(0.95);
+}
+
+@keyframes chartFadeIn {
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* 内容淡入效果 */
+.entrance-content-fade {
+  animation: contentFadeIn 0.8s ease-out 0.8s forwards;
+  opacity: 0;
+}
+
+@keyframes contentFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* === iOS 风格基础环境 === */
 .dashboard-viewport {
   background: #030508;
@@ -460,6 +562,22 @@ watch(groupRows, () => {
   background: linear-gradient(180deg, #fff 40%, rgba(255,255,255,0.6));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  position: relative;
+  animation: titleGlow 2s ease-out forwards;
+}
+@keyframes titleGlow {
+  0% {
+    text-shadow: 0 0 20px rgba(255, 170, 0, 0), 0 0 40px rgba(255, 170, 0, 0);
+    filter: brightness(0.8);
+  }
+  50% {
+    text-shadow: 0 0 20px rgba(255, 170, 0, 0.5), 0 0 40px rgba(255, 170, 0, 0.3);
+    filter: brightness(1.2);
+  }
+  100% {
+    text-shadow: 0 0 20px rgba(255, 170, 0, 0), 0 0 40px rgba(255, 170, 0, 0);
+    filter: brightness(1);
+  }
 }
 .ios-title small { font-size: 14px; color: #ffaa00; margin-left: 10px; font-weight: 300; letter-spacing: 2px; }
 
@@ -472,6 +590,17 @@ watch(groupRows, () => {
   gap: 8px;
   font-size: 12px;
   color: #a0aec0;
+}
+.status-tag-entrance {
+  animation: statusTagFade 0.8s ease-out 0.5s forwards;
+  opacity: 0;
+  transform: translateY(-10px);
+}
+@keyframes statusTagFade {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 .dot {
   width: 6px;
@@ -494,6 +623,17 @@ watch(groupRows, () => {
   padding: 8px 16px;
 }
 .ios-btn:hover { background: rgba(255, 255, 255, 0.12); }
+.btn-entrance {
+  animation: btnFadeIn 0.6s ease-out 0.7s forwards;
+  opacity: 0;
+  transform: translateY(-15px);
+}
+@keyframes btnFadeIn {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
 
 .accent-bar {
   width: 4px; height: 16px; background: #ffaa00; border-radius: 10px;
@@ -527,6 +667,17 @@ watch(groupRows, () => {
 .dev-card { min-height: 280px; display: flex; flex-direction: column; }
 .dev-placeholder { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
 .dev-icon { font-size: 28px; color: #636e72; animation: rotate 8s linear infinite; }
+.dev-icon-entrance {
+  animation: rotate 8s linear infinite, devIconFadeIn 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  opacity: 0;
+  transform: scale(0) rotate(0deg);
+}
+@keyframes devIconFadeIn {
+  to {
+    opacity: 1;
+    transform: scale(1) rotate(360deg);
+  }
+}
 @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 .dev-label { font-size: 12px; color: #8899aa; letter-spacing: 1px; }
 
@@ -536,6 +687,17 @@ watch(groupRows, () => {
   display: flex; align-items: center; gap: 10px;
   padding: 10px 12px; margin-bottom: 8px;
   background: rgba(0, 0, 0, 0.2); border-radius: 12px;
+}
+.log-row-entrance {
+  animation: logRowSlideIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  opacity: 0;
+  transform: translateX(-20px);
+}
+@keyframes logRowSlideIn {
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 .log-row p { color: #f5f6fa; flex: 1; margin: 0; font-size: 12px; }
 .log-time { color: #8899aa; font-size: 10px; }

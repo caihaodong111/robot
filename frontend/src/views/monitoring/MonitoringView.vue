@@ -9,18 +9,18 @@
 
     <div class="layout-wrapper">
       <!-- Header Area -->
-      <header class="page-header">
+      <header class="page-header entrance-slide-in">
         <div class="title-area">
           <h1 class="metallic-title">关键轨迹检查 <span>TRAJECTORY PULSE</span></h1>
         </div>
         <div class="header-actions">
           <el-tooltip content="刷新数据" placement="bottom">
-            <el-button :icon="Refresh" @click="loadPlantGroups" circle class="refresh-btn" />
+            <el-button :icon="Refresh" @click="loadPlantGroups" circle class="refresh-btn btn-entrance-1" />
           </el-tooltip>
           <el-button
             v-if="checkResult"
             @click="handleExport"
-            class="action-btn"
+            class="action-btn btn-entrance-2"
           >
             <el-icon class="export-icon"><Download /></el-icon>
             <span>导出报告</span>
@@ -28,143 +28,152 @@
         </div>
       </header>
 
-      <!-- Control Center (Horizontal) -->
-      <div class="control-center glass-card">
-      <div class="control-row main-controls">
-        <!-- Plant Selection -->
-        <div class="control-item plant-selector">
-          <label><el-icon><Location /></el-icon> 目标车间</label>
-          <el-select
-            v-model="selectedPlant"
-            placeholder="请选择车间"
-            filterable
-            :loading="plantsLoading"
-            @change="handlePlantChange"
-          >
-            <el-option
-              v-for="plant in availablePlants"
-              :key="plant.key"
-              :label="plant.name"
-              :value="plant.key"
-            />
-          </el-select>
+      <!-- Control Center -->
+      <div class="control-area ios-glass entrance-scale-up">
+        <div class="border-glow"></div>
+        <div class="cell-header">
+          <span class="accent-bar"></span>
+          诊断配置中心 (DIAGNOSTIC CONFIGURATION)
         </div>
 
-        <!-- Robot Selection -->
-        <div class="control-item robot-selector">
-          <label>
-            <el-icon><Cpu /></el-icon> 机器人列表
-            <el-tag size="small" type="info" effect="plain" class="count-tag" v-if="selectedRobots.length">
-              {{ selectedRobots.length }}
-            </el-tag>
-          </label>
-          <el-select
-            v-model="selectedRobots"
-            placeholder="请输入机器人名称搜索或全选"
-            multiple
-            collapse-tags
-            collapse-tags-tooltip
-            filterable
-            remote
-            reserve-keyword
-            :remote-method="searchRobots"
-            :loading="robotsLoading"
-            @change="handleRobotsChange"
-          >
-            <template #header>
-              <div class="select-header">
-                <el-checkbox
-                  v-model="isAllRobotsSelected"
-                  :indeterminate="isIndeterminate"
-                  @change="handleSelectAllRobots"
-                >全选机器人</el-checkbox>
-              </div>
-            </template>
-            <el-option
-              v-for="robot in availableRobots"
-              :key="robot.value"
-              :label="robot.label"
-              :value="robot.value"
-            />
-          </el-select>
-        </div>
-
-        <!-- Execute Button -->
-        <div class="control-item button-wrapper">
-          <el-button
-            type="primary"
-            class="pulse-btn"
-            :loading="checking"
-            :disabled="!canExecute"
-            @click="executeCheck"
-          >
-            <el-icon v-if="!checking"><Search /></el-icon>
-            {{ checking ? '正在诊断...' : '执行诊断' }}
-          </el-button>
-        </div>
-      </div>
-
-      <!-- Time Range Row -->
-      <div class="control-row secondary-row">
-        <div class="control-item time-selector">
-          <label><el-icon><Calendar /></el-icon> 时间跨度</label>
-          <el-date-picker
-            v-model="timeRange"
-            type="datetimerange"
-            range-separator="至"
-            start-placeholder="开始"
-            end-placeholder="结束"
-            :shortcuts="shortcuts"
-            :disabled-date="disabledDate"
-            unlink-panels
-          />
-        </div>
-      </div>
-
-      <!-- Advanced Config Row (Key Paths) -->
-      <div class="control-row secondary-row">
-        <div class="control-item path-config">
-          <label><el-icon><Operation /></el-icon> 轨迹关键特征 (Key Paths)</label>
-          <div class="path-inputs">
-            <el-tag
-              v-for="tag in activePaths"
-              :key="tag"
-              closable
-              :disable-transitions="false"
-              @close="handleClosePath(tag)"
-              class="path-tag"
-            >
-              {{ tag }}
-            </el-tag>
-            <el-input
-              v-if="inputVisible"
-              ref="InputRef"
-              v-model="inputValue"
-              class="new-path-input"
-              size="small"
-              @keyup.enter="handleInputConfirm"
-              @blur="handleInputConfirm"
-            />
-            <el-button v-else class="add-path-btn" size="small" @click="showInput">
-              + 新增路径
-            </el-button>
-            <div class="path-presets">
-              <el-check-tag 
-                v-for="p in ['XLHP', 'PWLD']" 
-                :key="p"
-                :checked="activePaths.includes(p)"
-                @change="(checked) => handlePresetToggle(p, checked)"
+        <div class="control-content">
+          <!-- Main Controls Row -->
+          <div class="control-row main-controls">
+            <!-- Plant Selection -->
+            <div class="control-item plant-selector entrance-fade-right-1">
+              <label><el-icon><Location /></el-icon> 目标车间</label>
+              <el-select
+                v-model="selectedPlant"
+                placeholder="请选择车间"
+                filterable
+                :loading="plantsLoading"
+                @change="handlePlantChange"
               >
-                {{ p }}
-              </el-check-tag>
+                <el-option
+                  v-for="plant in availablePlants"
+                  :key="plant.key"
+                  :label="plant.name"
+                  :value="plant.key"
+                />
+              </el-select>
+            </div>
+
+            <!-- Robot Selection -->
+            <div class="control-item robot-selector entrance-fade-right-2">
+              <label>
+                <el-icon><Cpu /></el-icon> 机器人列表
+                <el-tag size="small" type="info" effect="plain" class="count-tag" v-if="selectedRobots.length">
+                  {{ selectedRobots.length }}
+                </el-tag>
+              </label>
+              <el-select
+                v-model="selectedRobots"
+                placeholder="请输入机器人名称搜索或全选"
+                multiple
+                collapse-tags
+                collapse-tags-tooltip
+                filterable
+                remote
+                reserve-keyword
+                :remote-method="searchRobots"
+                :loading="robotsLoading"
+                @change="handleRobotsChange"
+              >
+                <template #header>
+                  <div class="select-header">
+                    <el-checkbox
+                      v-model="isAllRobotsSelected"
+                      :indeterminate="isIndeterminate"
+                      @change="handleSelectAllRobots"
+                    >全选机器人</el-checkbox>
+                  </div>
+                </template>
+                <el-option
+                  v-for="robot in availableRobots"
+                  :key="robot.value"
+                  :label="robot.label"
+                  :value="robot.value"
+                />
+              </el-select>
+            </div>
+
+            <!-- Execute Button -->
+            <div class="control-item button-wrapper entrance-fade-right-3">
+              <el-button
+                type="primary"
+                class="pulse-btn"
+                :loading="checking"
+                :disabled="!canExecute"
+                @click="executeCheck"
+              >
+                <el-icon v-if="!checking"><Search /></el-icon>
+                {{ checking ? '正在诊断...' : '执行诊断' }}
+              </el-button>
+            </div>
+          </div>
+
+          <!-- Time Range Row -->
+          <div class="control-row secondary-row">
+            <div class="control-item time-selector entrance-fade-up-1">
+              <label><el-icon><Calendar /></el-icon> 时间跨度</label>
+              <el-date-picker
+                v-model="timeRange"
+                type="datetimerange"
+                range-separator="至"
+                start-placeholder="开始"
+                end-placeholder="结束"
+                :shortcuts="shortcuts"
+                :disabled-date="disabledDate"
+                unlink-panels
+              />
+            </div>
+          </div>
+
+          <!-- Advanced Config Row (Key Paths) -->
+          <div class="control-row secondary-row">
+            <div class="control-item path-config entrance-fade-up-2">
+              <label><el-icon><Operation /></el-icon> 轨迹关键特征 (Key Paths)</label>
+              <div class="path-inputs">
+                <el-tag
+                  v-for="tag in activePaths"
+                  :key="tag"
+                  closable
+                  :disable-transitions="false"
+                  @close="handleClosePath(tag)"
+                  class="path-tag"
+                >
+                  {{ tag }}
+                </el-tag>
+                <el-input
+                  v-if="inputVisible"
+                  ref="InputRef"
+                  v-model="inputValue"
+                  class="new-path-input"
+                  size="small"
+                  @keyup.enter="handleInputConfirm"
+                  @blur="handleInputConfirm"
+                />
+                <el-button v-else class="add-path-btn" size="small" @click="showInput">
+                  + 新增路径
+                </el-button>
+                <div class="path-presets">
+                  <el-check-tag
+                    v-for="p in ['XLHP', 'PWLD']"
+                    :key="p"
+                    :checked="activePaths.includes(p)"
+                    @change="(checked) => handlePresetToggle(p, checked)"
+                  >
+                    {{ p }}
+                  </el-check-tag>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
 
     <!-- Main Content Area -->
-    <div class="main-content">
+    <div class="main-content entrance-delayed-fade">
       <transition name="fade-slide" mode="out-in">
         <!-- Results Table -->
         <div v-if="checkResult" class="result-container animate-fade-in">
@@ -727,6 +736,123 @@ onMounted(loadPlantGroups)
 </script>
 
 <style scoped>
+/* === 入场动画系统 === */
+
+/* 标题滑入淡入动画 */
+.entrance-slide-in {
+  animation: slideInFade 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  opacity: 0;
+  transform: translateX(-40px);
+}
+
+@keyframes slideInFade {
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* 卡片缩放淡入动画 */
+.entrance-scale-up {
+  animation: scaleUpFade 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.2s forwards;
+  opacity: 0;
+  transform: scale(0.96) translateY(25px);
+}
+
+@keyframes scaleUpFade {
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* 按钮淡入效果 - 刷新按钮 */
+.btn-entrance-1 {
+  animation: btnFadeIn 0.5s ease-out 0.6s forwards;
+  opacity: 0;
+  transform: translateY(-10px) rotate(0deg);
+}
+
+/* 按钮淡入效果 - 导出按钮 */
+.btn-entrance-2 {
+  animation: btnFadeIn 0.5s ease-out 0.7s forwards;
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+@keyframes btnFadeIn {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 控制元素从右侧淡入 - 车间选择 */
+.entrance-fade-right-1 {
+  animation: fadeRightIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.4s forwards;
+  opacity: 0;
+  transform: translateX(30px);
+}
+
+/* 控制元素从右侧淡入 - 机器人选择 */
+.entrance-fade-right-2 {
+  animation: fadeRightIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.5s forwards;
+  opacity: 0;
+  transform: translateX(30px);
+}
+
+/* 控制元素从右侧淡入 - 执行按钮 */
+.entrance-fade-right-3 {
+  animation: fadeRightIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.6s forwards;
+  opacity: 0;
+  transform: translateX(30px);
+}
+
+@keyframes fadeRightIn {
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* 控制元素从下方淡入 - 时间选择器 */
+.entrance-fade-up-1 {
+  animation: fadeUpIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.5s forwards;
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+/* 控制元素从下方淡入 - 轨迹配置 */
+.entrance-fade-up-2 {
+  animation: fadeUpIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.6s forwards;
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+@keyframes fadeUpIn {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 主内容区域延迟淡入 */
+.entrance-delayed-fade {
+  animation: delayedFadeIn 0.8s ease-out 0.8s forwards;
+  opacity: 0;
+}
+
+@keyframes delayedFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* === 基础布局与背景 === */
 .trajectory-viewport {
   background: radial-gradient(circle at 50% 35%, #0d1a2d 0%, #030508 100%);
@@ -807,6 +933,23 @@ onMounted(loadPlantGroups)
   -webkit-text-fill-color: transparent;
   text-shadow: 0 0 40px rgba(0, 195, 255, 0.5);
   margin: 0 0 8px 0;
+  position: relative;
+  animation: titleGlow 2s ease-out forwards;
+}
+
+@keyframes titleGlow {
+  0% {
+    text-shadow: 0 0 20px rgba(255, 170, 0, 0), 0 0 40px rgba(255, 170, 0, 0), 0 0 40px rgba(0, 195, 255, 0.5);
+    filter: brightness(0.8);
+  }
+  50% {
+    text-shadow: 0 0 20px rgba(255, 170, 0, 0.4), 0 0 40px rgba(255, 170, 0, 0.2), 0 0 40px rgba(0, 195, 255, 0.5);
+    filter: brightness(1.2);
+  }
+  100% {
+    text-shadow: 0 0 20px rgba(255, 170, 0, 0), 0 0 40px rgba(255, 170, 0, 0), 0 0 40px rgba(0, 195, 255, 0.5);
+    filter: brightness(1);
+  }
 }
 
 .metallic-title span {
@@ -816,15 +959,67 @@ onMounted(loadPlantGroups)
   letter-spacing: 2px;
 }
 
-/* === Glass Card === */
-.glass-card {
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(40px);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 4px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-  transition: all 0.4s ease;
-  padding: 18px 20px;
+/* === iOS 超透明玻璃卡片 === */
+.ios-glass {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(50px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
+}
+
+.border-glow {
+  position: absolute;
+  inset: 0;
+  border-radius: 24px;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(255, 170, 0, 0.4), transparent 40%, rgba(255, 170, 0, 0.1));
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  animation: borderBreathe 6s infinite ease-in-out, borderGlowEnter 1.2s ease-out forwards;
+  opacity: 0;
+}
+
+@keyframes borderBreathe {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.8; box-shadow: inset 0 0 15px rgba(255, 170, 0, 0.2); }
+}
+
+/* 卡片标题 */
+.cell-header {
+  padding: 15px 20px;
+  font-size: 11px;
+  color: #c0ccda;
+  font-weight: bold;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  letter-spacing: 1px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  position: relative;
+  z-index: 1;
+}
+
+.accent-bar {
+  width: 4px;
+  height: 16px;
+  background: #ffaa00;
+  border-radius: 10px;
+  box-shadow: 0 0 10px #ffaa00;
+}
+
+/* 控制区域 */
+.control-area {
+  margin: 40px 0;
+  overflow: visible;
+}
+
+.control-content {
+  padding: 20px;
+  position: relative;
+  z-index: 1;
 }
 
 /* Control Center */
@@ -841,16 +1036,16 @@ onMounted(loadPlantGroups)
 }
 
 .secondary-row {
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
   flex-wrap: nowrap;
 }
 
 .control-item {
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 8px;
 }
 
 .control-item label {

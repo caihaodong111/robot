@@ -11,28 +11,31 @@
 
     <div class="layout-wrapper">
       <!-- Header Section -->
-      <header class="page-header">
+      <header class="page-header entrance-slide-in">
         <div class="title-area">
           <h1 class="ios-title">机器人状态 <small>ROBOT STATUS</small></h1>
         </div>
         <div class="header-actions">
-          <el-button :icon="Refresh" @click="handleRefresh" class="ios-btn">同步数据</el-button>
+          <el-button :icon="Refresh" @click="handleRefresh" class="ios-btn btn-entrance">同步数据</el-button>
         </div>
       </header>
 
       <!-- KPI Metrics Grid -->
       <div class="kpi-grid">
         <button
-          v-for="group in groups"
+          v-for="(group, idx) in groups"
           :key="group.key"
           type="button"
           class="kpi-card ios-glass"
-          :class="{ active: group.key === selectedGroup }"
+          :class="[
+            { active: group.key === selectedGroup },
+            idx === 0 ? 'entrance-scale-up' : `entrance-scale-up-delay-${idx}`
+          ]"
           @click="selectedGroup = group.key"
         >
-          <div class="border-glow"></div>
+          <div class="border-glow entrance-border-glow"></div>
           <div class="active-glow"></div>
-          <div class="kpi-icon-box">
+          <div class="kpi-icon-box kpi-icon-entrance">
             <el-icon><Monitor /></el-icon>
           </div>
           <div class="kpi-content">
@@ -47,8 +50,8 @@
       </div>
 
       <!-- Data Table Section -->
-      <section class="data-table-section ios-glass">
-        <div class="border-glow gold-tint"></div>
+      <section class="data-table-section ios-glass entrance-scale-up-delay-4">
+        <div class="border-glow gold-tint entrance-border-glow"></div>
         <div class="table-header">
           <span class="accent-bar"></span>
           <span>{{ activeGroupName }} - 实时状态列表</span>
@@ -121,7 +124,7 @@
         </div>
 
         <!-- Table -->
-        <el-table :data="pagedRows" class="premium-table" stripe height="520" v-loading="loading">
+        <el-table :data="pagedRows" class="premium-table table-entrance" stripe height="520" v-loading="loading">
           <el-table-column prop="partNo" label="部件编号(robot)" width="190" show-overflow-tooltip>
             <template #default="{ row }">
               <el-button type="primary" link class="mono robot-name-cell" @click="openBI(row)">
@@ -673,6 +676,129 @@ if (!DEMO_MODE) {
 </script>
 
 <style scoped>
+/* === 入场动画系统 === */
+
+/* 标题滑入淡入动画 */
+.entrance-slide-in {
+  animation: slideInFade 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  opacity: 0;
+  transform: translateX(-40px);
+}
+
+@keyframes slideInFade {
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* 卡片缩放淡入动画 - 主卡片 */
+.entrance-scale-up {
+  animation: scaleUpFade 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.2s forwards;
+  opacity: 0;
+  transform: scale(0.92) translateY(30px);
+}
+
+/* 卡片缩放淡入动画 - 延迟1 */
+.entrance-scale-up-delay-1 {
+  animation: scaleUpFade 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.3s forwards;
+  opacity: 0;
+  transform: scale(0.92) translateY(30px);
+}
+
+/* 卡片缩放淡入动画 - 延迟2 */
+.entrance-scale-up-delay-2 {
+  animation: scaleUpFade 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.4s forwards;
+  opacity: 0;
+  transform: scale(0.92) translateY(30px);
+}
+
+/* 卡片缩放淡入动画 - 延迟3 */
+.entrance-scale-up-delay-3 {
+  animation: scaleUpFade 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.5s forwards;
+  opacity: 0;
+  transform: scale(0.92) translateY(30px);
+}
+
+/* 卡片缩放淡入动画 - 延迟4 */
+.entrance-scale-up-delay-4 {
+  animation: scaleUpFade 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.6s forwards;
+  opacity: 0;
+  transform: scale(0.92) translateY(30px);
+}
+
+@keyframes scaleUpFade {
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* 边框光效入场 */
+.entrance-border-glow {
+  animation: borderBreathe 6s infinite ease-in-out, borderGlowEnter 1.2s ease-out forwards;
+  opacity: 0;
+}
+
+@keyframes borderGlowEnter {
+  0% {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  50% {
+    opacity: 0.6;
+  }
+  100% {
+    opacity: 0.3;
+    transform: scale(1);
+  }
+}
+
+/* 按钮淡入效果 */
+.btn-entrance {
+  animation: btnFadeIn 0.6s ease-out 0.7s forwards;
+  opacity: 0;
+  transform: translateY(-15px);
+}
+
+@keyframes btnFadeIn {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* KPI图标入场动画 */
+.kpi-icon-entrance {
+  animation: kpiIconFadeIn 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) 0.6s forwards;
+  opacity: 0;
+  transform: scale(0);
+}
+
+@keyframes kpiIconFadeIn {
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* 表格入场动画 */
+.table-entrance {
+  animation: tableFadeIn 0.8s ease-out 0.8s forwards;
+  opacity: 0;
+}
+
+@keyframes tableFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(15px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* === iOS 风格基础布局与背景 === */
 .robot-status-viewport {
   background: #030508;
@@ -771,7 +897,25 @@ if (!DEMO_MODE) {
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   margin: 0 0 8px 0;
+  position: relative;
+  animation: titleGlow 2s ease-out forwards;
 }
+
+@keyframes titleGlow {
+  0% {
+    text-shadow: 0 0 20px rgba(255, 170, 0, 0), 0 0 40px rgba(255, 170, 0, 0);
+    filter: brightness(0.8);
+  }
+  50% {
+    text-shadow: 0 0 20px rgba(255, 170, 0, 0.5), 0 0 40px rgba(255, 170, 0, 0.3);
+    filter: brightness(1.2);
+  }
+  100% {
+    text-shadow: 0 0 20px rgba(255, 170, 0, 0), 0 0 40px rgba(255, 170, 0, 0);
+    filter: brightness(1);
+  }
+}
+
 .ios-title small { font-size: 14px; color: #ffaa00; margin-left: 10px; font-weight: 300; letter-spacing: 2px; }
 
 .header-actions {
