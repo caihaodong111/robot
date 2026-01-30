@@ -1,8 +1,16 @@
 const ROBOT_GROUPS = [
-  { key: 'hop', name: 'hop', total: 655 },
-  { key: 'reuse', name: 'reuse', total: 331 },
-  { key: '254/214', name: '254/214', total: 965 },
-  { key: 'engine', name: 'engine', total: 88 }
+  { key: 'PT', name: 'PT', total: 88 },
+  { key: 'EATS', name: 'EATS', total: 965 },
+  { key: 'EB5', name: 'EB5', total: 128 },
+  { key: 'MRA1BS', name: 'MRA1BS', total: 156 },
+  { key: 'MRA2BS', name: 'MRA2BS', total: 143 },
+  { key: 'Hop', name: 'Hop', total: 655 },
+  { key: '540', name: '540', total: 89 },
+  { key: '214reuse', name: '214reuse', total: 331 },
+  { key: 'MMABS', name: 'MMABS', total: 198 },
+  { key: 'shunyiBS', name: 'shunyiBS', total: 245 },
+  { key: 'SA1', name: 'SA1', total: 176 },
+  { key: 'AS2', name: 'AS2', total: 212 }
 ]
 
 const GROUP_COUNTS = ROBOT_GROUPS.reduce((acc, group) => {
