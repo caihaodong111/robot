@@ -100,7 +100,18 @@
         <div class="filters">
           <el-row :gutter="10" align="middle">
             <el-col :span="6">
-              <el-input v-model="keyword" placeholder="搜索：部件编号 / 参考编号 / 类型 / 工艺 / 备注" clearable class="dark-input" />
+              <el-input
+                v-model="keyword"
+                placeholder="搜索：部件编号 / 参考编号 / 类型 / 工艺 / 备注"
+                clearable
+                class="dark-input"
+                @keyup.enter="handleSearch"
+                @clear="handleSearch"
+              >
+                <template #prefix>
+                  <el-icon><Search /></el-icon>
+                </template>
+              </el-input>
             </el-col>
             <el-col :span="3">
               <el-select v-model="levelFilter" placeholder="等级(level)" clearable class="dark-select">
@@ -143,7 +154,6 @@
               </el-select>
             </el-col>
             <el-col :span="6" class="filters-right">
-              <el-button type="primary" :icon="Search" @click="currentPage = 1">查询</el-button>
               <el-button :icon="Close" @click="resetFilters">重置</el-button>
             </el-col>
           </el-row>
@@ -164,7 +174,7 @@
               </el-button>
             </template>
           </el-table-column>
-          <el-table-column label="参考编号(reference)" width="170" show-overflow-tooltip>
+          <el-table-column label="参考编号(reference)" width="170">
             <template #default="{ row }">
               <el-button type="primary" link class="mono" @click="openEdit(row, 'referenceNo')">
                 {{ row.referenceNo }}
@@ -395,7 +405,7 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { Refresh, Search, Close, Monitor, ArrowRight, ArrowLeft } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
@@ -626,16 +636,25 @@ const matchesFilters = (robot) => {
 }
 
 const filteredRows = computed(() => {
-  if (!DEMO_MODE) return robots.value
-
   const list = robots.value
-  if (activeTab.value === 'highRisk') return list.filter((r) => r.isHighRisk).filter(matchesFilters)
-  if (activeTab.value === 'history') return list.filter((r) => r.riskHistory?.length).filter(matchesFilters)
-  return list.filter(matchesFilters)
+
+  // 根据当前标签页筛选数据
+  let filtered = list
+  if (activeTab.value === 'highRisk') {
+    filtered = list.filter((r) => r.isHighRisk)
+  } else if (activeTab.value === 'history') {
+    filtered = list.filter((r) => r.riskHistory?.length)
+  }
+
+  // 应用所有过滤器（包括关键词搜索）
+  // 前端始终进行过滤，确保搜索功能在所有模式下都能正常工作
+  return filtered.filter(matchesFilters)
 })
 
 const pagedRows = computed(() => {
+  // 非 DEMO 模式下，使用服务器分页
   if (!DEMO_MODE) return filteredRows.value
+  // DEMO 模式下，前端分页
   const start = (currentPage.value - 1) * pageSize.value
   return filteredRows.value.slice(start, start + pageSize.value)
 })
@@ -648,6 +667,15 @@ const resetFilters = () => {
   markMode.value = ''
   currentPage.value = 1
   if (!DEMO_MODE) loadRows()
+}
+
+// 搜索处理函数
+const handleSearch = () => {
+  currentPage.value = 1
+  if (!DEMO_MODE) {
+    // 搜索时请求所有数据，由前端进行过滤
+    loadRows(true)
+  }
 }
 
 const handleRefresh = () => {
@@ -770,21 +798,23 @@ const loadGroups = async () => {
   }
 }
 
-const loadRows = async () => {
+const loadRows = async (fetchAll = false) => {
   if (DEMO_MODE) return
   loading.value = true
   try {
     const tabMap = { highRisk: 'highRisk', all: 'all', history: 'history' }
+    // 搜索时获取所有数据用于前端过滤
+    const actualPageSize = fetchAll ? 10000 : pageSize.value
     const params = {
       group: selectedGroup.value,
       tab: tabMap[activeTab.value] || 'highRisk',
-      keyword: keyword.value || undefined,
+      // 不发送 keyword 参数，由前端过滤
       level: levelFilter.value || undefined,
       axisKeys: axisKeysFilter.value.length ? axisKeysFilter.value.join(',') : undefined,
       axisOk: axisStateFilter.value ? axisStateFilter.value === 'ok' : undefined,
       markMode: markMode.value || undefined,
-      page: currentPage.value,
-      page_size: pageSize.value
+      page: fetchAll ? 1 : currentPage.value,
+      page_size: actualPageSize
     }
     console.log('Loading rows with params:', params)
     const data = await getRobotComponents(params)
@@ -835,9 +865,9 @@ watch(pageSize, () => {
   }
 })
 
-watch([keyword, levelFilter, axisKeysFilter, axisStateFilter, markMode], () => {
+// 过滤器变化时自动触发（关键词需要按回车）
+watch([levelFilter, axisKeysFilter, axisStateFilter, markMode], () => {
   console.log('Filters changed, resetting page to 1. Filters:', {
-    keyword: keyword.value,
     level: levelFilter.value,
     axisKeys: axisKeysFilter.value,
     axisState: axisStateFilter.value,
@@ -846,6 +876,13 @@ watch([keyword, levelFilter, axisKeysFilter, axisStateFilter, markMode], () => {
   if (!DEMO_MODE) {
     currentPage.value = 1
     loadRows()
+  }
+})
+
+// 当 axisKeysFilter 清空时，同步清空 axisStateFilter
+watch(axisKeysFilter, (newVal) => {
+  if (!newVal.length) {
+    axisStateFilter.value = ''
   }
 })
 
@@ -1342,6 +1379,15 @@ initData()
 
 :deep(.dark-input .el-input__inner) {
   color: #fff;
+}
+
+/* 搜索框前缀图标样式 */
+:deep(.dark-input .el-input__prefix) {
+  color: #8899aa;
+}
+
+:deep(.dark-input:focus-within .el-input__prefix) {
+  color: #ffaa00;
 }
 
 :deep(.dark-select .el-select__wrapper) {

@@ -1,54 +1,69 @@
 <template>
   <div class="portal-viewport">
-    <header class="portal-header">
+    <!-- 背景流光特效 -->
+    <div class="ambient-background">
+      <div class="nebula blue"></div>
+      <div class="nebula gold"></div>
+      <div class="breathing-line gold-1"></div>
+      <div class="breathing-line gold-2"></div>
+      <div class="scan-grid"></div>
+    </div>
+
+    <div class="layout-wrapper">
+      <header class="portal-header entrance-slide-in">
       <div class="title-area">
         <h1>应用门户 <small>Application Portal</small></h1>
         <p class="subtitle">统一入口 · 快速检索 · 一键打开/复制</p>
       </div>
       <div class="header-actions">
-        <el-button :icon="Refresh" circle @click="resetFilters" class="refresh-btn"></el-button>
+        <el-button :icon="Refresh" @click="resetFilters" class="ios-btn btn-entrance">同步数据</el-button>
       </div>
     </header>
 
     <!-- KPI Stats -->
     <div class="kpi-grid">
-      <div class="kpi-card glass-card">
-        <div class="kpi-icon total"><el-icon><Grid /></el-icon></div>
-        <div class="kpi-info">
+      <div class="kpi-card ios-glass entrance-scale-up">
+        <div class="border-glow gold-tint entrance-border-glow"></div>
+        <div class="kpi-icon-box kpi-icon-entrance"><el-icon><Grid /></el-icon></div>
+        <div class="kpi-content">
           <label>应用总数</label>
-          <div class="value">{{ stats.total }}</div>
+          <div class="main-value">{{ stats.total }} <small>TOTAL</small></div>
         </div>
       </div>
-      <div class="kpi-card glass-card primary">
-        <div class="kpi-icon web"><el-icon><Link /></el-icon></div>
-        <div class="kpi-info">
+      <div class="kpi-card ios-glass entrance-scale-up-delay-1">
+        <div class="border-glow gold-tint entrance-border-glow"></div>
+        <div class="kpi-icon-box kpi-icon-entrance"><el-icon><Link /></el-icon></div>
+        <div class="kpi-content">
           <label>Web 入口</label>
-          <div class="value">{{ stats.web }}</div>
+          <div class="main-value">{{ stats.web }} <small>WEB</small></div>
         </div>
       </div>
-      <div class="kpi-card glass-card warning">
-        <div class="kpi-icon offline"><el-icon><Monitor /></el-icon></div>
-        <div class="kpi-info">
+      <div class="kpi-card ios-glass entrance-scale-up-delay-2">
+        <div class="border-glow gold-tint entrance-border-glow"></div>
+        <div class="kpi-icon-box kpi-icon-entrance"><el-icon><Monitor /></el-icon></div>
+        <div class="kpi-content">
           <label>非 Web</label>
-          <div class="value">{{ stats.offline }}</div>
+          <div class="main-value">{{ stats.offline }} <small>OFFLINE</small></div>
         </div>
       </div>
-      <div class="kpi-card glass-card muted">
-        <div class="kpi-icon pending"><el-icon><Warning /></el-icon></div>
-        <div class="kpi-info">
+      <div class="kpi-card ios-glass entrance-scale-up-delay-3">
+        <div class="border-glow gold-tint entrance-border-glow"></div>
+        <div class="kpi-icon-box kpi-icon-entrance"><el-icon><Warning /></el-icon></div>
+        <div class="kpi-content">
           <label>待补充</label>
-          <div class="value">{{ stats.pending }}</div>
+          <div class="main-value">{{ stats.pending }} <small>PENDING</small></div>
         </div>
       </div>
     </div>
 
     <!-- Filters Panel -->
-    <div class="filters-panel glass-card">
+    <div class="filters-panel ios-glass entrance-scale-up-delay-4">
+      <div class="border-glow gold-tint entrance-border-glow"></div>
       <el-input
         v-model="query"
         placeholder="搜索：应用名称 / 反馈人 / 范围 / 入口"
         clearable
-        class="filter-search styled-input"
+        class="filter-search dark-input"
       >
         <template #prefix>
           <el-icon><Search /></el-icon>
@@ -60,7 +75,7 @@
         placeholder="范围"
         clearable
         filterable
-        class="styled-select"
+        class="dark-select"
       >
         <el-option v-for="s in scopes" :key="s" :label="s" :value="s" />
       </el-select>
@@ -70,12 +85,12 @@
         placeholder="反馈人"
         clearable
         filterable
-        class="styled-select"
+        class="dark-select"
       >
         <el-option v-for="p in reporters" :key="p" :label="p" :value="p" />
       </el-select>
 
-      <el-radio-group v-model="viewMode" class="view-toggle">
+      <el-radio-group v-model="viewMode" class="view-toggle dark-toggle">
         <el-radio-button label="table">
           <el-icon><List /></el-icon>
         </el-radio-button>
@@ -86,20 +101,17 @@
     </div>
 
     <!-- Apps List Card -->
-    <el-card class="apps-list-card styled-card">
-      <template #header>
-        <div class="body-header">
-          <div class="body-title">
-            <span>应用列表</span>
-            <el-tag class="body-count" type="info" effect="plain">
-              {{ filteredApps.length }} / {{ apps.length }}
-            </el-tag>
-          </div>
-          <div class="body-actions">
-            <el-button @click="resetFilters">重置筛选</el-button>
-          </div>
-        </div>
-      </template>
+    <section class="apps-list-section ios-glass entrance-scale-up-delay-4">
+      <div class="border-glow gold-tint entrance-border-glow"></div>
+      <div class="table-header">
+        <span class="accent-bar"></span>
+        <span>应用列表</span>
+        <div style="flex: 1"></div>
+        <el-tag class="body-count" type="info" effect="plain">
+          {{ filteredApps.length }} / {{ apps.length }}
+        </el-tag>
+        <el-button @click="resetFilters" class="ios-btn">重置筛选</el-button>
+      </div>
 
       <el-empty v-if="!filteredApps.length" description="无匹配结果" />
 
@@ -162,7 +174,7 @@
           </el-row>
         </div>
 
-        <el-table v-else :data="filteredApps" stripe class="apps-table">
+        <el-table v-else :data="filteredApps" stripe class="apps-table premium-table">
           <el-table-column prop="id" label="序号" width="72" align="center" />
           <el-table-column prop="name" label="PDM应用名称" min-width="190" show-overflow-tooltip />
           <el-table-column prop="reporter" label="反馈人" width="100" />
@@ -194,7 +206,8 @@
           </el-table-column>
         </el-table>
       </div>
-    </el-card>
+    </section>
+    </div>
   </div>
 </template>
 
@@ -308,44 +321,239 @@ const resetFilters = () => {
 </script>
 
 <style scoped>
-/* Viewport */
-.portal-viewport {
-  padding: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-  background-color: #f8fafc;
-  min-height: calc(100vh - 100px);
-  color: #1e293b;
+/* === 入场动画系统 === */
+/* 标题滑入淡入动画 */
+.entrance-slide-in {
+  animation: slideInFade 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  opacity: 0;
+  transform: translateX(-40px);
 }
 
-/* Header - 参考Dashboard样式 */
+@keyframes slideInFade {
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* 卡片缩放淡入动画 - 主卡片 */
+.entrance-scale-up {
+  animation: scaleUpFade 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.2s forwards;
+  opacity: 0;
+  transform: scale(0.92) translateY(30px);
+}
+
+/* 卡片缩放淡入动画 - 延迟1 */
+.entrance-scale-up-delay-1 {
+  animation: scaleUpFade 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.3s forwards;
+  opacity: 0;
+  transform: scale(0.92) translateY(30px);
+}
+
+/* 卡片缩放淡入动画 - 延迟2 */
+.entrance-scale-up-delay-2 {
+  animation: scaleUpFade 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.4s forwards;
+  opacity: 0;
+  transform: scale(0.92) translateY(30px);
+}
+
+/* 卡片缩放淡入动画 - 延迟3 */
+.entrance-scale-up-delay-3 {
+  animation: scaleUpFade 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.5s forwards;
+  opacity: 0;
+  transform: scale(0.92) translateY(30px);
+}
+
+/* 卡片缩放淡入动画 - 延迟4 */
+.entrance-scale-up-delay-4 {
+  animation: scaleUpFade 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.6s forwards;
+  opacity: 0;
+  transform: scale(0.92) translateY(30px);
+}
+
+@keyframes scaleUpFade {
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* 边框光效入场 */
+.entrance-border-glow {
+  animation: borderBreathe 6s infinite ease-in-out, borderGlowEnter 1.2s ease-out forwards;
+  opacity: 0;
+}
+
+@keyframes borderGlowEnter {
+  0% {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  50% {
+    opacity: 0.6;
+  }
+  100% {
+    opacity: 0.3;
+    transform: scale(1);
+  }
+}
+
+/* 按钮淡入效果 */
+.btn-entrance {
+  animation: btnFadeIn 0.6s ease-out 0.7s forwards;
+  opacity: 0;
+  transform: translateY(-15px);
+}
+
+@keyframes btnFadeIn {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* KPI图标入场动画 */
+.kpi-icon-entrance {
+  animation: kpiIconFadeIn 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) 0.6s forwards;
+  opacity: 0;
+  transform: scale(0);
+}
+
+@keyframes kpiIconFadeIn {
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* === iOS 风格基础布局与背景 === */
+.portal-viewport {
+  background: #030508;
+  min-height: 100vh;
+  position: relative;
+  overflow: hidden;
+  color: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+}
+
+.layout-wrapper {
+  position: relative;
+  z-index: 1;
+  padding: 40px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* === 背景流光元素 === */
+.ambient-background {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.nebula {
+  position: absolute;
+  filter: blur(120px);
+  opacity: 0.28;
+  mix-blend-mode: screen;
+}
+
+.nebula.blue {
+  width: 80vw;
+  height: 70vh;
+  background: radial-gradient(circle, #0066ff, transparent 75%);
+  top: -10%;
+  left: -5%;
+}
+
+.nebula.gold {
+  width: 80vw;
+  height: 70vh;
+  background: radial-gradient(circle, #ffaa00, transparent 75%);
+  bottom: -10%;
+  right: -5%;
+}
+
+.breathing-line {
+  position: absolute;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #ffaa00, transparent);
+  filter: blur(1px);
+  opacity: 0.3;
+  animation: breathe 8s infinite ease-in-out;
+}
+.gold-1 { width: 100%; top: 30%; left: -50%; transform: rotate(-5deg); }
+.gold-2 { width: 100%; bottom: 20%; right: -50%; transform: rotate(3deg); animation-delay: -4s; }
+
+@keyframes breathe {
+  0%, 100% { opacity: 0.1; transform: scaleX(0.8) translateY(0); }
+  50% { opacity: 0.5; transform: scaleX(1.2) translateY(-20px); }
+}
+
+.scan-grid {
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+  background-size: 40px 40px;
+  mask-image: linear-gradient(to bottom, black, transparent);
+  animation: gridMove 25s linear infinite;
+}
+@keyframes gridMove { from { background-position: 0 0; } to { background-position: 0 50px; } }
+
+/* === Header === */
 .portal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.title-area {
+  display: flex;
+  flex-direction: column;
 }
 
 .portal-header h1 {
-  font-size: 28px;
-  font-weight: 800;
-  margin: 0;
-  background: linear-gradient(135deg, #1e293b 0%, #3b82f6 100%);
+  font-size: 32px;
+  letter-spacing: -0.5px;
+  background: linear-gradient(180deg, #fff 40%, rgba(255,255,255,0.6));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  margin: 0 0 8px 0;
+  position: relative;
+  animation: titleGlow 2s ease-out forwards;
+}
+
+@keyframes titleGlow {
+  0% {
+    text-shadow: 0 0 20px rgba(255, 170, 0, 0), 0 0 40px rgba(255, 170, 0, 0);
+    filter: brightness(0.8);
+  }
+  50% {
+    text-shadow: 0 0 20px rgba(255, 170, 0, 0.5), 0 0 40px rgba(255, 170, 0, 0.3);
+    filter: brightness(1.2);
+  }
+  100% {
+    text-shadow: 0 0 20px rgba(255, 170, 0, 0), 0 0 40px rgba(255, 170, 0, 0);
+    filter: brightness(1);
+  }
 }
 
 .portal-header h1 small {
   font-size: 14px;
-  color: #64748b;
-  font-weight: 400;
-  margin-left: 8px;
-  -webkit-text-fill-color: #64748b;
+  color: #ffaa00;
+  margin-left: 10px;
+  font-weight: 300;
+  letter-spacing: 2px;
 }
 
 .subtitle {
   margin: 4px 0 0;
-  color: #64748b;
+  color: #8899aa;
   font-size: 14px;
 }
 
@@ -355,67 +563,113 @@ const resetFilters = () => {
   gap: 16px;
 }
 
-/* KPI Cards - 参考Dashboard玻璃态样式 */
+.ios-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border-radius: 999px;
+  padding: 8px 16px;
+}
+.ios-btn:hover { background: rgba(255, 255, 255, 0.12); }
+
+/* === iOS 玻璃卡片 === */
+.ios-glass {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(50px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
+}
+
+.border-glow {
+  position: absolute;
+  inset: 0;
+  border-radius: 24px;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(255, 170, 0, 0.4), transparent 40%, rgba(255, 170, 0, 0.1));
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  animation: borderBreathe 6s infinite ease-in-out;
+}
+.border-glow.gold-tint { background: linear-gradient(135deg, rgba(255, 170, 0, 0.55), transparent 45%, rgba(255, 170, 0, 0.15)); }
+@keyframes borderBreathe {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.8; box-shadow: inset 0 0 15px rgba(255, 170, 0, 0.2); }
+}
+
+.accent-bar {
+  width: 4px; height: 16px; background: #ffaa00; border-radius: 10px;
+  box-shadow: 0 0 10px #ffaa00;
+}
+
+/* === KPI 卡片 === */
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 20px;
+  margin: 30px 0;
 }
 
-.glass-card {
-  background: rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.5);
-  border-radius: 20px;
-  padding: 20px;
+.kpi-card {
+  padding: 24px;
   display: flex;
   align-items: center;
-  gap: 16px;
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05);
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  gap: 20px;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
 }
 
-.glass-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 20px 30px -10px rgba(0, 0, 0, 0.1);
+.kpi-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5), 0 0 15px rgba(255, 170, 0, 0.2);
 }
 
-.kpi-icon {
-  width: 52px;
-  height: 52px;
+.kpi-icon-box {
+  width: 56px;
+  height: 56px;
   border-radius: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
+  font-size: 26px;
+  flex-shrink: 0;
+  background: rgba(255, 170, 0, 0.12);
+  color: #ffaa00;
 }
 
-.kpi-icon.total { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
-.kpi-icon.web { background: rgba(16, 185, 129, 0.1); color: #10b981; }
-.kpi-icon.offline { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
-.kpi-icon.pending { background: rgba(148, 163, 184, 0.1); color: #64748b; }
+.kpi-content {
+  flex: 1;
+  min-width: 0;
+}
 
-.kpi-info label {
+.kpi-content label {
   display: block;
-  font-size: 13px;
-  color: #64748b;
-  margin-bottom: 4px;
+  font-size: 12px;
+  color: #8899aa;
+  margin-bottom: 6px;
+  font-weight: 500;
+  letter-spacing: 1px;
 }
 
-.kpi-info .value {
-  font-size: 24px;
-  font-weight: 800;
-  color: #1e293b;
+.main-value {
+  font-size: 28px;
+  font-weight: 900;
+  color: #fff;
+  margin: 4px 0;
 }
 
-/* Filters Panel */
+.main-value small {
+  font-size: 10px;
+  color: #667085;
+  margin-left: 5px;
+}
+
+/* === Filters Panel === */
 .filters-panel {
-  background: rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.5);
-  border-radius: 20px;
   padding: 20px;
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05);
   display: flex;
   align-items: center;
   gap: 16px;
@@ -427,93 +681,155 @@ const resetFilters = () => {
   min-width: 280px;
 }
 
-.styled-input :deep(.el-input__wrapper) {
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-  border: 1px solid #e2e8f0;
-  transition: all 0.3s ease;
-  background: #fff;
+/* Dark inputs */
+:deep(.dark-input .el-input__wrapper) {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: none;
 }
 
-.styled-input :deep(.el-input__wrapper:hover) {
-  border-color: #cbd5e1;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+:deep(.dark-input .el-input__wrapper:hover) {
+  border-color: rgba(255, 170, 0, 0.3);
 }
 
-.styled-input :deep(.el-input__wrapper.is-focus) {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+:deep(.dark-input .el-input__wrapper.is-focus) {
+  border-color: #ffaa00;
 }
 
-.styled-select {
-  width: 160px;
+:deep(.dark-input .el-input__inner) {
+  color: #fff;
 }
 
-.styled-select :deep(.el-input__wrapper) {
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-  border: 1px solid #e2e8f0;
-  transition: all 0.3s ease;
-  background: #fff;
+:deep(.dark-input .el-input__prefix) {
+  color: #8899aa;
 }
 
-.styled-select :deep(.el-input__wrapper:hover) {
-  border-color: #cbd5e1;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+:deep(.dark-input:focus-within .el-input__prefix) {
+  color: #ffaa00;
 }
 
-.styled-select :deep(.el-input__wrapper.is-focus) {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+:deep(.dark-select .el-select__wrapper) {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: none;
+  min-width: 140px;
 }
 
-.view-toggle :deep(.el-radio-button__inner) {
-  border-radius: 12px;
-  padding: 8px 16px;
+:deep(.dark-select .el-select__wrapper:hover) {
+  border-color: rgba(255, 170, 0, 0.3);
 }
 
-/* Apps List Card */
-.styled-card {
-  border-radius: 20px;
-  border: none;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
+:deep(.dark-select .el-select__wrapper.is-focus) {
+  border-color: #ffaa00;
 }
 
-.apps-list-card :deep(.el-card__header) {
-  padding: 16px 20px;
-  border-bottom: 1px solid #f1f5f9;
+:deep(.dark-select .el-select__selected-item) {
+  color: #fff;
 }
 
-.body-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+:deep(.dark-toggle .el-radio-button__inner) {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #8899aa;
 }
 
-.body-title {
+:deep(.dark-toggle .el-radio-button__original-radio:checked + .el-radio-button__inner) {
+  background: rgba(255, 170, 0, 0.2);
+  border-color: #ffaa00;
+  color: #ffaa00;
+}
+
+/* === Apps List Section === */
+.apps-list-section {
+  padding: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.table-header {
+  padding: 15px 25px;
+  font-size: 12px;
+  color: #c0ccda;
+  letter-spacing: 1px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 16px;
-  font-weight: 700;
-  color: #334155;
 }
 
 .body-count {
   font-weight: 500;
+  margin-left: auto;
 }
 
-/* Cards View */
+/* === Table === */
+.apps-table :deep(.el-table) {
+  --el-table-bg-color: rgba(6, 10, 18, 0.9);
+  --el-table-tr-bg-color: rgba(8, 12, 20, 0.45);
+  --el-table-row-hover-bg-color: rgba(255, 170, 0, 0.08);
+  --el-table-header-bg-color: rgba(255, 255, 255, 0.04);
+  --el-table-border-color: rgba(255, 255, 255, 0.06);
+  color: #dbe6f5;
+}
+
+.apps-table :deep(.el-table__header th) {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-color: rgba(255, 255, 255, 0.06) !important;
+  color: #8da0b7 !important;
+  font-size: 10px;
+  letter-spacing: 1.2px;
+  font-weight: 600;
+}
+
+.apps-table :deep(.el-table__body tr) {
+  background: rgba(8, 12, 20, 0.5) !important;
+}
+
+.apps-table :deep(.el-table__body tr.el-table__row--striped) {
+  background: rgba(14, 20, 32, 0.65) !important;
+}
+
+.apps-table :deep(.el-table__body td) {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04) !important;
+  background-color: transparent !important;
+  color: #dbe6f5 !important;
+}
+
+.apps-table :deep(.el-table__row:hover td) {
+  background: rgba(255, 170, 0, 0.08) !important;
+}
+
+.apps-table .entry-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.apps-table .entry-tag {
+  flex: 0 0 auto;
+}
+
+.apps-table .entry-text {
+  flex: 1 1 auto;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: #8899aa;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+}
+
+/* === Cards View === */
 .cards {
-  padding-top: 4px;
+  padding: 20px;
 }
 
 .app-card {
   height: 240px;
   margin-bottom: 16px;
   border-radius: 16px;
-  border: 1px solid #f1f5f9;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
   transition: all 0.3s ease;
   display: flex;
   flex-direction: column;
@@ -521,7 +837,8 @@ const resetFilters = () => {
 
 .app-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+  border-color: rgba(255, 170, 0, 0.3);
 }
 
 .app-card :deep(.el-card__body) {
@@ -549,7 +866,7 @@ const resetFilters = () => {
 }
 
 .app-id {
-  color: #94a3b8;
+  color: #8899aa;
   font-size: 12px;
   font-weight: 600;
   flex-shrink: 0;
@@ -558,7 +875,7 @@ const resetFilters = () => {
 .app-name-text {
   font-size: 15px;
   font-weight: 700;
-  color: #1e293b;
+  color: #fff;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -581,21 +898,21 @@ const resetFilters = () => {
 
 .meta-k {
   font-size: 12px;
-  color: #64748b;
+  color: #8899aa;
   font-weight: 500;
   flex-shrink: 0;
 }
 
 .meta-v {
   font-size: 13px;
-  color: #475569;
+  color: #b0c4d8;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .meta-entry {
-  color: #94a3b8;
+  color: #8899aa;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 12px;
 }
@@ -614,37 +931,6 @@ const resetFilters = () => {
   flex: 1;
 }
 
-/* Table View */
-.apps-table :deep(.el-table__header-wrapper) {
-  border-radius: 12px 12px 0 0;
-}
-
-.apps-table :deep(.el-table th) {
-  background: #f8fafc;
-  color: #475569;
-  font-weight: 600;
-}
-
-.apps-table .entry-cell {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.apps-table .entry-tag {
-  flex: 0 0 auto;
-}
-
-.apps-table .entry-text {
-  flex: 1 1 auto;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  color: #64748b;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
-}
-
 /* Responsive */
 @media (max-width: 1200px) {
   .kpi-grid { grid-template-columns: repeat(2, 1fr); }
@@ -653,6 +939,22 @@ const resetFilters = () => {
 @media (max-width: 768px) {
   .kpi-grid { grid-template-columns: 1fr; }
   .filters-panel { flex-direction: column; align-items: stretch; }
-  .filter-search, .styled-select { width: 100%; }
+  .filter-search, .dark-select { width: 100%; }
 }
+</style>
+
+<!-- 全局样式：统一 Tag 样式 -->
+<style>
+.el-tag {
+  border-radius: 6px !important;
+  border: none !important;
+  padding: 0 8px !important;
+  height: 22px !important;
+  line-height: 22px !important;
+}
+
+.el-tag--success { background: rgba(34, 197, 94, 0.15) !important; color: #4ade80 !important; }
+.el-tag--warning { background: rgba(255, 170, 0, 0.15) !important; color: #ffaa00 !important; }
+.el-tag--danger { background: rgba(239, 68, 68, 0.15) !important; color: #f87171 !important; }
+.el-tag--info { background: rgba(255, 255, 255, 0.1) !important; color: #94a3b8 !important; }
 </style>
