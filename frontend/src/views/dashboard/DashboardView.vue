@@ -1,55 +1,60 @@
 <template>
   <div class="dashboard-viewport">
-    <div class="space-ambient">
-      <div class="star-field"></div>
-      <div class="nebula blue"></div> 
+    <div class="ambient-background">
+      <div class="nebula blue"></div>
       <div class="nebula gold"></div>
+      <div class="breathing-line gold-1"></div>
+      <div class="breathing-line gold-2"></div>
       <div class="scan-grid"></div>
     </div>
 
     <div class="layout-wrapper">
       <header class="page-header">
-        <h1 class="metallic-title">平台概览 <span>MONITORING PLATFORM</span></h1>
-        <div class="system-status">
-          <span class="pulse-line"></span>
-          系统运行中 | {{ lastUpdateTime }}
+        <div class="title-group">
+          <h1 class="ios-title">平台概览 <small>PLATFORM MONITORING</small></h1>
+          <div class="status-tag">
+            <span class="dot pulse"></span> 系统运行中 | {{ lastUpdateTime }}
+          </div>
+        </div>
+        <div class="header-glass-actions">
+          <el-button class="ios-btn" @click="handleRefresh">
+            <el-icon><Refresh /></el-icon> 重置视图
+          </el-button>
         </div>
       </header>
 
       <section class="metrics-grid">
-        <div class="data-cell glass-card main-chart-card">
-          <div class="card-glow-track"></div>
+        <div class="data-cell ios-glass main-chart-card">
+          <div class="border-glow"></div>
           <div class="cell-header">
-            <span class="decor-corner"></span>
-            高风险机器人分布 (HIGH RISK DISTRIBUTION)
+            <span class="accent-bar"></span>
+            高风险机器人分布 (HIGH-RISK CLUSTER)
           </div>
           <div ref="chartRef" class="main-chart-box"></div>
         </div>
 
-        <div class="data-cell glass-card dev-card" v-for="i in 3" :key="i">
-          <div class="card-glow-track"></div>
+        <div class="data-cell ios-glass dev-card" v-for="i in 3" :key="i">
+          <div class="border-glow slow"></div>
           <div class="cell-header">
-            <span class="decor-corner gray"></span>
-            模块_0{{ i }}_数据流监控
+            <span class="accent-bar gray"></span>
+            监控模块_0{{ i }}
           </div>
           <div class="dev-placeholder">
-            <div class="dev-text">
-              <div class="dev-icon">⚙</div>
-              <div class="dev-label">开发中</div>
-              <div class="dev-sub">MODULE UNDER DEVELOPMENT</div>
-            </div>
-            <div class="dev-grid"></div>
+            <div class="dev-icon">⚙</div>
+            <div class="dev-label">MODULE_PENDING</div>
           </div>
         </div>
       </section>
 
       <footer class="footer-layout">
-        <div class="glass-card trend-panel">
-          <div class="cell-header">运行脉搏 (OPERATIONAL PULSE)</div>
+        <div class="ios-glass trend-panel">
+          <div class="border-glow gold-tint"></div>
+          <div class="cell-header">运行脉搏趋势</div>
           <div ref="statusChartRef" class="mini-chart"></div>
         </div>
-        <div class="glass-card feed-panel">
-          <div class="cell-header">实时预警日志 (LIVE ALERTS)</div>
+        <div class="ios-glass feed-panel">
+          <div class="border-glow blue-tint"></div>
+          <div class="cell-header">实时预警流</div>
           <div class="log-stream">
             <div v-if="alertLoading" class="loading-state">载入中...</div>
             <template v-else-if="recentAlerts.length">
@@ -112,6 +117,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as echarts from 'echarts'
 import { ElMessage } from 'element-plus'
+import { Refresh } from '@element-plus/icons-vue'
 import { DEMO_MODE } from '@/config/appConfig'
 import { getRobotComponents, getRobotGroups, getRiskEventStatistics } from '@/api/robots'
 import { createRiskEvents, getGroupStats, getRobotsByGroup, robotGroups as mockGroups } from '@/mock/robots'
@@ -355,6 +361,12 @@ const loadAlerts = async () => {
   } finally { alertLoading.value = false }
 }
 
+const handleRefresh = async () => {
+  await Promise.all([loadGroupsData(), loadAlerts()])
+  renderMainPieChart()
+  renderStatusChart()
+}
+
 onMounted(async () => {
   // 先加载数据，再渲染图表
   await Promise.all([loadGroupsData(), loadAlerts()])
@@ -371,73 +383,172 @@ watch(groupRows, () => {
 </script>
 
 <style scoped>
-/* === 调亮全域环境 === */
+/* === iOS 风格基础环境 === */
 .dashboard-viewport {
-  background: radial-gradient(circle at 50% 35%, #0d1a2d 0%, #030508 100%);
+  background: #030508;
   min-height: 100vh;
   position: relative;
-  overflow-x: hidden;
-  color: #ffffff;
+  overflow: hidden;
+  color: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
 }
 
-.space-ambient { position: absolute; inset: 0; pointer-events: none; }
+/* === 橙金呼吸光效逻辑 === */
+.ambient-background { position: absolute; inset: 0; pointer-events: none; }
 
-/* 调亮星云，实现背景补光 */
 .nebula {
-  position: absolute; width: 80vw; height: 70vh;
-  filter: blur(120px); opacity: 0.28; mix-blend-mode: screen;
+  position: absolute;
+  width: 80vw;
+  height: 70vh;
+  filter: blur(120px);
+  opacity: 0.28;
+  mix-blend-mode: screen;
 }
 .nebula.blue { background: radial-gradient(circle, #0066ff, transparent 75%); top: -10%; left: -5%; }
 .nebula.gold { background: radial-gradient(circle, #ffaa00, transparent 75%); bottom: -10%; right: -5%; }
 
-.layout-wrapper { position: relative; z-index: 1; padding: 40px; max-width: 1600px; margin: 0 auto; }
-
-/* 标题：提升金属反光亮度 */
-.metallic-title {
-  font-size: 36px; font-weight: 900; letter-spacing: 5px;
-  background: linear-gradient(180deg, #ffffff 30%, #a0a0a0 100%);
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-  text-shadow: 0 0 40px rgba(0, 195, 255, 0.5);
-  margin-bottom: 8px;
+.breathing-line {
+  position: absolute;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #ffaa00, transparent);
+  filter: blur(1px);
+  opacity: 0.3;
+  animation: breathe 8s infinite ease-in-out;
 }
-.metallic-title span { font-size: 14px; color: #636e72; margin-left: 15px; letter-spacing: 2px; }
+.gold-1 { width: 100%; top: 30%; left: -50%; transform: rotate(-5deg); }
+.gold-2 { width: 100%; bottom: 20%; right: -50%; transform: rotate(3deg); animation-delay: -4s; }
 
-/* 辅助文字调亮 */
-.system-status { font-size: 11px; color: #a0aec0; letter-spacing: 2px; display: flex; align-items: center; gap: 15px; }
-.pulse-line { width: 30px; height: 2px; background: #00ffcc; box-shadow: 0 0 10px #00ffcc; }
+@keyframes breathe {
+  0%, 100% { opacity: 0.1; transform: scaleX(0.8) translateY(0); }
+  50% { opacity: 0.5; transform: scaleX(1.2) translateY(-20px); }
+}
 
-/* 面板：强化毛玻璃通透感 */
-.glass-card {
+/* === iOS 超透明玻璃卡片 === */
+.ios-glass {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(50px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
+}
+
+.border-glow {
+  position: absolute;
+  inset: 0;
+  border-radius: 24px;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(255, 170, 0, 0.4), transparent 40%, rgba(255, 170, 0, 0.1));
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  animation: borderBreathe 6s infinite ease-in-out;
+}
+.border-glow.slow { animation-duration: 10s; }
+.border-glow.gold-tint { background: linear-gradient(135deg, rgba(255, 170, 0, 0.55), transparent 45%, rgba(255, 170, 0, 0.15)); }
+.border-glow.blue-tint { background: linear-gradient(135deg, rgba(0, 195, 255, 0.55), transparent 45%, rgba(0, 195, 255, 0.15)); }
+
+@keyframes borderBreathe {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.8; box-shadow: inset 0 0 15px rgba(255, 170, 0, 0.2); }
+}
+
+/* === 标题与文字调优 === */
+.ios-title {
+  font-size: 32px;
+  letter-spacing: -0.5px;
+  background: linear-gradient(180deg, #fff 40%, rgba(255,255,255,0.6));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.ios-title small { font-size: 14px; color: #ffaa00; margin-left: 10px; font-weight: 300; letter-spacing: 2px; }
+
+.status-tag {
   background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(40px);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 4px; padding: 0;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-  transition: all 0.4s ease;
+  padding: 6px 16px;
+  border-radius: 100px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #a0aec0;
 }
-.glass-card:hover { transform: translateY(-5px); border-color: #00c3ff; background: rgba(255, 255, 255, 0.08); }
-
-.cell-header {
-  padding: 15px; font-size: 11px; color: #c0ccda; font-weight: bold;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05); letter-spacing: 1px;
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #00ffcc;
+  box-shadow: 0 0 10px rgba(0, 255, 204, 0.8);
+}
+.pulse { animation: pulseDot 2s ease-in-out infinite; }
+@keyframes pulseDot {
+  0%, 100% { transform: scale(1); opacity: 0.8; }
+  50% { transform: scale(1.5); opacity: 1; }
 }
 
-.metrics-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(240px, 1fr));
-  gap: 18px;
-  margin-top: 24px;
+.ios-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border-radius: 999px;
+  padding: 8px 16px;
 }
-.main-chart-box { height: 240px; width: 100%; }
+.ios-btn:hover { background: rgba(255, 255, 255, 0.12); }
 
-/* 日志流文字调亮 */
-.log-row p { color: #f5f6fa; flex: 1; margin: 0; font-size: 12px; }
-.log-time { color: #8899aa; font-size: 10px; }
+.accent-bar {
+  width: 4px; height: 16px; background: #ffaa00; border-radius: 10px;
+  box-shadow: 0 0 10px #ffaa00;
+}
+.accent-bar.gray { background: #636e72; box-shadow: none; }
 
-.footer-layout { display: grid; grid-template-columns: 2fr 1fr; gap: 30px; margin-top: 30px; }
+/* === 布局网格 === */
+.layout-wrapper { padding: 40px; position: relative; z-index: 10; max-width: 1400px; margin: 0 auto; }
+.metrics-grid { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr; gap: 24px; margin-top: 40px; }
+.main-chart-box { height: 350px; }
+.footer-layout { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; margin-top: 24px; }
 .mini-chart { height: 200px; width: 100%; }
 
-/* === 弹窗内部内容样式（scoped 可以作用） === */
+/* 页面头部 */
+.page-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 20px; padding-bottom: 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.title-group { display: flex; flex-direction: column; gap: 10px; }
+
+/* 卡片标题 */
+.cell-header {
+  padding: 15px; font-size: 11px; color: #c0ccda; font-weight: bold;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06); letter-spacing: 1px;
+  display: flex; align-items: center; gap: 10px;
+}
+
+/* 开发中卡片 */
+.dev-card { min-height: 280px; display: flex; flex-direction: column; }
+.dev-placeholder { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+.dev-icon { font-size: 28px; color: #636e72; animation: rotate 8s linear infinite; }
+@keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.dev-label { font-size: 12px; color: #8899aa; letter-spacing: 1px; }
+
+/* 日志流 */
+.log-stream { padding: 12px; max-height: 220px; overflow-y: auto; }
+.log-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; margin-bottom: 8px;
+  background: rgba(0, 0, 0, 0.2); border-radius: 12px;
+}
+.log-row p { color: #f5f6fa; flex: 1; margin: 0; font-size: 12px; }
+.log-time { color: #8899aa; font-size: 10px; }
+.log-tag { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.log-tag.critical { background: #ff4444; box-shadow: 0 0 8px #ff4444; }
+.log-tag.high { background: #ffaa00; box-shadow: 0 0 8px #ffaa00; }
+.log-tag.medium { background: #00c3ff; box-shadow: 0 0 8px #00c3ff; }
+.log-tag.low { background: #00ffcc; }
+.loading-state, .no-data {
+  text-align: center; padding: 40px 0; color: #8899aa; font-size: 12px;
+}
+
+/* === 弹窗内部内容样式（保留功能） === */
 .dialog-header {
   display: flex;
   flex-direction: column;
@@ -552,92 +663,6 @@ watch(groupRows, () => {
     opacity: 0.6;
     transform: scale(1.2);
   }
-}
-
-/* 星空背景 */
-.star-field {
-  position: absolute; inset: 0;
-  background-image: radial-gradient(2px 2px at 20% 30%, rgba(255,255,255,0.3), transparent),
-                    radial-gradient(2px 2px at 60% 70%, rgba(255,255,255,0.2), transparent),
-                    radial-gradient(1px 1px at 50% 50%, rgba(255,255,255,0.4), transparent),
-                    radial-gradient(1px 1px at 80% 10%, rgba(255,255,255,0.3), transparent);
-  background-size: 200% 200%;
-  animation: twinkle 8s ease-in-out infinite;
-}
-@keyframes twinkle { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
-
-/* 装饰角落 */
-.decor-corner {
-  display: inline-block; width: 8px; height: 8px;
-  background: linear-gradient(135deg, #00c3ff, transparent);
-  margin-right: 8px;
-}
-.decor-corner.gray { background: linear-gradient(135deg, #636e72, transparent); }
-
-/* 卡片光晕轨道 */
-.card-glow-track {
-  position: absolute; top: 0; left: 0; right: 0; height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(0, 195, 255, 0.5), transparent);
-}
-
-/* 开发中卡片 */
-.dev-card {
-  grid-column: span 1;
-  min-height: 280px;
-  display: flex; flex-direction: column;
-}
-.dev-placeholder {
-  flex: 1; display: flex; align-items: center; justify-content: center;
-  position: relative;
-}
-.dev-text {
-  text-align: center; z-index: 1;
-}
-.dev-icon {
-  font-size: 32px; color: #636e72; margin-bottom: 12px;
-  animation: rotate 8s linear infinite;
-}
-@keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-.dev-label {
-  font-size: 14px; color: #8899aa; font-weight: bold; margin-bottom: 4px;
-}
-.dev-sub {
-  font-size: 10px; color: #5a6a7a; letter-spacing: 1px;
-}
-.dev-grid {
-  position: absolute; inset: 0; opacity: 0.1;
-  background-image: linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
-                    linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px);
-  background-size: 20px 20px;
-}
-
-/* 底部面板 */
-.trend-panel, .feed-panel { padding: 0; }
-.log-stream { padding: 12px; max-height: 200px; overflow-y: auto; }
-.loading-state {
-  text-align: center; padding: 40px 0; color: #8899aa; font-size: 12px;
-}
-.no-data {
-  text-align: center; padding: 40px 0; color: #5a6a7a; font-size: 12px;
-}
-.log-row {
-  display: flex; align-items: center; gap: 10px;
-  padding: 10px 12px; margin-bottom: 8px;
-  background: rgba(0, 0, 0, 0.2); border-radius: 4px;
-}
-.log-tag {
-  width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
-}
-.log-tag.critical { background: #ff4444; box-shadow: 0 0 8px #ff4444; }
-.log-tag.high { background: #ffaa00; box-shadow: 0 0 8px #ffaa00; }
-.log-tag.medium { background: #00c3ff; box-shadow: 0 0 8px #00c3ff; }
-.log-tag.low { background: #00ffcc; }
-
-/* 页面头部 */
-.page-header {
-  display: flex; justify-content: space-between; align-items: center;
-  margin-bottom: 20px; padding-bottom: 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 /* 扫描线动画 */

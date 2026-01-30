@@ -1,9 +1,11 @@
 <template>
   <div class="robot-status-viewport">
     <!-- 背景流光特效 -->
-    <div class="space-ambient">
+    <div class="ambient-background">
       <div class="nebula blue"></div>
       <div class="nebula gold"></div>
+      <div class="breathing-line gold-1"></div>
+      <div class="breathing-line gold-2"></div>
       <div class="scan-grid"></div>
     </div>
 
@@ -11,10 +13,10 @@
       <!-- Header Section -->
       <header class="page-header">
         <div class="title-area">
-          <h1 class="metallic-title">机器人状态 <span>ROBOT STATUS</span></h1>
+          <h1 class="ios-title">机器人状态 <small>ROBOT STATUS</small></h1>
         </div>
         <div class="header-actions">
-          <el-button :icon="Refresh" @click="handleRefresh" class="action-btn">同步数据</el-button>
+          <el-button :icon="Refresh" @click="handleRefresh" class="ios-btn">同步数据</el-button>
         </div>
       </header>
 
@@ -24,10 +26,11 @@
           v-for="group in groups"
           :key="group.key"
           type="button"
-          class="kpi-card glass-card"
+          class="kpi-card ios-glass"
           :class="{ active: group.key === selectedGroup }"
           @click="selectedGroup = group.key"
         >
+          <div class="border-glow"></div>
           <div class="active-glow"></div>
           <div class="kpi-icon-box">
             <el-icon><Monitor /></el-icon>
@@ -44,9 +47,10 @@
       </div>
 
       <!-- Data Table Section -->
-      <section class="data-table-section glass-card">
+      <section class="data-table-section ios-glass">
+        <div class="border-glow gold-tint"></div>
         <div class="table-header">
-          <span class="decor-line"></span>
+          <span class="accent-bar"></span>
           <span>{{ activeGroupName }} - 实时状态列表</span>
         </div>
 
@@ -59,11 +63,11 @@
 
         <!-- Filters -->
         <div class="filters">
-          <el-row :gutter="12" align="middle">
-            <el-col :span="10">
+          <el-row :gutter="10" align="middle">
+            <el-col :span="6">
               <el-input v-model="keyword" placeholder="搜索：部件编号 / 参考编号 / 类型 / 工艺 / 备注" clearable class="dark-input" />
             </el-col>
-            <el-col :span="4">
+            <el-col :span="3">
               <el-select v-model="levelFilter" placeholder="等级(level)" clearable class="dark-select">
                 <el-option label="H" value="H" />
                 <el-option label="M" value="M" />
@@ -72,7 +76,7 @@
                 <el-option label="C" value="C" />
               </el-select>
             </el-col>
-            <el-col :span="4">
+            <el-col :span="3">
               <el-select
                 v-model="axisKeysFilter"
                 placeholder="Axis(A1-A7)"
@@ -103,7 +107,7 @@
                 <el-option label="非0" value="nonzero" />
               </el-select>
             </el-col>
-            <el-col :span="24" class="filters-right">
+            <el-col :span="6" class="filters-right">
               <el-button type="primary" :icon="Search" @click="currentPage = 1">查询</el-button>
               <el-button :icon="Close" @click="resetFilters">重置</el-button>
             </el-col>
@@ -669,25 +673,26 @@ if (!DEMO_MODE) {
 </script>
 
 <style scoped>
-/* === 基础布局与背景 === */
+/* === iOS 风格基础布局与背景 === */
 .robot-status-viewport {
-  background: radial-gradient(circle at 50% 30%, #0d1a2d 0%, #030508 100%);
+  background: #030508;
   min-height: 100vh;
   position: relative;
-  overflow-x: hidden;
+  overflow: hidden;
   color: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
 }
 
 .layout-wrapper {
   position: relative;
   z-index: 1;
   padding: 40px;
-  max-width: 1600px;
+  max-width: 1400px;
   margin: 0 auto;
 }
 
 /* === 背景流光元素 === */
-.space-ambient {
+.ambient-background {
   position: absolute;
   inset: 0;
   pointer-events: none;
@@ -717,21 +722,32 @@ if (!DEMO_MODE) {
   right: -5%;
 }
 
+.breathing-line {
+  position: absolute;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #ffaa00, transparent);
+  filter: blur(1px);
+  opacity: 0.3;
+  animation: breathe 8s infinite ease-in-out;
+}
+.gold-1 { width: 100%; top: 30%; left: -50%; transform: rotate(-5deg); }
+.gold-2 { width: 100%; bottom: 20%; right: -50%; transform: rotate(3deg); animation-delay: -4s; }
+
+@keyframes breathe {
+  0%, 100% { opacity: 0.1; transform: scaleX(0.8) translateY(0); }
+  50% { opacity: 0.5; transform: scaleX(1.2) translateY(-20px); }
+}
+
 .scan-grid {
   position: absolute;
   inset: 0;
   background-image: linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
                     linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
   background-size: 40px 40px;
+  mask-image: linear-gradient(to bottom, black, transparent);
+  animation: gridMove 25s linear infinite;
 }
-
-/* === Header === */
-.status-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-}
+@keyframes gridMove { from { background-position: 0 0; } to { background-position: 0 50px; } }
 
 /* === Header === */
 .page-header {
@@ -748,39 +764,15 @@ if (!DEMO_MODE) {
   flex-direction: column;
 }
 
-.metallic-title {
-  font-size: 36px;
-  font-weight: 900;
-  letter-spacing: 5px;
-  background: linear-gradient(180deg, #ffffff 30%, #a0a0a0 100%);
+.ios-title {
+  font-size: 32px;
+  letter-spacing: -0.5px;
+  background: linear-gradient(180deg, #fff 40%, rgba(255,255,255,0.6));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  text-shadow: 0 0 40px rgba(0, 195, 255, 0.5);
   margin: 0 0 8px 0;
 }
-
-.metallic-title span {
-  font-size: 14px;
-  color: #636e72;
-  margin-left: 15px;
-  letter-spacing: 2px;
-}
-
-.system-status {
-  font-size: 11px;
-  color: #a0aec0;
-  letter-spacing: 2px;
-  display: flex;
-  align-items: center;
-  gap: 15px;
-}
-
-.pulse-line {
-  width: 30px;
-  height: 2px;
-  background: #00ffcc;
-  box-shadow: 0 0 10px #00ffcc;
-}
+.ios-title small { font-size: 14px; color: #ffaa00; margin-left: 10px; font-weight: 300; letter-spacing: 2px; }
 
 .header-actions {
   display: flex;
@@ -788,14 +780,44 @@ if (!DEMO_MODE) {
   gap: 16px;
 }
 
-.action-btn {
-  background: linear-gradient(135deg, #00c3ff 0%, #0080ff 100%);
-  border: none;
-  box-shadow: 0 4px 15px rgba(0, 195, 255, 0.3);
+.ios-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border-radius: 999px;
+  padding: 8px 16px;
+}
+.ios-btn:hover { background: rgba(255, 255, 255, 0.12); }
+
+/* === iOS 玻璃卡片 === */
+.ios-glass {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(50px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
+}
+.border-glow {
+  position: absolute;
+  inset: 0;
+  border-radius: 24px;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(255, 170, 0, 0.4), transparent 40%, rgba(255, 170, 0, 0.1));
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  animation: borderBreathe 6s infinite ease-in-out;
+}
+.border-glow.gold-tint { background: linear-gradient(135deg, rgba(255, 170, 0, 0.55), transparent 45%, rgba(255, 170, 0, 0.15)); }
+@keyframes borderBreathe {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.8; box-shadow: inset 0 0 15px rgba(255, 170, 0, 0.2); }
 }
 
-.action-btn:hover {
-  box-shadow: 0 6px 20px rgba(0, 195, 255, 0.5);
+.accent-bar {
+  width: 4px; height: 16px; background: #ffaa00; border-radius: 10px;
+  box-shadow: 0 0 10px #ffaa00;
 }
 
 /* === KPI 卡片 === */
@@ -813,8 +835,6 @@ if (!DEMO_MODE) {
   gap: 20px;
   cursor: pointer;
   transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.15);
   position: relative;
   overflow: hidden;
   text-align: left;
@@ -824,10 +844,8 @@ if (!DEMO_MODE) {
 
 .kpi-card:hover,
 .kpi-card.active {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: #00c3ff;
   transform: translateY(-5px);
-  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5), 0 0 15px rgba(0, 195, 255, 0.2);
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5), 0 0 15px rgba(255, 170, 0, 0.2);
 }
 
 .kpi-card.active .active-glow {
@@ -836,8 +854,8 @@ if (!DEMO_MODE) {
   left: 0;
   width: 4px;
   height: 100%;
-  background: #00c3ff;
-  box-shadow: 0 0 15px #00c3ff;
+  background: #ffaa00;
+  box-shadow: 0 0 15px #ffaa00;
 }
 
 .kpi-icon-box {
@@ -849,8 +867,8 @@ if (!DEMO_MODE) {
   justify-content: center;
   font-size: 26px;
   flex-shrink: 0;
-  background: rgba(0, 195, 255, 0.1);
-  color: #00c3ff;
+  background: rgba(255, 170, 0, 0.12);
+  color: #ffaa00;
 }
 
 .kpi-content {
@@ -876,7 +894,7 @@ if (!DEMO_MODE) {
 
 .main-value small {
   font-size: 10px;
-  color: #555;
+  color: #667085;
   margin-left: 5px;
 }
 
@@ -922,23 +940,6 @@ if (!DEMO_MODE) {
   gap: 10px;
 }
 
-.decor-line {
-  width: 3px;
-  height: 14px;
-  background: #00c3ff;
-  box-shadow: 0 0 10px #00c3ff;
-}
-
-/* === Glass Card === */
-.glass-card {
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(40px);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 4px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-  transition: all 0.4s ease;
-}
-
 /* === Tabs Dark === */
 :deep(.status-tabs-dark) {
   --el-tabs-nav-wrap-bg-color: transparent;
@@ -954,11 +955,15 @@ if (!DEMO_MODE) {
 }
 
 :deep(.status-tabs-dark .el-tabs__item.is-active) {
-  color: #00c3ff;
+  color: #ffaa00;
 }
 
 :deep(.status-tabs-dark .el-tabs__active-bar) {
-  background: #00c3ff;
+  background: #ffaa00;
+}
+
+:deep(.status-tabs-dark .el-tabs__nav-wrap) {
+  padding-left: 25px;
 }
 
 /* === Filters === */
@@ -971,7 +976,6 @@ if (!DEMO_MODE) {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  margin-top: 10px;
 }
 
 /* Dark inputs */
@@ -982,11 +986,11 @@ if (!DEMO_MODE) {
 }
 
 :deep(.dark-input .el-input__wrapper:hover) {
-  border-color: rgba(0, 195, 255, 0.3);
+  border-color: rgba(255, 170, 0, 0.3);
 }
 
 :deep(.dark-input .el-input__wrapper.is-focus) {
-  border-color: #00c3ff;
+  border-color: #ffaa00;
 }
 
 :deep(.dark-input .el-input__inner) {
@@ -1000,15 +1004,23 @@ if (!DEMO_MODE) {
 }
 
 :deep(.dark-select .el-select__wrapper:hover) {
-  border-color: rgba(0, 195, 255, 0.3);
+  border-color: rgba(255, 170, 0, 0.3);
 }
 
 :deep(.dark-select .el-select__wrapper.is-focus) {
-  border-color: #00c3ff;
+  border-color: #ffaa00;
 }
 
 :deep(.dark-select .el-select__selected-item) {
   color: #fff;
+}
+
+:deep(.dark-select) {
+  min-width: 120px;
+}
+
+:deep(.dark-select.el-select--multiple) {
+  min-width: 140px;
 }
 
 /* === Table Legend === */
@@ -1050,7 +1062,7 @@ if (!DEMO_MODE) {
 .data-table-section :deep(.el-table) {
   --el-table-bg-color: rgba(6, 10, 18, 0.9);
   --el-table-tr-bg-color: rgba(8, 12, 20, 0.45);
-  --el-table-row-hover-bg-color: rgba(0, 195, 255, 0.06);
+  --el-table-row-hover-bg-color: rgba(255, 170, 0, 0.08);
   --el-table-header-bg-color: rgba(255, 255, 255, 0.04);
   --el-table-border-color: rgba(255, 255, 255, 0.06);
   color: #dbe6f5;
@@ -1080,11 +1092,11 @@ if (!DEMO_MODE) {
 }
 
 .data-table-section :deep(.el-table__row:hover td) {
-  background: rgba(0, 195, 255, 0.06) !important;
+  background: rgba(255, 170, 0, 0.08) !important;
 }
 
 .data-table-section :deep(.el-table__row.current-row td) {
-  background: rgba(0, 195, 255, 0.12) !important;
+  background: rgba(255, 170, 0, 0.14) !important;
 }
 
 /* 固定列样式 */
@@ -1097,12 +1109,12 @@ if (!DEMO_MODE) {
 }
 
 .robot-name-cell {
-  color: #00c3ff;
+  color: #ffaa00;
   font-weight: 600;
 }
 
 .robot-name-cell:hover {
-  text-shadow: 0 0 10px rgba(0, 195, 255, 0.5);
+  text-shadow: 0 0 10px rgba(255, 170, 0, 0.5);
 }
 
 .mono {
@@ -1129,7 +1141,7 @@ if (!DEMO_MODE) {
 :deep(.pager .el-pagination) {
   --el-pagination-button-bg-color: transparent;
   --el-pagination-button-color: #8899aa;
-  --el-pagination-hover-color: #00c3ff;
+  --el-pagination-hover-color: #ffaa00;
 }
 
 :deep(.pager .el-pagination button) {
@@ -1138,12 +1150,12 @@ if (!DEMO_MODE) {
 }
 
 :deep(.pager .el-pagination button:hover) {
-  border-color: #00c3ff;
+  border-color: #ffaa00;
 }
 
 :deep(.pager .el-pager li.is-active) {
-  background: #00c3ff;
-  border-color: #00c3ff;
+  background: #ffaa00;
+  border-color: #ffaa00;
 }
 
 /* === Detail === */
@@ -1227,10 +1239,11 @@ if (!DEMO_MODE) {
 
 /* === Dark Dialog === */
 :deep(.dark-dialog) {
-  background: rgba(6, 10, 18, 0.92);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.65);
-  backdrop-filter: blur(22px);
+  backdrop-filter: blur(30px) saturate(160%);
+  border-radius: 18px;
 }
 
 :deep(.dark-dialog .el-dialog__header) {
@@ -1253,7 +1266,7 @@ if (!DEMO_MODE) {
 }
 
 :deep(.dark-dialog .el-dialog__close:hover) {
-  color: #00c3ff;
+  color: #ffaa00;
 }
 
 :deep(.dark-dialog .el-descriptions) {
@@ -1299,24 +1312,27 @@ if (!DEMO_MODE) {
 .el-select-dropdown {
   background: rgba(10, 10, 15, 0.85) !important;
   backdrop-filter: blur(30px) !important;
-  border: 1px solid rgba(0, 204, 255, 0.2) !important;
+  border: 1px solid rgba(255, 170, 0, 0.25) !important;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5) !important;
 }
 
 .el-select-dropdown__item {
   color: #aaa !important;
   background: transparent !important;
+  white-space: nowrap !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
 }
 
 .el-select-dropdown__item.hover,
 .el-select-dropdown__item:hover {
-  background: rgba(0, 204, 255, 0.15) !important;
-  color: #00ccff !important;
+  background: rgba(255, 170, 0, 0.15) !important;
+  color: #ffaa00 !important;
 }
 
 .el-select-dropdown__item.is-selected {
-  color: #00ccff !important;
-  background: rgba(0, 204, 255, 0.2) !important;
+  color: #ffaa00 !important;
+  background: rgba(255, 170, 0, 0.2) !important;
   font-weight: 600;
 }
 
@@ -1338,12 +1354,12 @@ if (!DEMO_MODE) {
 
 .el-popper.is-light .el-popper__arrow::before {
   background: rgba(10, 10, 15, 0.85) !important;
-  border: 1px solid rgba(0, 204, 255, 0.2) !important;
+  border: 1px solid rgba(255, 170, 0, 0.25) !important;
 }
 
 .el-popper .el-popper__arrow::before {
   background: rgba(10, 10, 15, 0.85) !important;
-  border: 1px solid rgba(0, 204, 255, 0.2) !important;
+  border: 1px solid rgba(255, 170, 0, 0.25) !important;
 }
 
 /* Checkbox Dark Theme in Dropdown */
@@ -1356,8 +1372,8 @@ if (!DEMO_MODE) {
 }
 
 .el-checkbox__input.is-checked .el-checkbox__inner {
-  background-color: #00ccff !important;
-  border-color: #00ccff !important;
+  background-color: #ffaa00 !important;
+  border-color: #ffaa00 !important;
 }
 
 .el-checkbox__inner {
@@ -1366,7 +1382,7 @@ if (!DEMO_MODE) {
 }
 
 .el-checkbox__inner:hover {
-  border-color: #00ccff !important;
+  border-color: #ffaa00 !important;
 }
 
 .el-checkbox__label {
@@ -1375,9 +1391,9 @@ if (!DEMO_MODE) {
 
 /* Tag Dark Theme */
 .el-tag {
-  background: rgba(0, 204, 255, 0.1) !important;
-  border-color: rgba(0, 204, 255, 0.3) !important;
-  color: #00ccff !important;
+  background: rgba(255, 170, 0, 0.12) !important;
+  border-color: rgba(255, 170, 0, 0.3) !important;
+  color: #ffaa00 !important;
 }
 
 .el-tag--success {
@@ -1405,8 +1421,8 @@ if (!DEMO_MODE) {
 }
 
 .el-tag.el-tag--light {
-  background: rgba(0, 204, 255, 0.1) !important;
-  border-color: rgba(0, 204, 255, 0.3) !important;
-  color: #00ccff !important;
+  background: rgba(255, 170, 0, 0.12) !important;
+  border-color: rgba(255, 170, 0, 0.3) !important;
+  color: #ffaa00 !important;
 }
 </style>
