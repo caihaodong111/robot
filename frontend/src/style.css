@@ -58,6 +58,10 @@ a:hover {
   --el-bg-color: var(--app-surface);
   --el-fill-color-blank: var(--app-surface);
   --el-box-shadow-light: var(--app-glass-shadow);
+  /* Popper/Dropdown 背景覆盖 - 透明玻璃质感，内层透明避免嵌套感 */
+  --el-bg-color-overlay: rgba(20, 25, 35, 0.75);
+  --el-popper-bg-color-dark: rgba(20, 25, 35, 0.75);
+  --el-popover-border-radius: 20px;
 }
 
 /* 滚动条样式 */
@@ -77,4 +81,180 @@ a:hover {
 
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 204, 255, 0.5);
+}
+
+/* ==========================================================================
+   Element Plus 下拉菜单全局样式 - 透明玻璃质感
+   ========================================================================== */
+
+/* --- 1. Popper 容器覆盖 (Element Plus 下拉外层容器) --- */
+.el-popper {
+  /* 透明玻璃质感背景 */
+  background-color: rgba(20, 25, 35, 0.75) !important;
+  backdrop-filter: blur(40px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(40px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 20px !important;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+}
+
+.el-popper.is-dark,
+.el-popper.is-dark > .el-popper__arrow:before {
+  background-color: rgba(20, 25, 35, 0.75) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+/* --- 2. 下拉菜单容器 (核心玻璃体) --- */
+.el-select-dropdown {
+  /* 内层透明，避免双层背景嵌套感 */
+  background-color: transparent !important;
+  backdrop-filter: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  margin-top: 0 !important;
+}
+
+/* 下拉菜单内部容器也设为透明 */
+.el-select-dropdown__wrap {
+  background-color: transparent !important;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+}
+
+.el-select-dropdown__wrap::-webkit-scrollbar {
+  width: 4px;
+}
+
+.el-select-dropdown__wrap::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+.el-select-dropdown__wrap::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 隐藏原本的小三角箭头 */
+.el-popper__arrow {
+  display: none !important;
+}
+
+/* --- 3. 选项列表项 --- */
+.el-select-dropdown__list {
+  background-color: transparent !important;
+  padding: 6px 8px !important;
+}
+
+.el-select-dropdown__item {
+  color: #8da0b7 !important;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font-size: 13px !important;
+  height: 36px !important;
+  line-height: 36px !important;
+  margin: 1px 4px !important;
+  border-radius: 8px !important;
+  padding: 0 12px !important;
+  transition: all 0.15s ease !important;
+  font-weight: 400 !important;
+}
+
+/* 悬停状态 */
+.el-select-dropdown__item.hover,
+.el-select-dropdown__item:hover {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+  color: #ffffff !important;
+}
+
+/* 选中状态 - 金色高亮 */
+.el-select-dropdown__item.is-selected {
+  background: rgba(255, 170, 0, 0.15) !important;
+  color: #ffaa00 !important;
+  font-weight: 500 !important;
+}
+
+/* 禁用状态 */
+.el-select-dropdown__item.is-disabled {
+  color: rgba(255, 255, 255, 0.2) !important;
+  pointer-events: none;
+}
+
+/* ==========================================================================
+   Element Plus Date Picker 样式 - 透明玻璃质感
+   ========================================================================== */
+
+.el-picker-panel {
+  background-color: rgba(20, 25, 35, 0.75) !important;
+  backdrop-filter: blur(40px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(40px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 20px !important;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+  color: #aaa !important;
+}
+
+.el-picker-panel__content .cell {
+  color: #8da0b7 !important;
+}
+
+.el-picker-panel__content .cell:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #ffffff !important;
+}
+
+.el-picker-panel__content .cell.available:not(.disabled).in-range {
+  background: rgba(255, 170, 0, 0.15) !important;
+  color: #ffaa00 !important;
+}
+
+.el-picker-panel__content .cell.available:not(.disabled):hover {
+  background: rgba(255, 255, 255, 0.12) !important;
+}
+
+.el-date-table th {
+  color: #888 !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+.el-picker-panel__header-label {
+  color: #aaa !important;
+}
+
+.el-picker-panel__icon-btn {
+  color: #888 !important;
+}
+
+.el-picker-panel__icon-btn:hover {
+  color: #ffaa00 !important;
+}
+
+.el-picker-panel__footer {
+  background: transparent !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+.el-picker-panel__shortcut {
+  color: #888 !important;
+}
+
+.el-picker-panel__shortcut:hover {
+  color: #ffaa00 !important;
+}
+
+.el-date-range-picker__content {
+  border-right: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+.el-date-range-picker__header {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+/* 隐藏 Date Picker 箭头 */
+.el-picker-panel__arrow {
+  display: none !important;
 }

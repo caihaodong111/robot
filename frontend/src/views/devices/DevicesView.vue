@@ -1436,6 +1436,56 @@ if (!DEMO_MODE) {
   color: #fff;
 }
 
+/* 下拉框与输入框样式统一 */
+:deep(.dark-dialog .el-select__wrapper) {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+:deep(.dark-dialog .el-select__wrapper:hover) {
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+:deep(.dark-dialog .el-select__wrapper.is-focus) {
+  border-color: rgba(0, 195, 255, 0.4);
+  box-shadow: 0 0 0 2px rgba(0, 195, 255, 0.1);
+}
+
+:deep(.dark-dialog .el-select .el-select__selected-item) {
+  color: #fff;
+}
+
+/* el-input-number 与 el-input 样式统一 */
+:deep(.dark-dialog .el-input-number .el-input__wrapper) {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+:deep(.dark-dialog .el-input-number .el-input__inner) {
+  color: #fff;
+}
+
+/* el-input-number 上下按钮样式 */
+:deep(.dark-dialog .el-input-number__decrease),
+:deep(.dark-dialog .el-input-number__increase) {
+  background: rgba(255, 255, 255, 0.05);
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  color: #8899aa;
+}
+
+:deep(.dark-dialog .el-input-number__decrease:hover),
+:deep(.dark-dialog .el-input-number__increase:hover) {
+  background: rgba(255, 255, 255, 0.1);
+  color: #00c3ff;
+}
+
+:deep(.dark-dialog .el-input-number__decrease.is-disabled),
+:deep(.dark-dialog .el-input-number__increase.is-disabled) {
+  background: rgba(255, 255, 255, 0.02);
+  border-left-color: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.15);
+}
+
 :deep(.dark-dialog .el-textarea__inner) {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -1450,123 +1500,29 @@ if (!DEMO_MODE) {
 }
 </style>
 
-<!-- 全局样式：下拉菜单深色主题 -->
+<!-- 全局样式：统一 Tag 样式 -->
 <style>
-/* Select Dropdown - 玻璃质感 */
-.el-select-dropdown {
-  background: rgba(10, 10, 15, 0.85) !important;
-  backdrop-filter: blur(30px) !important;
-  border: 1px solid rgba(255, 170, 0, 0.25) !important;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5) !important;
-}
-
-.el-select-dropdown__item {
-  color: #aaa !important;
-  background: transparent !important;
-  white-space: nowrap !important;
-  overflow: visible !important;
-  text-overflow: clip !important;
-}
-
-.el-select-dropdown__item.hover,
-.el-select-dropdown__item:hover {
-  background: rgba(255, 170, 0, 0.15) !important;
-  color: #ffaa00 !important;
-}
-
-.el-select-dropdown__item.is-selected {
-  color: #ffaa00 !important;
-  background: rgba(255, 170, 0, 0.2) !important;
-  font-weight: 600;
-}
-
-.el-select-dropdown__item.is-disabled {
-  color: #666 !important;
-}
-
-.el-select-dropdown__empty-panel {
-  color: #666 !important;
-}
-
-.el-select-dropdown__wrap {
-  background: transparent !important;
-}
-
-.el-select-dropdown__list {
-  background: transparent !important;
-}
-
-.el-popper.is-light .el-popper__arrow::before {
-  background: rgba(10, 10, 15, 0.85) !important;
-  border: 1px solid rgba(255, 170, 0, 0.25) !important;
-}
-
-.el-popper .el-popper__arrow::before {
-  background: rgba(10, 10, 15, 0.85) !important;
-  border: 1px solid rgba(255, 170, 0, 0.25) !important;
-}
-
-/* Checkbox Dark Theme in Dropdown */
-.el-select-dropdown__item .el-checkbox {
-  color: #aaa !important;
-}
-
-.el-checkbox {
-  color: #aaa !important;
-}
-
-.el-checkbox__input.is-checked .el-checkbox__inner {
-  background-color: #ffaa00 !important;
-  border-color: #ffaa00 !important;
-}
-
-.el-checkbox__inner {
-  background: rgba(255, 255, 255, 0.03) !important;
-  border-color: rgba(255, 255, 255, 0.2) !important;
-}
-
-.el-checkbox__inner:hover {
-  border-color: #ffaa00 !important;
-}
-
-.el-checkbox__label {
-  color: #aaa !important;
-}
-
-/* Tag Dark Theme */
+/* === 统一 Tag 样式 (表格内或详情页) === */
 .el-tag {
-  background: rgba(255, 170, 0, 0.12) !important;
-  border-color: rgba(255, 170, 0, 0.3) !important;
+  border-radius: 6px !important;
+  border: none !important;
+  padding: 0 8px !important;
+  height: 22px !important;
+  line-height: 22px !important;
+}
+
+/* 覆盖 Element Plus 默认 Tag 颜色为暗黑适配色 */
+.el-tag--success { background: rgba(34, 197, 94, 0.15) !important; color: #4ade80 !important; }
+.el-tag--warning { background: rgba(255, 170, 0, 0.15) !important; color: #ffaa00 !important; }
+.el-tag--danger { background: rgba(239, 68, 68, 0.15) !important; color: #f87171 !important; }
+.el-tag--info { background: rgba(255, 255, 255, 0.1) !important; color: #94a3b8 !important; }
+
+/* 多选Tag关闭按钮样式 */
+.el-select .el-select__tags .el-tag__close {
   color: #ffaa00 !important;
 }
-
-.el-tag--success {
-  background: rgba(0, 255, 136, 0.15) !important;
-  border-color: rgba(0, 255, 136, 0.3) !important;
-  color: #00ff88 !important;
-}
-
-.el-tag--warning {
-  background: rgba(255, 174, 0, 0.15) !important;
-  border-color: rgba(255, 174, 0, 0.3) !important;
-  color: #ffae00 !important;
-}
-
-.el-tag--danger {
-  background: rgba(255, 68, 68, 0.15) !important;
-  border-color: rgba(255, 68, 68, 0.3) !important;
-  color: #ff4444 !important;
-}
-
-.el-tag--info {
-  background: rgba(255, 255, 255, 0.05) !important;
-  border-color: rgba(255, 255, 255, 0.1) !important;
-  color: #888 !important;
-}
-
-.el-tag.el-tag--light {
-  background: rgba(255, 170, 0, 0.12) !important;
-  border-color: rgba(255, 170, 0, 0.3) !important;
-  color: #ffaa00 !important;
+.el-select .el-select__tags .el-tag__close:hover {
+  background-color: rgba(255, 170, 0, 0.3) !important;
+  color: #fff !important;
 }
 </style>

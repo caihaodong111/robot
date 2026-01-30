@@ -223,6 +223,91 @@
 
 ---
 
+## Element Plus 下拉菜单样式覆盖
+
+### 问题背景
+
+Element Plus 组件库的下拉菜单（Select、DatePicker 等）默认渲染在 `body` 元素下，使用 `.el-popper` 作为外层容器，并采用 CSS 变量控制样式。这导致在 Vue 组件中使用 `scoped` 样式无法正确覆盖下拉菜单样式。
+
+### 问题分析
+
+1. **DOM 结构层级**：Element Plus 使用 Teleport 将下拉菜单渲染到 body 下，脱离了组件的 scoped 样式作用域
+2. **CSS 变量控制**：Element Plus 使用 CSS 变量（如 `--el-bg-color-overlay`、`--el-popper-bg-color-dark`）控制背景色
+3. **多层容器**：下拉菜单有 `.el-popper` 和 `.el-select-dropdown` 两层结构，需要分别处理
+4. **默认深色主题**：`.el-popper.is-dark` 类会应用深灰色背景
+
+### 解决方案
+
+在 **全局样式文件** `frontend/src/style.css` 中添加以下内容：
+
+```css
+/* 1. 覆盖 Element Plus CSS 变量 */
+:root {
+  --el-bg-color-overlay: rgba(255, 255, 255, 0.03);
+  --el-popper-bg-color-dark: rgba(255, 255, 255, 0.03);
+  --el-popover-border-radius: 24px;
+}
+
+/* 2. 直接覆盖 .el-popper 容器样式 (匹配平台概览界面 ios-glass 风格) */
+.el-popper {
+  background-color: rgba(255, 255, 255, 0.03) !important;
+  backdrop-filter: blur(50px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(50px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 24px !important;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8) !important;
+}
+
+/* 3. 覆盖 .el-popper.is-dark 变体 */
+.el-popper.is-dark,
+.el-popper.is-dark > .el-popper__arrow:before {
+  background-color: rgba(255, 255, 255, 0.03) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+/* 4. 下拉菜单选项样式 */
+.el-select-dropdown__item {
+  color: #8da0b7 !important;
+  font-size: 13px !important;
+  height: 36px !important;
+  line-height: 36px !important;
+  margin: 2px 0 !important;
+  border-radius: 12px !important;
+  padding: 0 14px !important;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  font-weight: 500 !important;
+}
+
+.el-select-dropdown__item:hover {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+  color: #ffffff !important;
+}
+
+.el-select-dropdown__item.is-selected {
+  background: rgba(255, 170, 0, 0.15) !important;
+  color: #ffaa00 !important;
+  font-weight: 600 !important;
+}
+
+/* 5. 隐藏默认箭头 */
+.el-popper__arrow {
+  display: none !important;
+}
+```
+
+### 关键要点
+
+| 要点 | 说明 |
+|------|------|
+| **文件位置** | 必须在全局 `style.css` 中，不能在组件 scoped 样式中 |
+| **加载顺序** | `style.css` 在 `main.js` 中位于 `element-plus/dist/index.css` 之后 |
+| **CSS 变量** | 需要覆盖 Element Plus 使用的 CSS 变量 |
+| **多层覆盖** | 同时覆盖 `.el-popper` 和 `.el-select-dropdown` |
+| **!important** | 使用 `!important` 确保优先级高于默认样式 |
+| **箭头隐藏** | `.el-popper__arrow { display: none; }` 隐藏默认箭头 |
+
+---
+
 ## 文件结构
 
 ```

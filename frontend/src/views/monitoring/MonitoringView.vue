@@ -1625,140 +1625,26 @@ onMounted(loadPlantGroups)
 }
 </style>
 
-<!-- 全局样式：下拉菜单深色主题 -->
+<!-- 全局样式：Checkbox Dark Theme（金色） -->
 <style>
-/* Select Dropdown - 玻璃质感 */
-.el-select-dropdown {
-  background: rgba(10, 10, 15, 0.85) !important;
-  backdrop-filter: blur(30px) !important;
-  border: 1px solid rgba(0, 204, 255, 0.2) !important;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5) !important;
-}
-
-.el-select-dropdown__item {
-  color: #aaa !important;
-  background: transparent !important;
-}
-
-.el-select-dropdown__item.hover,
-.el-select-dropdown__item:hover {
-  background: rgba(0, 204, 255, 0.15) !important;
-  color: #00ccff !important;
-}
-
-.el-select-dropdown__item.is-selected {
-  color: #00ccff !important;
-  background: rgba(0, 204, 255, 0.2) !important;
-  font-weight: 600;
-}
-
-.el-select-dropdown__item.is-disabled {
-  color: #666 !important;
-}
-
-.el-select-dropdown__empty-panel {
-  color: #666 !important;
-}
-
-.el-select-dropdown__wrap {
-  background: transparent !important;
-}
-
-.el-select-dropdown__list {
-  background: transparent !important;
-}
-
-.el-popper.is-light .el-popper__arrow::before {
-  background: rgba(10, 10, 15, 0.85) !important;
-  border: 1px solid rgba(0, 204, 255, 0.2) !important;
-}
-
-.el-popper .el-popper__arrow::before {
-  background: rgba(10, 10, 15, 0.85) !important;
-  border: 1px solid rgba(0, 204, 255, 0.2) !important;
-}
-
-/* Date Picker Dropdown - 玻璃质感 */
-.el-picker-panel {
-  background: rgba(10, 10, 15, 0.85) !important;
-  backdrop-filter: blur(30px) !important;
-  border: 1px solid rgba(0, 204, 255, 0.2) !important;
-  color: #aaa !important;
-}
-
-.el-picker-panel__content .cell {
-  color: #aaa !important;
-}
-
-.el-picker-panel__content .cell:hover {
-  background: rgba(0, 204, 255, 0.15) !important;
-  color: #00ccff !important;
-}
-
-.el-picker-panel__content .cell.available:not(.disabled).in-range {
-  background: rgba(0, 204, 255, 0.2) !important;
-  color: #00ccff !important;
-}
-
-.el-picker-panel__content .cell.available:not(.disabled):hover {
-  background: rgba(0, 204, 255, 0.25) !important;
-}
-
-.el-date-table th {
-  color: #888 !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
-}
-
-.el-picker-panel__header-label {
-  color: #aaa !important;
-}
-
-.el-picker-panel__icon-btn {
-  color: #888 !important;
-}
-
-.el-picker-panel__icon-btn:hover {
-  color: #00ccff !important;
-}
-
-.el-picker-panel__footer {
-  background: transparent !important;
-  border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
-}
-
-.el-picker-panel__shortcut {
-  color: #888 !important;
-}
-
-.el-picker-panel__shortcut:hover {
-  color: #00ccff !important;
-}
-
-.el-date-range-picker__content {
-  border-right: 1px solid rgba(255, 255, 255, 0.1) !important;
-}
-
-.el-date-range-picker__header {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
-}
-
-/* Checkbox Dark Theme */
+/* --- Checkbox Dark Theme（金色） --- */
 .el-checkbox {
   color: #aaa !important;
 }
 
 .el-checkbox__input.is-checked .el-checkbox__inner {
-  background-color: #00ccff !important;
-  border-color: #00ccff !important;
+  background-color: #ffaa00 !important;
+  border-color: #ffaa00 !important;
+  box-shadow: 0 0 10px rgba(255, 170, 0, 0.4) !important;
 }
 
 .el-checkbox__inner {
-  background: rgba(255, 255, 255, 0.03) !important;
+  background: rgba(255, 255, 255, 0.05) !important;
   border-color: rgba(255, 255, 255, 0.2) !important;
 }
 
 .el-checkbox__inner:hover {
-  border-color: #00ccff !important;
+  border-color: rgba(255, 170, 0, 0.4) !important;
 }
 
 .el-checkbox__label {
