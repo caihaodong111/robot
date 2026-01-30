@@ -898,4 +898,55 @@ onMounted(async () => {
   opacity: 0;
   transform: translateY(-100%);
 }
+
+/* === Select Dropdown 全局样式（参考关键轨迹检查界面） === */
+:deep(.el-select__wrapper) {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+  transition: all 0.2s ease !important;
+}
+
+:deep(.el-select__wrapper:hover) {
+  border-color: rgba(0, 195, 255, 0.3) !important;
+}
+
+:deep(.el-select__wrapper.is-focused) {
+  border-color: #00c3ff !important;
+  box-shadow: 0 0 0 3px rgba(0, 195, 255, 0.1) !important;
+}
+
+:deep(.el-select__selected-item) {
+  color: #fff !important;
+}
+
+:deep(.el-select__placeholder) {
+  color: #6a7a8a !important;
+}
+
+/* 下拉框弹出层样式 */
+:deep(.el-select-dropdown) {
+  background: rgba(6, 10, 18, 0.95) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  backdrop-filter: blur(20px) !important;
+}
+
+:deep(.el-select-dropdown__item) {
+  color: #dbe6f5 !important;
+  background: transparent !important;
+}
+
+:deep(.el-select-dropdown__item:hover) {
+  background: rgba(0, 195, 255, 0.1) !important;
+}
+
+:deep(.el-select-dropdown__item.is-selected) {
+  color: #00c3ff !important;
+  background: rgba(0, 195, 255, 0.15) !important;
+}
+
+:deep(.el-select-dropdown__item.is-disabled) {
+  color: #6a7a8a !important;
+}
 </style>
