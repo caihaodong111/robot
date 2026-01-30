@@ -221,14 +221,61 @@
         </el-table>
 
         <!-- Pagination -->
-        <el-pagination
-          v-model:current-page="currentPage"
-          v-model:page-size="pageSize"
-          :total="DEMO_MODE ? filteredRows.length : serverTotal"
-          :page-sizes="[10, 20, 50, 100]"
-          layout="total, sizes, prev, pager, next, jumper"
-          class="pager"
-        />
+        <div class="pagination-wrapper">
+          <div class="pagination-info">
+            <span class="pagination-total">共 {{ DEMO_MODE ? filteredRows.length : serverTotal }} 条</span>
+            <el-select v-model="pageSize" class="pagination-size-select">
+              <el-option :value="10" label="10 条/页" />
+              <el-option :value="20" label="20 条/页" />
+              <el-option :value="50" label="50 条/页" />
+              <el-option :value="100" label="100 条/页" />
+            </el-select>
+          </div>
+
+          <div class="pagination-controls">
+            <button
+              class="pagination-arrow"
+              :disabled="currentPage === 1"
+              @click="goToPage(Math.max(1, currentPage - 1))"
+            >
+              <el-icon><ArrowLeft /></el-icon>
+            </button>
+
+            <div class="pagination-pages">
+              <button
+                v-for="page in displayPages"
+                :key="`page-${page}-${currentPage}`"
+                class="pagination-page"
+                :class="{ active: page === currentPage, ellipsis: page === '...' }"
+                :disabled="page === '...'"
+                @click="handlePageClick(page)"
+              >
+                {{ page }}
+              </button>
+            </div>
+
+            <button
+              class="pagination-arrow"
+              :disabled="currentPage === totalPages"
+              @click="goToPage(Math.min(totalPages, currentPage + 1))"
+            >
+              <el-icon><ArrowRight /></el-icon>
+            </button>
+          </div>
+
+          <div class="pagination-jumper">
+            <span>前往</span>
+            <el-input-number
+              v-model="jumpPage"
+              :min="1"
+              :max="totalPages"
+              :controls="false"
+              class="pagination-jump-input"
+              @change="handleJump"
+            />
+            <span>页</span>
+          </div>
+        </div>
       </section>
     </div>
 
@@ -350,7 +397,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { Refresh, Search, Close, Monitor, ArrowRight } from '@element-plus/icons-vue'
+import { Refresh, Search, Close, Monitor, ArrowRight, ArrowLeft } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { DEMO_MODE } from '@/config/appConfig'
 import { getRobotComponents, getRobotGroups, updateRobotComponent } from '@/api/robots'
@@ -381,6 +428,7 @@ const axisStateFilter = ref('')
 const markMode = ref('')
 const currentPage = ref(1)
 const pageSize = ref(20)
+const jumpPage = ref(1)
 
 const detailVisible = ref(false)
 const detailRobot = ref(null)
@@ -431,6 +479,72 @@ const groupStats = computed(() => {
   if (DEMO_MODE) return getGroupStats(selectedGroup.value)
   const group = groups.value.find((g) => g.key === selectedGroup.value)
   return group?.stats || { online: 0, highRisk: 0, historyHighRisk: 0 }
+})
+
+// 分页相关计算属性
+const totalPages = computed(() => {
+  const total = DEMO_MODE ? filteredRows.value.length : serverTotal.value
+  return Math.ceil(total / pageSize.value) || 1
+})
+
+const displayPages = computed(() => {
+  const total = totalPages.value
+  const current = currentPage.value
+  const pages = []
+
+  if (total <= 7) {
+    for (let i = 1; i <= total; i++) pages.push(i)
+  } else {
+    if (current <= 4) {
+      pages.push(1, 2, 3, 4, 5, '...', total)
+    } else if (current >= total - 3) {
+      pages.push(1, '...', total - 4, total - 3, total - 2, total - 1, total)
+    } else {
+      pages.push(1, '...', current - 1, current, current + 1, '...', total)
+    }
+  }
+  return pages
+})
+
+const handleJump = () => {
+  const page = Math.max(1, Math.min(totalPages.value, jumpPage.value))
+  goToPage(page)
+}
+
+// 页码按钮点击处理
+const handlePageClick = (page) => {
+  if (page === '...') return
+  console.log('handlePageClick called with page:', page, 'totalPages:', totalPages.value, 'currentPage:', currentPage.value)
+  goToPage(page)
+}
+
+// 添加原生事件监听用于调试
+const setupPaginationDebug = () => {
+  setTimeout(() => {
+    const pageButtons = document.querySelectorAll('.pagination-page')
+    console.log('Found pagination buttons:', pageButtons.length)
+    pageButtons.forEach((btn, index) => {
+      btn.addEventListener('click', (e) => {
+        console.log('Native click on button:', btn.textContent.trim(), 'index:', index)
+      })
+    })
+  }, 1000)
+}
+
+// 统一的页码跳转方法
+const goToPage = (page) => {
+  console.log('goToPage called with page:', page, 'DEMO_MODE:', DEMO_MODE)
+  currentPage.value = page
+  jumpPage.value = page
+  // 非DEMO模式需要重新加载数据
+  if (!DEMO_MODE) {
+    loadRows()
+  }
+}
+
+// 同步jumpPage与currentPage
+watch(currentPage, (newVal) => {
+  jumpPage.value = newVal
 })
 
 // 车间切换处理
@@ -672,10 +786,13 @@ const loadRows = async () => {
       page: currentPage.value,
       page_size: pageSize.value
     }
+    console.log('Loading rows with params:', params)
     const data = await getRobotComponents(params)
+    console.log('Loaded data:', { count: data.count, resultsLength: data.results?.length })
     serverRows.value = data.results || data
     serverTotal.value = data.count ?? serverRows.value.length
   } catch (error) {
+    console.error('Error loading rows:', error)
     if (error?.response?.status === 404 && typeof error.response?.data?.detail === 'string' && error.response.data.detail.includes('Invalid page')) {
       currentPage.value = 1
       return
@@ -686,7 +803,27 @@ const loadRows = async () => {
   }
 }
 
+// 初始化加载数据
+const initData = async () => {
+  if (!DEMO_MODE) {
+    await loadGroups()
+    await loadRows()
+  }
+  // 设置分页调试
+  setupPaginationDebug()
+}
+
+// 监听页码变化
+watch(currentPage, (newPage) => {
+  console.log('Current page changed:', newPage)
+  if (!DEMO_MODE) {
+    loadRows()
+  }
+})
+
+// 监听其他过滤器变化
 watch([selectedGroup, activeTab], () => {
+  console.log('selectedGroup or activeTab changed, resetting page to 1')
   currentPage.value = 1
   if (!DEMO_MODE) loadRows()
 })
@@ -698,21 +835,22 @@ watch(pageSize, () => {
   }
 })
 
-watch(currentPage, () => {
-  if (!DEMO_MODE) loadRows()
-})
-
 watch([keyword, levelFilter, axisKeysFilter, axisStateFilter, markMode], () => {
+  console.log('Filters changed, resetting page to 1. Filters:', {
+    keyword: keyword.value,
+    level: levelFilter.value,
+    axisKeys: axisKeysFilter.value,
+    axisState: axisStateFilter.value,
+    markMode: markMode.value
+  })
   if (!DEMO_MODE) {
     currentPage.value = 1
     loadRows()
   }
 })
 
-if (!DEMO_MODE) {
-  loadGroups()
-  loadRows()
-}
+// 初始化数据
+initData()
 </script>
 
 <style scoped>
@@ -1135,6 +1273,7 @@ if (!DEMO_MODE) {
 .data-table-section {
   padding: 0;
   overflow: hidden;
+  position: relative;
 }
 
 .table-header {
@@ -1316,6 +1455,19 @@ if (!DEMO_MODE) {
   background: rgba(6, 10, 18, 0.92) !important;
 }
 
+/* 限制表格固定列的高度，防止遮挡分页 */
+.data-table-section :deep(.el-table__fixed) {
+  height: 520px !important;
+}
+
+.data-table-section :deep(.el-table__fixed-right) {
+  height: 520px !important;
+}
+
+.data-table-section :deep(.el-table__fixed-right-patch) {
+  height: 520px !important;
+}
+
 .robot-name-cell {
   color: #ffaa00;
   font-weight: 600;
@@ -1339,31 +1491,183 @@ if (!DEMO_MODE) {
   line-height: 1.2;
 }
 
-/* === Pagination === */
-.pager {
+/* === Custom Pagination === */
+.pagination-wrapper {
   display: flex;
-  justify-content: center;
-  padding: 20px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(3, 5, 8, 0.4);
+  position: relative;
+  z-index: 10;
 }
 
-:deep(.pager .el-pagination) {
-  --el-pagination-button-bg-color: transparent;
-  --el-pagination-button-color: #8899aa;
-  --el-pagination-hover-color: #ffaa00;
+.pagination-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
-:deep(.pager .el-pagination button) {
-  background: rgba(0, 0, 0, 0.3);
+.pagination-total {
+  color: #7f93a8;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.pagination-size-select {
+  width: 110px;
+}
+
+:deep(.pagination-size-select .el-select__wrapper) {
+  background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  transition: all 0.25s ease;
 }
 
-:deep(.pager .el-pagination button:hover) {
-  border-color: #ffaa00;
+:deep(.pagination-size-select .el-select__wrapper:hover) {
+  border-color: rgba(255, 170, 0, 0.4);
+  background: rgba(255, 170, 0, 0.08);
 }
 
-:deep(.pager .el-pager li.is-active) {
-  background: #ffaa00;
+:deep(.pagination-size-select .el-select__selected-item) {
+  color: #8899aa;
+  font-size: 13px;
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pagination-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  color: #8899aa;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.pagination-arrow:hover:not(:disabled) {
+  background: rgba(255, 170, 0, 0.12);
+  border-color: rgba(255, 170, 0, 0.4);
+  color: #ffaa00;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 14px rgba(255, 170, 0, 0.2);
+}
+
+.pagination-arrow:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(255, 255, 255, 0.05);
+  color: rgba(136, 153, 170, 0.3);
+  box-shadow: none;
+}
+
+.pagination-arrow svg {
+  width: 18px;
+  height: 18px;
+}
+
+.pagination-pages {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pagination-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 38px;
+  height: 38px;
+  padding: 0 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  color: #8899aa;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  user-select: none;
+}
+
+.pagination-page:hover:not(.active):not(.ellipsis):not(:disabled) {
+  background: rgba(255, 170, 0, 0.12);
+  border-color: rgba(255, 170, 0, 0.4);
+  color: #ffaa00;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 14px rgba(255, 170, 0, 0.2);
+  cursor: pointer;
+}
+
+.pagination-page.active {
+  background: linear-gradient(135deg, #ffaa00, #ff8800);
   border-color: #ffaa00;
+  color: #030508;
+  font-weight: 700;
+  box-shadow: 0 4px 16px rgba(255, 170, 0, 0.35), 0 0 20px rgba(255, 170, 0, 0.2);
+  cursor: default;
+}
+
+.pagination-page.ellipsis {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  cursor: default;
+  color: #5a6a7a;
+}
+
+.pagination-page:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.pagination-jumper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #7f93a8;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.pagination-jump-input {
+  width: 70px;
+}
+
+:deep(.pagination-jump-input .el-input__wrapper) {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  transition: all 0.25s ease;
+}
+
+:deep(.pagination-jump-input .el-input__wrapper:hover),
+:deep(.pagination-jump-input .el-input__wrapper.is-focus) {
+  border-color: rgba(255, 170, 0, 0.4);
+  background: rgba(255, 170, 0, 0.08);
+}
+
+:deep(.pagination-jump-input .el-input__inner) {
+  color: #8899aa;
+  text-align: center;
+  font-size: 13px;
 }
 
 /* === Detail === */

@@ -239,8 +239,12 @@ const renderMainPieChart = () => {
   const chart = initChart('main', chartRef.value)
   if (!chart) return
 
-  const rows = groupRows.value.slice(0, 4)
-  const totalHighRisk = rows.reduce((sum, row) => sum + (row.stats?.highRisk || 0), 0)
+  // 过滤出有高风险机器人的车间，并按数量降序排列
+const rows = groupRows.value
+  .filter(row => (row.stats?.highRisk || 0) > 0)
+  .sort((a, b) => (b.stats?.highRisk || 0) - (a.stats?.highRisk || 0))
+
+const totalHighRisk = rows.reduce((sum, row) => sum + (row.stats?.highRisk || 0), 0)
 
   // 提取自海报的流光配色：增加明度，使用渐变映射
   const colorSchemes = [
@@ -666,17 +670,18 @@ watch(groupRows, () => {
 /* 开发中卡片 */
 .dev-card { min-height: 280px; display: flex; flex-direction: column; }
 .dev-placeholder { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
-.dev-icon { font-size: 28px; color: #636e72; animation: rotate 8s linear infinite; }
+.dev-icon {
+  font-size: 28px;
+  color: #636e72;
+  animation: rotate 2s linear infinite;
+  display: inline-block;
+}
 .dev-icon-entrance {
-  animation: rotate 8s linear infinite, devIconFadeIn 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  animation: rotate 2s linear infinite, devIconFadeIn 0.6s ease-out forwards;
   opacity: 0;
-  transform: scale(0) rotate(0deg);
 }
 @keyframes devIconFadeIn {
-  to {
-    opacity: 1;
-    transform: scale(1) rotate(360deg);
-  }
+  to { opacity: 1; }
 }
 @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 .dev-label { font-size: 12px; color: #8899aa; letter-spacing: 1px; }
