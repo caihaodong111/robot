@@ -99,7 +99,7 @@
         <!-- Filters -->
         <div class="filters">
           <el-row :gutter="10" align="middle">
-            <el-col :span="6">
+            <el-col :span="8">
               <el-input
                 v-model="keyword"
                 placeholder="搜索：部件编号 / 参考编号 / 类型 / 工艺 / 备注"
@@ -153,7 +153,7 @@
                 <el-option label="非0" value="nonzero" />
               </el-select>
             </el-col>
-            <el-col :span="6" class="filters-right">
+            <el-col :span="4" class="filters-right">
               <el-button :icon="Close" @click="resetFilters">重置</el-button>
             </el-col>
           </el-row>
