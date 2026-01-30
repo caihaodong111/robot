@@ -125,6 +125,7 @@
                 :shortcuts="shortcuts"
                 :disabled-date="disabledDate"
                 unlink-panels
+                popper-class="trajectory-date-picker"
               />
             </div>
           </div>
@@ -203,9 +204,9 @@
             <!-- 固定列：基本信息 -->
             <el-table-column prop="robot" label="机器人" min-width="140" sortable fixed="left" class-name="fixed-left-col">
               <template #default="{ row }">
-                <div class="robot-info" @click="goToRobotBI(row.robot)">
+                <div class="robot-info">
                   <el-icon><Monitor /></el-icon>
-                  <span class="robot-link">{{ row.robot }}</span>
+                  <span class="robot-name">{{ row.robot }}</span>
                 </div>
               </template>
             </el-table-column>
@@ -214,58 +215,6 @@
             <el-table-column prop="SNR_C" label="SNR" width="80" sortable align="center" />
             <el-table-column prop="SUB" label="SUB" width="70" sortable align="center" />
             <el-table-column prop="P_name" label="程序路径" min-width="120" show-overflow-tooltip sortable />
-
-            <!-- 分组：LQ 电流值 -->
-            <el-table-column label="LQ 电流" align="center">
-              <el-table-column prop="Curr_A1_LQ" label="A1" width="80" sortable align="right" class-name="mono-col">
-                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A1_LQ) }}</span></template>
-              </el-table-column>
-              <el-table-column prop="Curr_A2_LQ" label="A2" width="80" sortable align="right" class-name="mono-col">
-                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A2_LQ) }}</span></template>
-              </el-table-column>
-              <el-table-column prop="Curr_A3_LQ" label="A3" width="80" sortable align="right" class-name="mono-col">
-                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A3_LQ) }}</span></template>
-              </el-table-column>
-              <el-table-column prop="Curr_A4_LQ" label="A4" width="80" sortable align="right" class-name="mono-col">
-                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A4_LQ) }}</span></template>
-              </el-table-column>
-              <el-table-column prop="Curr_A5_LQ" label="A5" width="80" sortable align="right" class-name="mono-col">
-                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A5_LQ) }}</span></template>
-              </el-table-column>
-              <el-table-column prop="Curr_A6_LQ" label="A6" width="80" sortable align="right" class-name="mono-col">
-                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A6_LQ) }}</span></template>
-              </el-table-column>
-              <el-table-column prop="Curr_E1_LQ" label="E1" width="80" sortable align="right" class-name="mono-col">
-                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_E1_LQ) }}</span></template>
-              </el-table-column>
-            </el-table-column>
-
-            <!-- 分组：HQ 电流值 -->
-            <el-table-column label="HQ 电流" align="center">
-              <el-table-column prop="Curr_A1_HQ" label="A1" width="80" sortable align="right" class-name="mono-col">
-                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A1_HQ) }}</span></template>
-              </el-table-column>
-              <el-table-column prop="Curr_A2_HQ" label="A2" width="80" sortable align="right" class-name="mono-col">
-                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A2_HQ) }}</span></template>
-              </el-table-column>
-              <el-table-column prop="Curr_A3_HQ" label="A3" width="80" sortable align="right" class-name="mono-col">
-                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A3_HQ) }}</span></template>
-              </el-table-column>
-              <el-table-column prop="Curr_A4_HQ" label="A4" width="80" sortable align="right" class-name="mono-col">
-                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A4_HQ) }}</span></template>
-              </el-table-column>
-              <el-table-column prop="Curr_A5_HQ" label="A5" width="80" sortable align="right" class-name="mono-col">
-                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A5_HQ) }}</span></template>
-              </el-table-column>
-              <el-table-column prop="Curr_A6_HQ" label="A6" width="80" sortable align="right" class-name="mono-col">
-                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A6_HQ) }}</span></template>
-              </el-table-column>
-              <el-table-column prop="Curr_E1_HQ" label="E1" width="80" sortable align="right" class-name="mono-col">
-                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_E1_HQ) }}</span></template>
-              </el-table-column>
-            </el-table-column>
-
-            <el-table-column prop="size" label="样本" width="70" sortable align="center" />
 
             <!-- 分组：偏差值 -->
             <el-table-column label="偏差值" align="center">
@@ -354,6 +303,58 @@
                 </el-table-column>
               </el-table-column>
             </el-table-column>
+
+            <!-- 分组：LQ 电流值 -->
+            <el-table-column label="LQ 电流" align="center">
+              <el-table-column prop="Curr_A1_LQ" label="A1" width="80" sortable align="right" class-name="mono-col">
+                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A1_LQ) }}</span></template>
+              </el-table-column>
+              <el-table-column prop="Curr_A2_LQ" label="A2" width="80" sortable align="right" class-name="mono-col">
+                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A2_LQ) }}</span></template>
+              </el-table-column>
+              <el-table-column prop="Curr_A3_LQ" label="A3" width="80" sortable align="right" class-name="mono-col">
+                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A3_LQ) }}</span></template>
+              </el-table-column>
+              <el-table-column prop="Curr_A4_LQ" label="A4" width="80" sortable align="right" class-name="mono-col">
+                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A4_LQ) }}</span></template>
+              </el-table-column>
+              <el-table-column prop="Curr_A5_LQ" label="A5" width="80" sortable align="right" class-name="mono-col">
+                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A5_LQ) }}</span></template>
+              </el-table-column>
+              <el-table-column prop="Curr_A6_LQ" label="A6" width="80" sortable align="right" class-name="mono-col">
+                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A6_LQ) }}</span></template>
+              </el-table-column>
+              <el-table-column prop="Curr_E1_LQ" label="E1" width="80" sortable align="right" class-name="mono-col">
+                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_E1_LQ) }}</span></template>
+              </el-table-column>
+            </el-table-column>
+
+            <!-- 分组：HQ 电流值 -->
+            <el-table-column label="HQ 电流" align="center">
+              <el-table-column prop="Curr_A1_HQ" label="A1" width="80" sortable align="right" class-name="mono-col">
+                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A1_HQ) }}</span></template>
+              </el-table-column>
+              <el-table-column prop="Curr_A2_HQ" label="A2" width="80" sortable align="right" class-name="mono-col">
+                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A2_HQ) }}</span></template>
+              </el-table-column>
+              <el-table-column prop="Curr_A3_HQ" label="A3" width="80" sortable align="right" class-name="mono-col">
+                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A3_HQ) }}</span></template>
+              </el-table-column>
+              <el-table-column prop="Curr_A4_HQ" label="A4" width="80" sortable align="right" class-name="mono-col">
+                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A4_HQ) }}</span></template>
+              </el-table-column>
+              <el-table-column prop="Curr_A5_HQ" label="A5" width="80" sortable align="right" class-name="mono-col">
+                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A5_HQ) }}</span></template>
+              </el-table-column>
+              <el-table-column prop="Curr_A6_HQ" label="A6" width="80" sortable align="right" class-name="mono-col">
+                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A6_HQ) }}</span></template>
+              </el-table-column>
+              <el-table-column prop="Curr_E1_HQ" label="E1" width="80" sortable align="right" class-name="mono-col">
+                <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_E1_HQ) }}</span></template>
+              </el-table-column>
+            </el-table-column>
+
+            <el-table-column prop="size" label="样本" width="70" sortable align="center" />
           </el-table>
 
           <footer class="table-footer">
@@ -1276,28 +1277,17 @@ onMounted(loadPlantGroups)
   align-items: center;
   gap: 8px;
   font-weight: 600;
-  color: #00c3ff;
+  color: #8899aa;
   font-size: 14px;
-  cursor: pointer;
-  transition: all 0.2s ease;
 }
 
-.robot-info:hover {
-  color: #00c3ff;
-  text-shadow: 0 0 10px rgba(0, 195, 255, 0.5);
-}
-
-.robot-link {
-  text-decoration: none;
-  position: relative;
-}
-
-.robot-info:hover .robot-link {
-  text-decoration: underline;
+.robot-name {
+  color: #8899aa;
 }
 
 .robot-info .el-icon {
   font-size: 16px;
+  color: #00c3ff;
 }
 
 /* Mono font columns */
@@ -1471,12 +1461,12 @@ onMounted(loadPlantGroups)
 
 :deep(.el-input__wrapper:hover),
 :deep(.el-select__wrapper:hover) {
-  border-color: rgba(0, 195, 255, 0.3) !important;
+  border-color: rgba(255, 170, 0, 0.3) !important;
 }
 
 :deep(.el-select__wrapper.is-focused) {
-  border-color: #00c3ff !important;
-  box-shadow: 0 0 0 3px rgba(0, 195, 255, 0.1) !important;
+  border-color: #ffaa00 !important;
+  box-shadow: 0 0 0 3px rgba(255, 170, 0, 0.1) !important;
 }
 
 :deep(.el-input__inner) {
@@ -1498,11 +1488,11 @@ onMounted(loadPlantGroups)
 }
 
 :deep(.el-date-editor:hover) {
-  border-color: rgba(0, 195, 255, 0.3) !important;
+  border-color: rgba(255, 170, 0, 0.3) !important;
 }
 
 :deep(.el-date-editor.is-active) {
-  border-color: #00c3ff !important;
+  border-color: #ffaa00 !important;
 }
 
 :deep(.el-input__prefix),
@@ -1512,7 +1502,7 @@ onMounted(loadPlantGroups)
 
 /* Pagination */
 :deep(.el-pagination.is-background .el-pager li:not(.is-disabled).is-active) {
-  background: #00c3ff;
+  background: #ffaa00;
 }
 
 :deep(.el-pagination.is-background .el-pager li) {
@@ -1521,7 +1511,7 @@ onMounted(loadPlantGroups)
 }
 
 :deep(.el-pagination.is-background .el-pager li:hover) {
-  background: rgba(0, 195, 255, 0.1);
+  background: rgba(255, 170, 0, 0.1);
 }
 
 :deep(.el-pagination button) {
@@ -1530,7 +1520,7 @@ onMounted(loadPlantGroups)
 }
 
 :deep(.el-pagination button:hover) {
-  background: rgba(0, 195, 255, 0.1) !important;
+  background: rgba(255, 170, 0, 0.1) !important;
 }
 
 :deep(.el-pagination) {
@@ -1546,9 +1536,9 @@ onMounted(loadPlantGroups)
 
 /* Path Tags */
 :deep(.path-tag) {
-  background: rgba(0, 195, 255, 0.1);
-  border: 1px solid rgba(0, 195, 255, 0.3);
-  color: #00c3ff;
+  background: rgba(255, 170, 0, 0.1);
+  border: 1px solid rgba(255, 170, 0, 0.3);
+  color: #ffaa00;
 }
 
 :deep(.add-path-btn) {
@@ -1558,13 +1548,13 @@ onMounted(loadPlantGroups)
 }
 
 :deep(.add-path-btn:hover) {
-  border-color: #00c3ff;
-  color: #00c3ff;
+  border-color: #ffaa00;
+  color: #ffaa00;
 }
 
 :deep(.el-check-tag.is-checked) {
-  background: #00c3ff;
-  border-color: #00c3ff;
+  background: #ffaa00;
+  border-color: #ffaa00;
   color: #fff;
 }
 
@@ -1622,6 +1612,67 @@ onMounted(loadPlantGroups)
 
 :deep(.el-tooltip__inner) {
   color: #fff !important;
+}
+</style>
+
+<!-- 页面专属：DatePicker 蓝色主题（覆盖全局金色主题） -->
+<style>
+/* 专属 class 样式 - 蓝色主题 */
+.trajectory-date-picker.el-picker__popper {
+  --el-color-primary: #00c3ff !important;
+}
+
+.trajectory-date-picker .el-picker-panel__shortcut:hover {
+  color: #00c3ff !important;
+  background: rgba(0, 195, 255, 0.1) !important;
+}
+
+.trajectory-date-picker .el-picker-panel__icon-btn:hover {
+  color: #00c3ff !important;
+}
+
+.trajectory-date-picker .el-date-picker__header-label:hover {
+  color: #00c3ff !important;
+}
+
+.trajectory-date-picker .el-date-table td.today div {
+  color: #00c3ff !important;
+}
+
+.trajectory-date-picker .el-date-table td.in-range div {
+  background: rgba(0, 195, 255, 0.15) !important;
+  color: #00c3ff !important;
+}
+
+.trajectory-date-picker .el-date-table td.start-date div,
+.trajectory-date-picker .el-date-table td.end-date div {
+  background: #00c3ff !important;
+  color: #fff !important;
+}
+
+.trajectory-date-picker .el-month-table td.current div {
+  background: #00c3ff !important;
+  color: #fff !important;
+}
+
+.trajectory-date-picker .el-year-table td.current div {
+  background: #00c3ff !important;
+  color: #fff !important;
+}
+
+.trajectory-date-picker .el-month-table td:hover div,
+.trajectory-date-picker .el-year-table td:hover div {
+  color: #00c3ff !important;
+}
+
+.trajectory-date-picker .el-time-spinner__item:hover,
+.trajectory-date-picker .el-time-spinner__item.active,
+.trajectory-date-picker .el-time-panel__btn.confirm {
+  color: #00c3ff !important;
+}
+
+.trajectory-date-picker .el-time-spinner__item:hover {
+  background: rgba(0, 195, 255, 0.1) !important;
 }
 </style>
 

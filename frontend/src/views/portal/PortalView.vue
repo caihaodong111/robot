@@ -61,43 +61,41 @@
       <div class="border-glow gold-tint entrance-border-glow"></div>
       <el-input
         v-model="query"
-        placeholder="搜索：应用名称 / 反馈人 / 范围 / 入口"
+        placeholder="搜索应用名称 / 反馈人 / 范围 / 入口"
         clearable
-        class="filter-search dark-input"
+        class="filter-input"
       >
         <template #prefix>
           <el-icon><Search /></el-icon>
         </template>
       </el-input>
 
-      <el-select
-        v-model="scopeFilter"
-        placeholder="范围"
-        clearable
-        filterable
-        class="dark-select"
-      >
-        <el-option v-for="s in scopes" :key="s" :label="s" :value="s" />
-      </el-select>
+      <div class="filter-row">
+        <el-select
+          v-model="scopeFilter"
+          placeholder="范围"
+          clearable
+          filterable
+          class="filter-select"
+        >
+          <el-option v-for="s in scopes" :key="s" :label="s" :value="s" />
+        </el-select>
 
-      <el-select
-        v-model="reporterFilter"
-        placeholder="反馈人"
-        clearable
-        filterable
-        class="dark-select"
-      >
-        <el-option v-for="p in reporters" :key="p" :label="p" :value="p" />
-      </el-select>
+        <el-select
+          v-model="reporterFilter"
+          placeholder="反馈人"
+          clearable
+          filterable
+          class="filter-select"
+        >
+          <el-option v-for="p in reporters" :key="p" :label="p" :value="p" />
+        </el-select>
 
-      <el-radio-group v-model="viewMode" class="view-toggle dark-toggle">
-        <el-radio-button label="table">
-          <el-icon><List /></el-icon>
-        </el-radio-button>
-        <el-radio-button label="cards">
-          <el-icon><Grid /></el-icon>
-        </el-radio-button>
-      </el-radio-group>
+        <el-radio-group v-model="viewMode" class="view-toggle">
+          <el-radio-button label="table">列表</el-radio-button>
+          <el-radio-button label="cards">卡片</el-radio-button>
+        </el-radio-group>
+      </div>
     </div>
 
     <!-- Apps List Card -->
@@ -669,73 +667,96 @@ const resetFilters = () => {
 
 /* === Filters Panel === */
 .filters-panel {
-  padding: 20px;
+  padding: 12px 16px;
   display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 12px;
 }
 
-.filter-search {
-  flex: 1;
-  min-width: 280px;
+.filter-input {
+  width: 100%;
 }
 
-/* Dark inputs */
-:deep(.dark-input .el-input__wrapper) {
+:deep(.filter-input .el-input__wrapper) {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: none;
+  padding: 8px 12px;
+  min-height: 40px;
 }
 
-:deep(.dark-input .el-input__wrapper:hover) {
+:deep(.filter-input .el-input__wrapper:hover) {
   border-color: rgba(255, 170, 0, 0.3);
 }
 
-:deep(.dark-input .el-input__wrapper.is-focus) {
+:deep(.filter-input .el-input__wrapper.is-focus) {
   border-color: #ffaa00;
 }
 
-:deep(.dark-input .el-input__inner) {
+:deep(.filter-input .el-input__inner) {
   color: #fff;
+  font-size: 13px;
+  line-height: 24px;
 }
 
-:deep(.dark-input .el-input__prefix) {
+:deep(.filter-input .el-input__prefix) {
   color: #8899aa;
 }
 
-:deep(.dark-input:focus-within .el-input__prefix) {
+:deep(.filter-input:focus-within .el-input__prefix) {
   color: #ffaa00;
 }
 
-:deep(.dark-select .el-select__wrapper) {
+.filter-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.filter-select {
+  flex: 1;
+  min-width: 0;
+}
+
+:deep(.filter-select .el-select__wrapper) {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: none;
-  min-width: 140px;
+  padding: 6px 12px;
 }
 
-:deep(.dark-select .el-select__wrapper:hover) {
+:deep(.filter-select .el-select__wrapper:hover) {
   border-color: rgba(255, 170, 0, 0.3);
 }
 
-:deep(.dark-select .el-select__wrapper.is-focus) {
+:deep(.filter-select .el-select__wrapper.is-focus) {
   border-color: #ffaa00;
 }
 
-:deep(.dark-select .el-select__selected-item) {
+:deep(.filter-select .el-select__selected-item) {
   color: #fff;
+  font-size: 13px;
 }
 
-:deep(.dark-toggle .el-radio-button__inner) {
+.view-toggle {
+  flex-shrink: 0;
+}
+
+:deep(.view-toggle .el-radio-button__inner) {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.08);
   color: #8899aa;
+  padding: 6px 14px;
+  font-size: 13px;
 }
 
-:deep(.dark-toggle .el-radio-button__original-radio:checked + .el-radio-button__inner) {
+:deep(.view-toggle .el-radio-button__original-radio:checked + .el-radio-button__inner) {
   background: rgba(255, 170, 0, 0.2);
   border-color: #ffaa00;
+  color: #ffaa00;
+}
+
+:deep(.view-toggle .el-radio-button__inner:hover) {
   color: #ffaa00;
 }
 
@@ -938,8 +959,10 @@ const resetFilters = () => {
 
 @media (max-width: 768px) {
   .kpi-grid { grid-template-columns: 1fr; }
-  .filters-panel { flex-direction: column; align-items: stretch; }
-  .filter-search, .dark-select { width: 100%; }
+  .filter-row { flex-wrap: wrap; }
+  .filter-select { min-width: calc(50% - 5px); }
+  .view-toggle { width: 100%; }
+  :deep(.view-toggle .el-radio-button) { flex: 1; }
 }
 </style>
 
