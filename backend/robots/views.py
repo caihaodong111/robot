@@ -4,6 +4,7 @@ from django.db.models import Count, Q
 from django.views.decorators.clickjacking import xframe_options_exempt
 from rest_framework import mixins, viewsets, status
 from rest_framework.decorators import action
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
 from .models import RiskEvent, RobotComponent, RobotGroup
@@ -15,6 +16,12 @@ from .serializers import (
     GripperCheckSerializer,
 )
 from .gripper_service import check_gripper_from_config
+
+
+class StandardResultsSetPagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = 'page_size'
+    max_page_size = 100
 
 
 class RobotGroupViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
@@ -45,6 +52,7 @@ class RobotComponentViewSet(
 ):
     queryset = RobotComponent.objects.select_related("group").all()
     serializer_class = RobotComponentSerializer
+    pagination_class = StandardResultsSetPagination
 
     def get_queryset(self):
         qs = super().get_queryset()
