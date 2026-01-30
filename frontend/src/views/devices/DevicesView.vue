@@ -21,33 +21,65 @@
       </header>
 
       <!-- KPI Metrics Grid -->
-      <div class="kpi-grid">
+      <div class="kpi-selector-container">
         <button
-          v-for="(group, idx) in groups"
-          :key="group.key"
           type="button"
-          class="kpi-card ios-glass"
-          :class="[
-            { active: group.key === selectedGroup },
-            idx === 0 ? 'entrance-scale-up' : `entrance-scale-up-delay-${idx}`
-          ]"
-          @click="selectedGroup = group.key"
+          class="kpi-card ios-glass active hero-card entrance-scale-up"
+          @click="drawerVisible = true"
         >
-          <div class="border-glow entrance-border-glow"></div>
+          <div class="border-glow gold-tint entrance-border-glow"></div>
           <div class="active-glow"></div>
           <div class="kpi-icon-box kpi-icon-entrance">
             <el-icon><Monitor /></el-icon>
           </div>
           <div class="kpi-content">
-            <label>{{ group.name }}</label>
-            <div class="main-value">{{ group.total }} <small>UNITS</small></div>
+            <div class="selector-label-row">
+              <label>当前监控车间</label>
+              <span class="tap-hint">点击切换 <el-icon><ArrowRight /></el-icon></span>
+            </div>
+            <div class="main-value">{{ activeGroupName }} <small>WORKSPACE</small></div>
             <div class="status-mini-tags">
-              <span class="tag risk">高风险 {{ group.stats.highRisk }}</span>
-              <span class="tag online">在线 {{ group.stats.online }}</span>
+              <span class="tag risk">高风险 {{ groupStats.highRisk }}</span>
+              <span class="tag online">在线 {{ groupStats.online }}</span>
+              <span class="tag total">总数 {{ groups.find(g => g.key === selectedGroup)?.total || 0 }}</span>
             </div>
           </div>
         </button>
       </div>
+
+      <!-- Workshop Drawer -->
+      <el-drawer
+        v-model="drawerVisible"
+        title="选择监控车间"
+        direction="rtl"
+        size="420px"
+        class="dark-drawer-glass"
+      >
+        <div class="workshop-drawer-list">
+          <div
+            v-for="group in groups"
+            :key="group.key"
+            class="workshop-item"
+            :class="{ active: group.key === selectedGroup }"
+            @click="handleSelectGroup(group.key)"
+          >
+            <div class="ws-info-top">
+              <span class="ws-name">{{ group.name }}</span>
+              <div class="ws-badges">
+                <span v-if="group.stats.highRisk > 0" class="badge-risk">{{ group.stats.highRisk }}</span>
+                <span class="badge-online">{{ group.stats.online }}/{{ group.total }}</span>
+              </div>
+            </div>
+            <div class="ws-progress-track">
+              <div
+                class="ws-progress-fill"
+                :class="{ 'is-danger': group.stats.highRisk > 0 }"
+                :style="{ width: (group.stats.online / (group.total || 1) * 100) + '%' }"
+              ></div>
+            </div>
+          </div>
+        </div>
+      </el-drawer>
 
       <!-- Data Table Section -->
       <section class="data-table-section ios-glass entrance-scale-up-delay-4">
@@ -318,7 +350,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { Refresh, Search, Close, Monitor } from '@element-plus/icons-vue'
+import { Refresh, Search, Close, Monitor, ArrowRight } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { DEMO_MODE } from '@/config/appConfig'
 import { getRobotComponents, getRobotGroups, updateRobotComponent } from '@/api/robots'
@@ -339,6 +371,7 @@ const REFERENCE_OPTIONS = [
   '250410-250516'
 ]
 
+const drawerVisible = ref(false)
 const selectedGroup = ref((DEMO_MODE ? mockGroups : [{ key: 'hop' }])[0].key)
 const activeTab = ref('highRisk')
 const keyword = ref('')
@@ -399,6 +432,13 @@ const groupStats = computed(() => {
   const group = groups.value.find((g) => g.key === selectedGroup.value)
   return group?.stats || { online: 0, highRisk: 0, historyHighRisk: 0 }
 })
+
+// 车间切换处理
+const handleSelectGroup = (key) => {
+  selectedGroup.value = key
+  drawerVisible.value = false
+  ElMessage.success(`已切换至: ${activeGroupName.value}`)
+}
 
 const getIconClass = (groupKey) => {
   const colorMap = {
@@ -965,11 +1005,10 @@ if (!DEMO_MODE) {
 }
 
 /* === KPI 卡片 === */
-.kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 20px;
-  margin: 40px 0;
+.kpi-selector-container {
+  margin: 30px 0;
+  display: flex;
+  justify-content: flex-start;
 }
 
 .kpi-card {
@@ -984,6 +1023,25 @@ if (!DEMO_MODE) {
   text-align: left;
   border: none;
   width: 100%;
+}
+
+.hero-card {
+  width: 480px;
+}
+
+.selector-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.tap-hint {
+  font-size: 11px;
+  color: #ffaa00;
+  opacity: 0.8;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .kpi-card:hover,
@@ -1065,6 +1123,12 @@ if (!DEMO_MODE) {
   color: #00ffcc;
   border-color: rgba(0, 255, 204, 0.3);
   background: rgba(0, 255, 204, 0.1);
+}
+
+.tag.total {
+  color: #8899aa;
+  border-color: rgba(136, 153, 170, 0.3);
+  background: rgba(136, 153, 170, 0.1);
 }
 
 /* === 数据表格区域 === */
@@ -1494,9 +1558,107 @@ if (!DEMO_MODE) {
 
 /* Responsive */
 @media (max-width: 1200px) {
-  .kpi-grid {
-    grid-template-columns: repeat(2, 1fr);
+  .kpi-selector-container {
+    justify-content: center;
   }
+}
+
+/* === Drawer 抽屉样式 === */
+:deep(.dark-drawer-glass) {
+  background: rgba(10, 15, 25, 0.8) !important;
+  backdrop-filter: blur(40px) saturate(150%) !important;
+  border-left: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+:deep(.dark-drawer-glass .el-drawer__title) {
+  color: #fff;
+  font-weight: 800;
+}
+
+:deep(.dark-drawer-glass .el-drawer__header) {
+  margin-bottom: 0;
+  padding: 20px 24px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+:deep(.dark-drawer-glass .el-drawer__body) {
+  padding: 20px 24px;
+}
+
+.workshop-drawer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.workshop-item {
+  padding: 20px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.workshop-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  transform: translateX(-5px);
+  border-color: rgba(255, 170, 0, 0.3);
+}
+
+.workshop-item.active {
+  background: rgba(255, 170, 0, 0.1);
+  border-color: #ffaa00;
+}
+
+.ws-info-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.ws-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.ws-badges {
+  display: flex;
+  gap: 8px;
+}
+
+.badge-risk {
+  background: #ef4444;
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.badge-online {
+  color: #8899aa;
+  font-size: 11px;
+}
+
+.ws-progress-track {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.ws-progress-fill {
+  height: 100%;
+  background: #ffaa00;
+  box-shadow: 0 0 10px rgba(255, 170, 0, 0.4);
+  transition: width 0.8s ease;
+}
+
+.ws-progress-fill.is-danger {
+  background: linear-gradient(90deg, #ffaa00, #ef4444);
 }
 </style>
 
