@@ -49,7 +49,7 @@
       <footer class="footer-layout">
         <div class="ios-glass trend-panel entrance-scale-up-delay-2">
           <div class="border-glow gold-tint entrance-border-glow"></div>
-          <div class="cell-header">运行脉搏趋势</div>
+          <div class="cell-header">高风险机器人统计</div>
           <div ref="statusChartRef" class="mini-chart entrance-chart-fade"></div>
         </div>
         <div class="ios-glass feed-panel entrance-scale-up-delay-3">
@@ -327,25 +327,39 @@ const renderStatusChart = () => {
   const rows = groupRows.value
   
   chart.setOption({
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'shadow' },
+      backgroundColor: 'rgba(10, 20, 35, 0.9)',
+      borderColor: 'rgba(255, 77, 79, 0.6)',
+      textStyle: { color: '#fff' },
+      formatter: (params) => {
+        const item = Array.isArray(params) ? params[0] : params
+        if (!item) return ''
+        return `${item.name}<br/>数量: ${item.value ?? 0}`
+      }
+    },
     grid: { left: '3%', right: '4%', top: '15%', bottom: '5%', containLabel: true },
     xAxis: { 
       type: 'category', 
       data: rows.map(r => r.name),
       axisLabel: { color: '#8899aa', fontSize: 10 }
     },
-    yAxis: { 
-      type: 'value', 
+    yAxis: {
+      type: 'value',
+      name: '数量',
+      nameTextStyle: { color: '#8899aa', fontSize: 10, padding: [0, 0, 0, 6] },
       splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } },
       axisLabel: { color: '#8899aa' }
     },
     series: [{
       type: 'bar',
       barWidth: '35%',
-      data: rows.map(r => r.stats?.online || 0),
+      data: rows.map(r => r.stats?.highRisk || 0),
       itemStyle: {
         color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-          { offset: 0, color: '#00ffcc' },
-          { offset: 1, color: 'rgba(0, 255, 204, 0.1)' }
+          { offset: 0, color: '#ff4d4f' },
+          { offset: 1, color: 'rgba(255, 77, 79, 0.15)' }
         ]),
         borderRadius: [4, 4, 0, 0]
       }
