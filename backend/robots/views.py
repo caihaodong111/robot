@@ -16,6 +16,7 @@ from .serializers import (
     GripperCheckSerializer,
 )
 from .gripper_service import check_gripper_from_config
+from .error_trend_chart import generate_trend_chart, chart_exists, CHART_OUTPUT_PATH
 
 
 class StandardResultsSetPagination(PageNumberPagination):
@@ -30,16 +31,65 @@ class RobotGroupViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
 
     def list(self, request, *args, **kwargs):
         groups = list(self.get_queryset())
+
+        # 获取时间范围参数（用于统计特定时间段内的风险事件）
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+
         for group in groups:
             qs = group.components.all()
-            group._stats = {
-                "total": qs.count(),
-                "online": qs.filter(status="online").count(),
-                "offline": qs.filter(status="offline").count(),
-                "maintenance": qs.filter(status="maintenance").count(),
-                "highRisk": qs.filter(level="H").count(),
-                "historyHighRisk": qs.exclude(risk_history=[]).count(),
-            }
+
+            # 如果提供了时间范围，过滤在该时间范围内有高风险事件的机器人
+            if start_date and end_date:
+                try:
+                    start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+                    end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+                    # 延长结束日期到当天结束
+                    end_dt = end_dt.replace(hour=23, minute=59, second=59)
+
+                    # 统计在指定时间范围内有高风险的机器人
+                    # 这里假设RiskEvent有triggered_at字段
+                    from django.db.models import Exists, OuterRef
+                    high_risk_in_period = qs.filter(
+                        level='H',
+                        riskevent__triggered_at__range=(start_dt, end_dt)
+                    ).distinct().count()
+
+                    # 统计历史高风险（在时间范围内的）
+                    history_in_period = qs.filter(
+                        riskevent__triggered_at__range=(start_dt, end_dt)
+                    ).exclude(risk_history=[]).distinct().count()
+
+                    group._stats = {
+                        "total": qs.count(),
+                        "online": qs.filter(status="online").count(),
+                        "offline": qs.filter(status="offline").count(),
+                        "maintenance": qs.filter(status="maintenance").count(),
+                        "highRisk": high_risk_in_period,
+                        "historyHighRisk": history_in_period,
+                        "timeRange": f"{start_date} ~ {end_date}"
+                    }
+                except ValueError:
+                    # 日期格式错误，使用默认统计
+                    group._stats = {
+                        "total": qs.count(),
+                        "online": qs.filter(status="online").count(),
+                        "offline": qs.filter(status="offline").count(),
+                        "maintenance": qs.filter(status="maintenance").count(),
+                        "highRisk": qs.filter(level="H").count(),
+                        "historyHighRisk": qs.exclude(risk_history=[]).count(),
+                    }
+            else:
+                # 默认统计（不限制时间范围）
+                group._stats = {
+                    "total": qs.count(),
+                    "online": qs.filter(status="online").count(),
+                    "offline": qs.filter(status="offline").count(),
+                    "maintenance": qs.filter(status="maintenance").count(),
+                    "highRisk": qs.filter(level="H").count(),
+                    "historyHighRisk": qs.exclude(risk_history=[]).count(),
+                }
+
         serializer = self.get_serializer(groups, many=True)
         return Response(serializer.data)
 
@@ -152,6 +202,77 @@ class RobotComponentViewSet(
             })
 
         return Response({"results": results})
+
+    @action(detail=True, methods=["get"])
+    def error_trend_chart(self, request, pk=None):
+        """
+        获取机器人关节错误率趋势图
+
+        参数:
+            axis: 关节编号 (1-7)，必填
+            regenerate: 是否重新生成图表 (0/1)，默认为0
+
+        返回:
+            {
+                "success": true,
+                "chart_url": "/media/error_charts/robot_1_trend.png",
+                "axis": 1
+            }
+        """
+        robot = self.get_object()
+        axis_num = request.query_params.get("axis")
+        regenerate = request.query_params.get("regenerate", "0") == "1"
+
+        # 参数验证
+        if not axis_num:
+            return Response(
+                {"success": False, "error": "缺少参数 axis，请提供关节编号 (1-7)"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            axis_num = int(axis_num)
+            if axis_num < 1 or axis_num > 7:
+                raise ValueError("关节编号必须在 1-7 之间")
+        except ValueError as e:
+            return Response(
+                {"success": False, "error": f"参数 axis 无效: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 检查是否需要重新生成
+        chart_path = None
+        if regenerate or not chart_exists(robot.part_no, axis_num):
+            try:
+                chart_path = generate_trend_chart(robot.part_no, axis_num)
+            except FileNotFoundError as e:
+                return Response(
+                    {"success": False, "error": f"CSV 数据文件不存在: {str(e)}"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            except Exception as e:
+                return Response(
+                    {"success": False, "error": f"生成图表失败: {str(e)}"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+        else:
+            # 图表已存在，直接返回路径
+            chart_path = f"{CHART_OUTPUT_PATH}/{robot.part_no}_{axis_num}_trend.png"
+
+        # 构建返回数据
+        # 如果路径是绝对路径，转换为相对路径供前端使用
+        # 这里假设你需要通过 Django 的 static 或 media 服务来提供图片
+        # 实际部署时可能需要配置 nginx 或 Django staticfiles
+        chart_filename = f"{robot.part_no}_{axis_num}_trend.png"
+        chart_url = f"/api/robots/charts/{chart_filename}"
+
+        return Response({
+            "success": True,
+            "chart_url": chart_url,
+            "chart_path": chart_path,
+            "axis": axis_num,
+            "robot_part_no": robot.part_no
+        })
 
 
 class RiskEventViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):

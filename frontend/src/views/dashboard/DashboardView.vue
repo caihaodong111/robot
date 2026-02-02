@@ -17,8 +17,56 @@
           </div>
         </div>
         <div class="header-glass-actions">
-          <el-button class="ios-btn btn-entrance" @click="handleRefresh">
-            <el-icon><Refresh /></el-icon> 重置视图
+          <!-- 目标车间选择器 -->
+          <div class="filter-select ios-glass">
+            <div class="select-display">
+              <span class="select-icon">🏭</span>
+              <span class="select-label">目标车间</span>
+              <el-select v-model="selectedWorkshop" placeholder="请选择车间" class="dark-select-compact" @change="handleWorkshopChange">
+                <el-option v-for="group in groupRows" :key="group.key" :label="group.name" :value="group.key" />
+              </el-select>
+            </div>
+          </div>
+
+          <!-- 机器人选择器 -->
+          <div class="filter-select ios-glass">
+            <div class="select-display">
+              <span class="select-icon">🤖</span>
+              <span class="select-label">机器人</span>
+              <el-select v-model="selectedRobot" placeholder="请选择机器人" class="dark-select-compact" clearable>
+                <el-option v-for="robot in robotOptions" :key="robot.id" :label="robot.name" :value="robot.id" />
+              </el-select>
+            </div>
+          </div>
+
+          <!-- 时间选择器 -->
+          <div class="date-range-picker ios-glass">
+            <div class="date-display" @click="toggleDatePopup">
+              <span class="date-icon">📅</span>
+              <span class="date-text">{{ dateRangeText }}</span>
+              <span class="date-arrow">▼</span>
+            </div>
+            <div class="date-popup" :class="{ show: datePopupVisible }">
+              <div class="date-popup-content">
+                <div class="date-row">
+                  <label>开始日期</label>
+                  <input type="date" v-model="startDate" class="date-input">
+                </div>
+                <div class="date-row">
+                  <label>结束日期</label>
+                  <input type="date" v-model="endDate" class="date-input">
+                </div>
+                <div class="date-actions">
+                  <button @click="applyDateRange" class="date-btn date-btn-apply">应用</button>
+                  <button @click="toggleDatePopup" class="date-btn date-btn-cancel">取消</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 加载分析按钮 -->
+          <el-button class="ios-btn btn-entrance" @click="handleLoadAnalysis">
+            <el-icon><Refresh /></el-icon> 加载分析
           </el-button>
         </div>
       </header>
@@ -39,7 +87,7 @@
             <div class="border-glow blue-tint entrance-border-glow"></div>
             <div class="cell-header">
               <span class="accent-bar blue"></span>
-              实时预警流
+              持续增大的关键轨迹预警
             </div>
             <div class="log-stream entrance-content-fade">
               <div v-if="alertLoading" class="loading-state">载入中...</div>
@@ -166,6 +214,24 @@ const alertLoading = ref(false)
 const groupsData = ref([])
 const recentAlerts = ref([])
 const lastUpdateTime = ref(new Date().toLocaleTimeString())
+
+// 时间选择器状态
+const datePopupVisible = ref(false)
+const startDate = ref('')
+const endDate = ref('')
+
+// 筛选控件状态
+const selectedWorkshop = ref('')
+const selectedRobot = ref('')
+const robotOptions = ref([])
+
+// 计算属性：显示的日期范围文本
+const dateRangeText = computed(() => {
+  if (!startDate.value && !endDate.value) {
+    return '请选择时间范围'
+  }
+  return `${startDate.value || '开始'} ~ ${endDate.value || '结束'}`
+})
 
 // 加载机器人组数据
 const loadGroupsData = async () => {
@@ -465,13 +531,139 @@ const handleRefresh = async () => {
   renderWorkshopCharts()
 }
 
+// 车间变化处理
+const handleWorkshopChange = async (groupKey) => {
+  selectedRobot.value = ''
+  if (groupKey) {
+    await loadRobotsByGroup(groupKey)
+  } else {
+    robotOptions.value = []
+  }
+}
+
+// 根据车间加载机器人列表
+const loadRobotsByGroup = async (groupKey) => {
+  if (DEMO_MODE) {
+    robotOptions.value = getRobotsByGroup(groupKey).map(r => ({
+      id: r.partNo || r.id,
+      name: r.partNo || r.name || r.robot_id
+    }))
+  } else {
+    try {
+      const data = await getRobotComponents({ group: groupKey, tab: 'all' })
+      const results = data?.results || data || []
+      robotOptions.value = results.map(r => ({
+        id: r.partNo || r.id,
+        name: r.partNo || r.name || r.robot_id
+      }))
+    } catch (error) {
+      console.error('加载机器人列表失败:', error)
+      robotOptions.value = []
+    }
+  }
+}
+
+// 加载分析处理
+const handleLoadAnalysis = async () => {
+  ElMessage.info(`开始分析 - 车间: ${selectedWorkshop || '全部'}, 机器人: ${selectedRobot || '全部'}, 时间: ${dateRangeText.value}`)
+  await handleRefresh()
+}
+
+// 切换日期选择弹窗
+const toggleDatePopup = () => {
+  datePopupVisible.value = !datePopupVisible.value
+}
+
+// 应用日期范围
+const applyDateRange = async () => {
+  datePopupVisible.value = false
+
+  // 如果没有选择日期，使用默认值（最近7天）
+  if (!startDate.value && !endDate.value) {
+    const today = new Date()
+    const weekAgo = new Date(today)
+    weekAgo.setDate(weekAgo.getDate() - 7)
+    endDate.value = today.toISOString().split('T')[0]
+    startDate.value = weekAgo.toISOString().split('T')[0]
+  }
+
+  // 验证日期范围
+  if (startDate.value && endDate.value && startDate.value > endDate.value) {
+    ElMessage.warning('开始日期不能晚于结束日期')
+    return
+  }
+
+  // 重新加载数据（带时间范围参数）
+  await loadGroupsWithDateRange()
+  ElMessage.success(`已应用时间范围: ${dateRangeText.value}`)
+}
+
+// 带时间范围的数据加载
+const loadGroupsWithDateRange = async () => {
+  loading.value = true
+  try {
+    const params = {}
+    if (startDate.value) params.start_date = startDate.value
+    if (endDate.value) params.end_date = endDate.value
+
+    if (DEMO_MODE) {
+      // 演示模式：根据时间范围过滤模拟数据
+      const filteredGroups = mockGroups.map(group => ({
+        key: group.key,
+        name: group.name,
+        stats: getGroupStats(group.key)
+      }))
+      groupsData.value = filteredGroups
+    } else {
+      // 调用API时传递时间范围参数
+      const response = await getRobotGroups(params)
+      groupsData.value = response || []
+    }
+    lastUpdateTime.value = new Date().toLocaleTimeString()
+
+    // 重新渲染图表
+    nextTick(() => {
+      renderMainPieChart()
+      renderWorkshopCharts()
+    })
+  } catch (error) {
+    console.error('加载数据失败:', error)
+    ElMessage.error('加载数据失败')
+    groupsData.value = []
+  } finally {
+    loading.value = false
+  }
+}
+
 onMounted(async () => {
+  // 初始化默认时间范围（最近7天）
+  const today = new Date()
+  const weekAgo = new Date(today)
+  weekAgo.setDate(weekAgo.getDate() - 7)
+  endDate.value = today.toISOString().split('T')[0]
+  startDate.value = weekAgo.toISOString().split('T')[0]
+
   await Promise.all([loadGroupsData(), loadAlerts()])
+
+  // 初始化默认车间（第一个车间）
+  if (groupRows.value.length > 0) {
+    selectedWorkshop.value = groupRows.value[0].key
+    await loadRobotsByGroup(selectedWorkshop.value)
+  }
+
   nextTick(() => {
     renderMainPieChart()
     renderWorkshopCharts()
   })
   window.addEventListener('resize', () => chartInstances.forEach(c => c.resize()))
+
+  // 点击外部关闭时间选择弹窗
+  document.addEventListener('click', (e) => {
+    const datePicker = document.querySelector('.date-range-picker')
+    if (datePicker && !datePicker.contains(e.target)) {
+      datePopupVisible.value = false
+    }
+  })
 })
 
 onBeforeUnmount(() => chartInstances.forEach(c => c.dispose()))
@@ -733,10 +925,310 @@ watch(groupRows, () => {
 /* === 入场动画类 === */
 .entrance-slide-in { animation: slideInFade 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards; opacity: 0; transform: translateX(-40px); }
 @keyframes slideInFade { to { opacity: 1; transform: translateX(0); } }
+
+/* === 时间选择器样式（iOS玻璃拟态风格） === */
+.header-glass-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+/* === 筛选选择器样式 === */
+.filter-select {
+  min-width: 200px;
+  background: rgba(255, 255, 255, 0.06) !important;
+  backdrop-filter: blur(30px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3) !important;
+  animation: filterEntrance 1s cubic-bezier(0.16, 1, 0.3, 1) 0.2s forwards;
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+@keyframes filterEntrance {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.select-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+}
+
+.select-icon {
+  font-size: 14px;
+}
+
+.select-label {
+  font-size: 11px;
+  color: #8899aa;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+/* 紧凑型暗色下拉框样式 */
+:deep(.dark-select-compact) {
+  --el-select-input-focus-border-color: #ffaa00;
+  flex: 1;
+  min-width: 100px;
+}
+
+:deep(.dark-select-compact .el-select__wrapper) {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  box-shadow: none;
+  padding: 4px 8px;
+  min-height: 28px;
+  transition: all 0.3s ease;
+}
+
+:deep(.dark-select-compact .el-select__wrapper:hover) {
+  border-color: rgba(255, 170, 0, 0.3);
+  background: rgba(0, 0, 0, 0.3);
+}
+
+:deep(.dark-select-compact .el-select__wrapper.is-focus) {
+  border-color: #ffaa00;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+:deep(.dark-select-compact .el-select__selected-item) {
+  color: #e0e6ed;
+  font-size: 12px;
+}
+
+:deep(.dark-select-compact .el-select__placeholder) {
+  color: #8899aa;
+  font-size: 12px;
+}
+
+:deep(.dark-select-compact .el-select__input) {
+  color: #e0e6ed;
+  font-size: 12px;
+}
+
+/* 下拉选项样式 */
+:deep(.el-select-dropdown__item) {
+  background: rgba(20, 30, 50, 0.95);
+  color: #e0e6ed;
+  font-size: 12px;
+}
+
+:deep(.el-select-dropdown__item:hover) {
+  background: rgba(255, 170, 0, 0.15);
+  color: #ffaa00;
+}
+
+:deep(.el-select-dropdown__item.is-selected) {
+  background: rgba(255, 170, 0, 0.2);
+  color: #ffaa00;
+}
+
+.date-range-picker {
+  position: relative;
+  min-width: 220px;
+  background: rgba(255, 255, 255, 0.06) !important;
+  backdrop-filter: blur(30px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3) !important;
+  animation: datePickerEntrance 1s cubic-bezier(0.16, 1, 0.3, 1) 0.4s forwards;
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+@keyframes datePickerEntrance {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.date-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.3s ease;
+  border-radius: 12px;
+}
+
+.date-display:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.date-icon {
+  font-size: 14px;
+}
+
+.date-text {
+  font-size: 12px;
+  color: #e0e6ed;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+}
+
+.date-arrow {
+  font-size: 9px;
+  color: #8899aa;
+  transition: transform 0.3s ease;
+}
+
+.date-popup.show .date-arrow {
+  transform: rotate(180deg);
+}
+
+.date-popup {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 280px;
+  background: rgba(20, 30, 50, 0.95);
+  backdrop-filter: blur(40px) saturate(200%);
+  border: 1px solid rgba(0, 204, 255, 0.2);
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 204, 255, 0.1);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-10px) scale(0.95);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 1000;
+}
+
+.date-popup.show {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0) scale(1);
+}
+
+.date-popup-content {
+  padding: 16px;
+}
+
+.date-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.date-row:last-of-type {
+  margin-bottom: 0;
+}
+
+.date-row label {
+  font-size: 11px;
+  color: #8899aa;
+  min-width: 60px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.date-input {
+  flex: 1;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: #e0e6ed;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.date-input:hover {
+  border-color: rgba(0, 204, 255, 0.3);
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.date-input:focus {
+  border-color: rgba(0, 204, 255, 0.5);
+  box-shadow: 0 0 0 3px rgba(0, 204, 255, 0.1);
+}
+
+.date-input::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  opacity: 0.6;
+  cursor: pointer;
+  transition: opacity 0.3s ease;
+}
+
+.date-input::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
+.date-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.date-btn {
+  flex: 1;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  letter-spacing: 0.5px;
+}
+
+.date-btn-apply {
+  background: linear-gradient(135deg, #00c3ff, #0066ff);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(0, 195, 255, 0.3);
+}
+
+.date-btn-apply:hover {
+  background: linear-gradient(135deg, #00d4ff, #0077ff);
+  box-shadow: 0 6px 16px rgba(0, 195, 255, 0.4);
+  transform: translateY(-1px);
+}
+
+.date-btn-apply:active {
+  transform: translateY(0);
+}
+
+.date-btn-cancel {
+  background: rgba(255, 255, 255, 0.05);
+  color: #8899aa;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.date-btn-cancel:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #a0aec0;
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+/* 点击外部关闭弹窗 */
+.date-range-picker:hover .date-popup {
+  /* 保持弹窗显示当鼠标在选择器内时 */
+}
 .entrance-scale-up { animation: scaleUpFade 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.2s forwards; opacity: 0; transform: scale(0.92) translateY(30px); }
 .entrance-scale-up-delay-1 { animation: scaleUpFade 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.35s forwards; opacity: 0; transform: scale(0.92) translateY(30px); }
 .entrance-scale-up-delay-2 { animation: scaleUpFade 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.5s forwards; opacity: 0; transform: scale(0.92) translateY(30px); }
 @keyframes scaleUpFade { to { opacity: 1; transform: scale(1) translateY(0); } }
+
+/* 按钮入场动画 - 延迟到最后 */
+.btn-entrance {
+  animation: btnFadeIn 0.6s ease-out 0.6s forwards;
+  opacity: 0;
+  transform: translateY(-15px);
+}
 .entrance-border-glow { animation: borderBreathe 6s infinite ease-in-out, borderGlowEnter 1.2s ease-out forwards; opacity: 0; }
 @keyframes borderGlowEnter { 0% { opacity: 0; transform: scale(0.95); } 50% { opacity: 0.6; } 100% { opacity: 0.3; transform: scale(1); } }
 .entrance-chart-fade { animation: chartFadeIn 1s cubic-bezier(0.16, 1, 0.3, 1) 0.6s forwards; opacity: 0; transform: scale(0.95); }

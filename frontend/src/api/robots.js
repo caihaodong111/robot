@@ -1,10 +1,11 @@
 import request from '@/utils/request'
 
 // 获取机器人组列表
-export function getRobotGroups() {
+export function getRobotGroups(params) {
   return request({
     url: '/robots/groups/',
-    method: 'get'
+    method: 'get',
+    params
   })
 }
 
@@ -105,5 +106,19 @@ export function getGripperConfigTemplate() {
   return request({
     url: '/robots/gripper-check/config_template/',
     method: 'get'
+  })
+}
+
+// ==================== 错误率趋势图 API ====================
+
+// 获取机器人关节错误率趋势图
+export function getErrorTrendChart(robotId, axis, regenerate = false) {
+  return request({
+    url: `/robots/components/${robotId}/error_trend_chart/`,
+    method: 'get',
+    params: {
+      axis,
+      regenerate: regenerate ? 1 : 0
+    }
   })
 }

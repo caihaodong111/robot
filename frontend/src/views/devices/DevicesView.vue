@@ -209,7 +209,11 @@
                 placement="top"
                 :show-after="120"
               >
-                <span class="dot" :class="row.checks?.[key]?.ok ? 'dot-ok' : 'dot-bad'"></span>
+                <span
+                  class="dot clickable-dot"
+                  :class="row.checks?.[key]?.ok ? 'dot-ok' : 'dot-bad'"
+                  @click="openErrorTrendChart(row, key)"
+                ></span>
               </el-tooltip>
             </template>
           </el-table-column>
@@ -400,16 +404,37 @@
         <el-button type="primary" :loading="editSaving" @click="saveEdit">保存</el-button>
       </template>
     </el-dialog>
+
+    <!-- Error Trend Chart Dialog -->
+    <el-dialog
+      v-model="chartDialogVisible"
+      :title="`${chartDialogData.robotPartNo} - ${chartDialogData.axisName} 关节错误率趋势图`"
+      width="900px"
+      class="dark-dialog chart-dialog"
+    >
+      <div v-loading="chartDialogLoading" class="chart-dialog-content">
+        <div v-if="chartDialogData.chartUrl" class="chart-image-wrapper">
+          <img :src="chartDialogData.chartUrl" :alt="`${chartDialogData.axisName} 错误率趋势图`" class="chart-image" />
+        </div>
+        <div v-else-if="!chartDialogLoading" class="chart-placeholder">
+          <el-icon :size="48"><Picture /></el-icon>
+          <p>暂无图表数据</p>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="chartDialogVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { computed, ref, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Refresh, Search, Close, Monitor, ArrowRight, ArrowLeft } from '@element-plus/icons-vue'
+import { Refresh, Search, Close, Monitor, ArrowRight, ArrowLeft, Picture } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { DEMO_MODE } from '@/config/appConfig'
-import { getRobotComponents, getRobotGroups, updateRobotComponent } from '@/api/robots'
+import { getRobotComponents, getRobotGroups, updateRobotComponent, getErrorTrendChart } from '@/api/robots'
 import { getGroupStats, getRobotsByGroup, robotGroups as mockGroups } from '@/mock/robots'
 
 const router = useRouter()
@@ -463,6 +488,17 @@ const editForm = ref({
   mark: 0,
   remark: '',
   level: 'L'
+})
+
+// 错误率趋势图弹窗相关状态
+const chartDialogVisible = ref(false)
+const chartDialogLoading = ref(false)
+const chartDialogData = ref({
+  robot: null,
+  axis: null,
+  axisName: '',
+  chartUrl: '',
+  robotPartNo: ''
 })
 
 const loading = ref(false)
@@ -811,6 +847,47 @@ const openBI = (robot) => {
       robot: partNo
     }
   })
+}
+
+// 打开错误率趋势图弹窗
+const openErrorTrendChart = async (robot, axisKey) => {
+  if (DEMO_MODE) {
+    ElMessage.info('演示模式下图表功能不可用')
+    return
+  }
+
+  const axisNum = parseInt(axisKey.replace('A', ''))
+  if (!robot?.id) {
+    ElMessage.error('无法获取机器人信息')
+    return
+  }
+
+  // 设置弹窗数据
+  chartDialogData.value = {
+    robot: robot,
+    axis: axisNum,
+    axisName: axisKey,
+    chartUrl: '',
+    robotPartNo: robot.partNo || robot.part_no || ''
+  }
+  chartDialogVisible.value = true
+  chartDialogLoading.value = true
+
+  try {
+    const response = await getErrorTrendChart(robot.id, axisNum)
+    if (response.success) {
+      chartDialogData.value.chartUrl = response.chart_url
+    } else {
+      ElMessage.error(response.error || '获取图表失败')
+      chartDialogVisible.value = false
+    }
+  } catch (error) {
+    console.error('获取图表失败:', error)
+    ElMessage.error(error?.response?.data?.error || error?.message || '获取图表失败')
+    chartDialogVisible.value = false
+  } finally {
+    chartDialogLoading.value = false
+  }
 }
 
 const loadGroups = async () => {
@@ -2046,6 +2123,74 @@ initData()
 
 .ws-progress-fill.is-danger {
   background: linear-gradient(90deg, #ffaa00, #ef4444);
+}
+
+/* === 可点击关节点样式 === */
+.clickable-dot {
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.clickable-dot:hover {
+  transform: scale(1.3);
+  box-shadow: 0 0 12px currentColor;
+}
+
+/* === 图表弹窗样式 === */
+:deep(.chart-dialog) {
+  max-width: 95vw;
+}
+
+:deep(.chart-dialog .el-dialog__header) {
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+:deep(.chart-dialog .el-dialog__title) {
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+}
+
+:deep(.chart-dialog .el-dialog__body) {
+  padding: 0;
+  max-height: 75vh;
+  overflow: auto;
+}
+
+.chart-dialog-content {
+  min-height: 400px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 20px;
+}
+
+.chart-image-wrapper {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.chart-image {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.chart-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: #666;
+}
+
+.chart-placeholder p {
+  margin: 0;
+  font-size: 13px;
 }
 </style>
 

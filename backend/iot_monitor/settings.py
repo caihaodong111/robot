@@ -257,3 +257,10 @@ LOGGING = {
 # 创建日志目录
 import os
 os.makedirs(BASE_DIR / 'logs', exist_ok=True)
+
+
+# ==================== 机器人错误率趋势图配置 ====================
+# CSV 数据文件存储路径
+ERROR_RATE_CSV_PATH = '/Users/caihd/Desktop/sg'
+# 图表生成输出路径
+ERROR_RATE_CHART_PATH = '/Users/caihd/Desktop/sg/charts'

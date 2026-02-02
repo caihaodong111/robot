@@ -25,6 +25,7 @@ django-redis>=5.4
 pandas>=2.0
 openpyxl>=3.0
 bokeh>=3.0
+matplotlib>=3.8
 
 # 安全
 cryptography>=40.0
