@@ -754,10 +754,14 @@ const saveEdit = async () => {
     applyEditToRow(editTarget.value, payload)
     ElMessage.success('保存成功')
     editVisible.value = false
-
-    if (activeTab.value === 'highRisk' || activeTab.value === 'history') {
-      loadGroups()
-      loadRows()
+    if (!DEMO_MODE) {
+      await loadGroups()
+      if (keyword.value.trim()) {
+        currentPage.value = 1
+        await loadRows(true)
+      } else {
+        await loadRows()
+      }
     }
   } catch (error) {
     ElMessage.error(error?.response?.data?.detail || error?.message || '保存失败')
