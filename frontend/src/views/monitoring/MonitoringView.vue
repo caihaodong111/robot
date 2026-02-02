@@ -13,19 +13,6 @@
         <div class="title-area">
           <h1 class="metallic-title">关键轨迹检查 <span>TRAJECTORY PULSE</span></h1>
         </div>
-        <div class="header-actions">
-          <el-tooltip content="刷新数据" placement="bottom">
-            <el-button :icon="Refresh" @click="loadPlantGroups" circle class="refresh-btn btn-entrance-1" />
-          </el-tooltip>
-          <el-button
-            v-if="checkResult"
-            @click="handleExport"
-            class="action-btn btn-entrance-2"
-          >
-            <el-icon class="export-icon"><Download /></el-icon>
-            <span>导出报告</span>
-          </el-button>
-        </div>
       </header>
 
       <!-- Control Center -->
@@ -97,24 +84,8 @@
               </el-select>
             </div>
 
-            <!-- Execute Button -->
-            <div class="control-item button-wrapper entrance-fade-right-3">
-              <el-button
-                type="primary"
-                class="pulse-btn"
-                :loading="checking"
-                :disabled="!canExecute"
-                @click="executeCheck"
-              >
-                <el-icon v-if="!checking"><Search /></el-icon>
-                {{ checking ? '正在诊断...' : '执行诊断' }}
-              </el-button>
-            </div>
-          </div>
-
-          <!-- Time Range Row -->
-          <div class="control-row secondary-row">
-            <div class="control-item time-selector entrance-fade-up-1">
+            <!-- Time Range -->
+            <div class="control-item time-selector entrance-fade-right-3">
               <label><el-icon><Calendar /></el-icon> 时间跨度</label>
               <el-date-picker
                 v-model="timeRange"
@@ -128,11 +99,33 @@
                 popper-class="trajectory-date-picker"
               />
             </div>
+
+            <!-- Execute Button -->
+            <div class="control-item button-wrapper entrance-fade-right-4">
+              <el-button
+                type="primary"
+                class="pulse-btn"
+                :loading="checking"
+                :disabled="!canExecute"
+                @click="executeCheck"
+              >
+                <el-icon v-if="!checking"><Search /></el-icon>
+                {{ checking ? '正在诊断...' : '执行诊断' }}
+              </el-button>
+              <el-button
+                v-if="checkResult"
+                @click="handleExport"
+                class="pulse-btn export-btn"
+              >
+                <el-icon><Download /></el-icon>
+                <span>导出数据</span>
+              </el-button>
+            </div>
           </div>
 
           <!-- Advanced Config Row (Key Paths) -->
           <div class="control-row secondary-row">
-            <div class="control-item path-config entrance-fade-up-2">
+            <div class="control-item path-config entrance-fade-up-1">
               <label><el-icon><Operation /></el-icon> 轨迹关键特征 (Key Paths)</label>
               <div class="path-inputs">
                 <el-tag
@@ -202,7 +195,7 @@
             :height="tableHeight"
           >
             <!-- 固定列：基本信息 -->
-            <el-table-column prop="robot" label="机器人" min-width="140" sortable fixed="left" class-name="fixed-left-col">
+            <el-table-column prop="robot" label="机器人" min-width="180" sortable fixed="left" class-name="fixed-left-col">
               <template #default="{ row }">
                 <div class="robot-info">
                   <el-icon><Monitor /></el-icon>
@@ -211,92 +204,92 @@
               </template>
             </el-table-column>
 
-            <el-table-column prop="Name_C" label="位置" width="110" sortable align="center" />
-            <el-table-column prop="SNR_C" label="SNR" width="80" sortable align="center" />
-            <el-table-column prop="SUB" label="SUB" width="70" sortable align="center" />
-            <el-table-column prop="P_name" label="程序路径" min-width="120" show-overflow-tooltip sortable />
+            <el-table-column prop="Name_C" label="位置" width="120" sortable align="center" />
+            <el-table-column prop="SNR_C" label="SNR" width="70" sortable align="center" />
+            <el-table-column prop="SUB" label="SUB" width="100" sortable align="center" />
+            <el-table-column prop="P_name" label="程序路径" min-width="110" sortable />
 
             <!-- 分组：偏差值 -->
             <el-table-column label="偏差值" align="center">
-              <el-table-column label="1" width="120" align="center">
-                <el-table-column prop="QH1" label="QH" width="60" sortable align="center">
+              <el-table-column label="1" width="130" align="center">
+                <el-table-column prop="QH1" label="QH" width="65" sortable align="center">
                   <template #default="{ row }">
                     <span class="deviation-value" :class="getStatusClass(row.QH1)">{{ formatValue(row.QH1) }}</span>
                   </template>
                 </el-table-column>
-                <el-table-column prop="QL1" label="QL" width="60" sortable align="center">
+                <el-table-column prop="QL1" label="QL" width="65" sortable align="center">
                   <template #default="{ row }">
                     <span class="deviation-value" :class="getStatusClass(row.QL1)">{{ formatValue(row.QL1) }}</span>
                   </template>
                 </el-table-column>
               </el-table-column>
-              <el-table-column label="2" width="120" align="center">
-                <el-table-column prop="QH2" label="QH" width="60" sortable align="center">
+              <el-table-column label="2" width="130" align="center">
+                <el-table-column prop="QH2" label="QH" width="65" sortable align="center">
                   <template #default="{ row }">
                     <span class="deviation-value" :class="getStatusClass(row.QH2)">{{ formatValue(row.QH2) }}</span>
                   </template>
                 </el-table-column>
-                <el-table-column prop="QL2" label="QL" width="60" sortable align="center">
+                <el-table-column prop="QL2" label="QL" width="65" sortable align="center">
                   <template #default="{ row }">
                     <span class="deviation-value" :class="getStatusClass(row.QL2)">{{ formatValue(row.QL2) }}</span>
                   </template>
                 </el-table-column>
               </el-table-column>
-              <el-table-column label="3" width="120" align="center">
-                <el-table-column prop="QH3" label="QH" width="60" sortable align="center">
+              <el-table-column label="3" width="130" align="center">
+                <el-table-column prop="QH3" label="QH" width="65" sortable align="center">
                   <template #default="{ row }">
                     <span class="deviation-value" :class="getStatusClass(row.QH3)">{{ formatValue(row.QH3) }}</span>
                   </template>
                 </el-table-column>
-                <el-table-column prop="QL3" label="QL" width="60" sortable align="center">
+                <el-table-column prop="QL3" label="QL" width="65" sortable align="center">
                   <template #default="{ row }">
                     <span class="deviation-value" :class="getStatusClass(row.QL3)">{{ formatValue(row.QL3) }}</span>
                   </template>
                 </el-table-column>
               </el-table-column>
-              <el-table-column label="4" width="120" align="center">
-                <el-table-column prop="QH4" label="QH" width="60" sortable align="center">
+              <el-table-column label="4" width="130" align="center">
+                <el-table-column prop="QH4" label="QH" width="65" sortable align="center">
                   <template #default="{ row }">
                     <span class="deviation-value" :class="getStatusClass(row.QH4)">{{ formatValue(row.QH4) }}</span>
                   </template>
                 </el-table-column>
-                <el-table-column prop="QL4" label="QL" width="60" sortable align="center">
+                <el-table-column prop="QL4" label="QL" width="65" sortable align="center">
                   <template #default="{ row }">
                     <span class="deviation-value" :class="getStatusClass(row.QL4)">{{ formatValue(row.QL4) }}</span>
                   </template>
                 </el-table-column>
               </el-table-column>
-              <el-table-column label="5" width="120" align="center">
-                <el-table-column prop="QH5" label="QH" width="60" sortable align="center">
+              <el-table-column label="5" width="130" align="center">
+                <el-table-column prop="QH5" label="QH" width="65" sortable align="center">
                   <template #default="{ row }">
                     <span class="deviation-value" :class="getStatusClass(row.QH5)">{{ formatValue(row.QH5) }}</span>
                   </template>
                 </el-table-column>
-                <el-table-column prop="QL5" label="QL" width="60" sortable align="center">
+                <el-table-column prop="QL5" label="QL" width="65" sortable align="center">
                   <template #default="{ row }">
                     <span class="deviation-value" :class="getStatusClass(row.QL5)">{{ formatValue(row.QL5) }}</span>
                   </template>
                 </el-table-column>
               </el-table-column>
-              <el-table-column label="6" width="120" align="center">
-                <el-table-column prop="QH6" label="QH" width="60" sortable align="center">
+              <el-table-column label="6" width="130" align="center">
+                <el-table-column prop="QH6" label="QH" width="65" sortable align="center">
                   <template #default="{ row }">
                     <span class="deviation-value" :class="getStatusClass(row.QH6)">{{ formatValue(row.QH6) }}</span>
                   </template>
                 </el-table-column>
-                <el-table-column prop="QL6" label="QL" width="60" sortable align="center">
+                <el-table-column prop="QL6" label="QL" width="65" sortable align="center">
                   <template #default="{ row }">
                     <span class="deviation-value" :class="getStatusClass(row.QL6)">{{ formatValue(row.QL6) }}</span>
                   </template>
                 </el-table-column>
               </el-table-column>
-              <el-table-column label="7" width="120" align="center">
-                <el-table-column prop="QH7" label="QH" width="60" sortable align="center">
+              <el-table-column label="7" width="130" align="center">
+                <el-table-column prop="QH7" label="QH" width="65" sortable align="center">
                   <template #default="{ row }">
                     <span class="deviation-value" :class="getStatusClass(row.QH7)">{{ formatValue(row.QH7) }}</span>
                   </template>
                 </el-table-column>
-                <el-table-column prop="QL7" label="QL" width="60" sortable align="center">
+                <el-table-column prop="QL7" label="QL" width="65" sortable align="center">
                   <template #default="{ row }">
                     <span class="deviation-value" :class="getStatusClass(row.QL7)">{{ formatValue(row.QL7) }}</span>
                   </template>
@@ -306,55 +299,55 @@
 
             <!-- 分组：LQ 电流值 -->
             <el-table-column label="LQ 电流" align="center">
-              <el-table-column prop="Curr_A1_LQ" label="A1" width="80" sortable align="right" class-name="mono-col">
+              <el-table-column prop="Curr_A1_LQ" label="A1" width="68" sortable align="right" class-name="mono-col">
                 <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A1_LQ) }}</span></template>
               </el-table-column>
-              <el-table-column prop="Curr_A2_LQ" label="A2" width="80" sortable align="right" class-name="mono-col">
+              <el-table-column prop="Curr_A2_LQ" label="A2" width="68" sortable align="right" class-name="mono-col">
                 <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A2_LQ) }}</span></template>
               </el-table-column>
-              <el-table-column prop="Curr_A3_LQ" label="A3" width="80" sortable align="right" class-name="mono-col">
+              <el-table-column prop="Curr_A3_LQ" label="A3" width="68" sortable align="right" class-name="mono-col">
                 <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A3_LQ) }}</span></template>
               </el-table-column>
-              <el-table-column prop="Curr_A4_LQ" label="A4" width="80" sortable align="right" class-name="mono-col">
+              <el-table-column prop="Curr_A4_LQ" label="A4" width="68" sortable align="right" class-name="mono-col">
                 <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A4_LQ) }}</span></template>
               </el-table-column>
-              <el-table-column prop="Curr_A5_LQ" label="A5" width="80" sortable align="right" class-name="mono-col">
+              <el-table-column prop="Curr_A5_LQ" label="A5" width="68" sortable align="right" class-name="mono-col">
                 <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A5_LQ) }}</span></template>
               </el-table-column>
-              <el-table-column prop="Curr_A6_LQ" label="A6" width="80" sortable align="right" class-name="mono-col">
+              <el-table-column prop="Curr_A6_LQ" label="A6" width="68" sortable align="right" class-name="mono-col">
                 <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A6_LQ) }}</span></template>
               </el-table-column>
-              <el-table-column prop="Curr_E1_LQ" label="E1" width="80" sortable align="right" class-name="mono-col">
+              <el-table-column prop="Curr_E1_LQ" label="E1" width="68" sortable align="right" class-name="mono-col">
                 <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_E1_LQ) }}</span></template>
               </el-table-column>
             </el-table-column>
 
             <!-- 分组：HQ 电流值 -->
             <el-table-column label="HQ 电流" align="center">
-              <el-table-column prop="Curr_A1_HQ" label="A1" width="80" sortable align="right" class-name="mono-col">
+              <el-table-column prop="Curr_A1_HQ" label="A1" width="68" sortable align="right" class-name="mono-col">
                 <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A1_HQ) }}</span></template>
               </el-table-column>
-              <el-table-column prop="Curr_A2_HQ" label="A2" width="80" sortable align="right" class-name="mono-col">
+              <el-table-column prop="Curr_A2_HQ" label="A2" width="68" sortable align="right" class-name="mono-col">
                 <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A2_HQ) }}</span></template>
               </el-table-column>
-              <el-table-column prop="Curr_A3_HQ" label="A3" width="80" sortable align="right" class-name="mono-col">
+              <el-table-column prop="Curr_A3_HQ" label="A3" width="68" sortable align="right" class-name="mono-col">
                 <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A3_HQ) }}</span></template>
               </el-table-column>
-              <el-table-column prop="Curr_A4_HQ" label="A4" width="80" sortable align="right" class-name="mono-col">
+              <el-table-column prop="Curr_A4_HQ" label="A4" width="68" sortable align="right" class-name="mono-col">
                 <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A4_HQ) }}</span></template>
               </el-table-column>
-              <el-table-column prop="Curr_A5_HQ" label="A5" width="80" sortable align="right" class-name="mono-col">
+              <el-table-column prop="Curr_A5_HQ" label="A5" width="68" sortable align="right" class-name="mono-col">
                 <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A5_HQ) }}</span></template>
               </el-table-column>
-              <el-table-column prop="Curr_A6_HQ" label="A6" width="80" sortable align="right" class-name="mono-col">
+              <el-table-column prop="Curr_A6_HQ" label="A6" width="68" sortable align="right" class-name="mono-col">
                 <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_A6_HQ) }}</span></template>
               </el-table-column>
-              <el-table-column prop="Curr_E1_HQ" label="E1" width="80" sortable align="right" class-name="mono-col">
+              <el-table-column prop="Curr_E1_HQ" label="E1" width="68" sortable align="right" class-name="mono-col">
                 <template #default="{ row }"><span class="mono">{{ formatValue(row.Curr_E1_HQ) }}</span></template>
               </el-table-column>
             </el-table-column>
 
-            <el-table-column prop="size" label="样本" width="70" sortable align="center" />
+            <el-table-column prop="size" label="样本" width="60" sortable align="center" />
           </el-table>
 
           <footer class="table-footer">
@@ -378,9 +371,17 @@
           <p>请在上方配置车间、机器人及时间跨度，点击“执行诊断”开始巡检</p>
         </div>
 
-        <!-- Skeleton Loading -->
+        <!-- Loading Spinner -->
         <div v-else class="loading-state">
-          <el-skeleton :rows="10" animated />
+          <div class="loading-spinner">
+            <svg class="spinner" viewBox="0 0 50 50">
+              <circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="4"></circle>
+            </svg>
+          </div>
+          <div class="loading-message">
+            <div class="loading-title">正在诊断中</div>
+            <div class="loading-tip">正在分析轨迹数据，请稍候...</div>
+          </div>
         </div>
       </transition>
     </div>
@@ -405,7 +406,7 @@
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
-  Download, Search, Refresh, Location, Cpu, Calendar,
+  Download, Search, Location, Cpu, Calendar,
   Operation, Monitor, Warning
 } from '@element-plus/icons-vue'
 import { DEMO_MODE, API_BASE_URL } from '@/config/appConfig'
@@ -418,7 +419,7 @@ const layoutStore = useLayoutStore()
 const DEFAULT_TIME_SPAN_DAYS = 7
 
 // 表格高度随侧边栏状态动态变化
-const tableHeight = computed(() => layoutStore.isCollapsed ? 600 : 500)
+const tableHeight = computed(() => layoutStore.isCollapsed ? 680 : 620)
 
 // Shortcuts for Date Picker
 const shortcuts = [
@@ -634,8 +635,8 @@ const getStatusType = (val) => {
 const getStatusClass = (val) => {
   const n = Math.abs(parseFloat(val))
   if (isNaN(n)) return 'dev-neutral'
-  if (n > 0.3) return 'dev-danger'
-  if (n > 0.1) return 'dev-warning'
+  if (n >= 10) return 'dev-danger'
+  if (n >= 3) return 'dev-warning'
   return 'dev-success'
 }
 
@@ -802,9 +803,16 @@ onMounted(loadPlantGroups)
   transform: translateX(30px);
 }
 
-/* 控制元素从右侧淡入 - 执行按钮 */
+/* 控制元素从右侧淡入 - 时间选择器 */
 .entrance-fade-right-3 {
   animation: fadeRightIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.6s forwards;
+  opacity: 0;
+  transform: translateX(30px);
+}
+
+/* 控制元素从右侧淡入 - 执行按钮 */
+.entrance-fade-right-4 {
+  animation: fadeRightIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.7s forwards;
   opacity: 0;
   transform: translateX(30px);
 }
@@ -816,16 +824,9 @@ onMounted(loadPlantGroups)
   }
 }
 
-/* 控制元素从下方淡入 - 时间选择器 */
+/* 控制元素从下方淡入 - 轨迹配置 */
 .entrance-fade-up-1 {
   animation: fadeUpIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.5s forwards;
-  opacity: 0;
-  transform: translateY(20px);
-}
-
-/* 控制元素从下方淡入 - 轨迹配置 */
-.entrance-fade-up-2 {
-  animation: fadeUpIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.6s forwards;
   opacity: 0;
   transform: translateY(20px);
 }
@@ -905,8 +906,8 @@ onMounted(loadPlantGroups)
 .layout-wrapper {
   position: relative;
   z-index: 1;
-  padding: 40px;
-  max-width: 1600px;
+  padding: 40px 24px;
+  max-width: 2600px;
   margin: 0 auto;
 }
 
@@ -1062,12 +1063,17 @@ onMounted(loadPlantGroups)
 
 .plant-selector { width: 170px; flex-shrink: 0; }
 .robot-selector { width: 240px; flex-shrink: 0; }
-.time-selector { width: 100%; max-width: 480px; flex: 1; }
+.time-selector { width: 380px; flex-shrink: 0; }
 .path-config { flex: 1; min-width: 350px; }
 
 .button-wrapper {
-  margin-left: auto;
+  margin-left: 40px;
+  margin-right: -20px;
   flex-shrink: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
 }
 
 .count-tag { margin-left: 4px; }
@@ -1109,12 +1115,24 @@ onMounted(loadPlantGroups)
   border: none;
   box-shadow: 0 4px 14px rgba(0, 195, 255, 0.3);
   transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  color: #fff;
 }
 
 .pulse-btn:not(:disabled):hover,
 .action-btn:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 24px rgba(0, 195, 255, 0.5);
+}
+
+.export-btn {
+  margin-left: 0;
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+  border: none;
+  box-shadow: 0 4px 14px rgba(34, 197, 94, 0.3);
+}
+
+.export-btn:hover {
+  box-shadow: 0 8px 24px rgba(34, 197, 94, 0.5);
 }
 
 .refresh-btn {
@@ -1152,11 +1170,11 @@ onMounted(loadPlantGroups)
   justify-content: space-between;
   align-items: center;
   padding: 14px 18px;
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(40px);
-  border-radius: 4px;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.3);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(10, 10, 15, 0.85);
+  backdrop-filter: blur(30px);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5), 0 0 1px rgba(0, 204, 255, 0.2);
+  border: 1px solid rgba(0, 204, 255, 0.15);
 }
 
 .summary-left {
@@ -1165,13 +1183,13 @@ onMounted(loadPlantGroups)
   gap: 8px;
 }
 
-.summary-left .label { font-size: 13px; color: #8899aa; font-weight: 500; }
-.summary-left .val { font-size: 24px; font-weight: 800; color: #00c3ff; text-shadow: 0 0 20px rgba(0, 195, 255, 0.5); }
-.summary-left .unit { font-size: 12px; color: #8899aa; }
+.summary-left .label { font-size: 13px; color: #8da0b7; font-weight: 500; }
+.summary-left .val { font-size: 24px; font-weight: 800; color: #00ccff; text-shadow: 0 0 20px rgba(0, 204, 255, 0.5); }
+.summary-left .unit { font-size: 12px; color: #8da0b7; }
 
 .legend {
   font-size: 12px;
-  color: #8899aa;
+  color: #8da0b7;
   display: flex;
   gap: 14px;
   align-items: center;
@@ -1184,26 +1202,28 @@ onMounted(loadPlantGroups)
   display: inline-block;
   margin-right: 4px;
 }
-.dot.ok { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
-.dot.warning { background: #f59e0b; box-shadow: 0 0 8px #f59e0b; }
-.dot.bad { background: #ef4444; box-shadow: 0 0 8px #ef4444; }
+.dot.ok { background: #00ff88; box-shadow: 0 0 10px #00ff88; }
+.dot.warning { background: #ffae00; box-shadow: 0 0 10px #ffae00; }
+.dot.bad { background: #ff4444; box-shadow: 0 0 10px #ff4444; }
 
-/* Table Styling */
+/* Table Styling - 赛博朋克风格 */
 .custom-table {
-  border-radius: 4px;
+  border-radius: 16px;
   overflow: hidden;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-  background: transparent;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8), 0 0 1px rgba(0, 204, 255, 0.2);
+  background: rgba(10, 10, 15, 0.85);
+  backdrop-filter: blur(30px);
+  border: 1px solid rgba(0, 204, 255, 0.15);
 }
 
-/* 表格 CSS 变量覆盖 - 参考平台概览的半透明风格 */
+/* 表格 CSS 变量覆盖 - 赛博朋克风格 */
 .custom-table :deep(.el-table) {
-  --el-table-bg-color: rgba(6, 10, 18, 0.9);
-  --el-table-tr-bg-color: rgba(8, 12, 20, 0.45);
-  --el-table-row-hover-bg-color: rgba(0, 195, 255, 0.06);
-  --el-table-header-bg-color: rgba(255, 255, 255, 0.04);
-  --el-table-border-color: rgba(255, 255, 255, 0.06);
-  color: #dbe6f5;
+  --el-table-bg-color: transparent;
+  --el-table-tr-bg-color: transparent;
+  --el-table-row-hover-bg-color: rgba(0, 204, 255, 0.12);
+  --el-table-header-bg-color: rgba(0, 204, 255, 0.08);
+  --el-table-border-color: rgba(0, 204, 255, 0.1);
+  color: #e6f0ff;
 }
 
 .custom-table :deep(.el-table__inner-wrapper) {
@@ -1215,7 +1235,7 @@ onMounted(loadPlantGroups)
 }
 
 .custom-table :deep(.el-table__row) {
-  transition: background-color 0.2s;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .custom-table :deep(.el-table__row td) {
@@ -1223,49 +1243,52 @@ onMounted(loadPlantGroups)
 }
 
 .custom-table :deep(.el-table__header th) {
-  background: rgba(255, 255, 255, 0.04) !important;
-  color: #8da0b7 !important;
-  font-weight: 600;
+  background: rgba(0, 204, 255, 0.08) !important;
+  color: #00ccff !important;
+  font-weight: 700;
   font-size: 11px;
   padding: 0;
-  border-color: rgba(255, 255, 255, 0.06) !important;
+  border-color: rgba(0, 204, 255, 0.15) !important;
+  text-transform: uppercase;
+  letter-spacing: 1px;
 }
 
 .custom-table :deep(.el-table__body tr) {
-  background: rgba(8, 12, 20, 0.5) !important;
+  background: transparent !important;
 }
 
 .custom-table :deep(.el-table__body tr.el-table__row--striped) {
-  background: rgba(14, 20, 32, 0.65) !important;
+  background: rgba(0, 102, 255, 0.05) !important;
 }
 
 .custom-table :deep(.el-table__body td) {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04) !important;
+  border-bottom: 1px solid rgba(0, 204, 255, 0.08) !important;
   background-color: transparent !important;
-  color: #dbe6f5 !important;
+  color: #e6f0ff !important;
 }
 
 .custom-table :deep(.el-table__row:hover td) {
-  background: rgba(0, 195, 255, 0.06) !important;
+  background: rgba(0, 204, 255, 0.12) !important;
+  box-shadow: inset 0 0 20px rgba(0, 204, 255, 0.05);
 }
 
 .custom-table :deep(.el-table__header .cell) {
-  padding: 12px 8px;
-  line-height: 1.4;
+  padding: 10px 6px;
+  line-height: 1.3;
 }
 
 .custom-table :deep(.el-table__body .cell) {
-  padding: 12px 8px;
-  line-height: 1.4;
+  padding: 10px 6px;
+  line-height: 1.3;
 }
 
 /* Fixed column handling */
 .custom-table :deep(.el-table__fixed) {
-  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.3);
+  box-shadow: 2px 0 16px rgba(0, 204, 255, 0.15);
 }
 
 .custom-table :deep(.el-table__fixed-column) {
-  background: rgba(6, 10, 18, 0.92) !important;
+  background: rgba(10, 10, 15, 0.95) !important;
 }
 
 .custom-table :deep(.fixed-left-col .cell) {
@@ -1277,30 +1300,30 @@ onMounted(loadPlantGroups)
   align-items: center;
   gap: 8px;
   font-weight: 600;
-  color: #8899aa;
+  color: #8da0b7;
   font-size: 14px;
 }
 
 .robot-name {
-  color: #8899aa;
+  color: #8da0b7;
 }
 
 .robot-info .el-icon {
   font-size: 16px;
-  color: #00c3ff;
+  color: #00ccff;
 }
 
 /* Mono font columns */
 .custom-table :deep(.mono-col .cell) {
   font-family: 'Share Tech Mono', 'SF Mono', Consolas, monospace;
   font-size: 13px;
-  color: #8899aa;
+  color: #8da0b7;
 }
 
 .mono {
   font-family: 'Share Tech Mono', 'SF Mono', Consolas, monospace;
   font-size: 13px;
-  color: #8899aa;
+  color: #8da0b7;
 }
 
 /* Status tags */
@@ -1319,37 +1342,41 @@ onMounted(loadPlantGroups)
 /* Deviation value styles */
 .deviation-value {
   font-family: 'Share Tech Mono', 'SF Mono', Consolas, monospace;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   display: inline-block;
-  min-width: 44px;
-  padding: 4px 6px;
-  border-radius: 4px;
+  min-width: 38px;
+  padding: 3px 4px;
+  border-radius: 3px;
+  white-space: nowrap;
 }
 
 .deviation-value.dev-success {
-  color: #22c55e;
-  background: rgba(34, 197, 94, 0.15);
-  border: 1px solid rgba(34, 197, 94, 0.3);
+  color: #00ff88;
+  background: rgba(0, 255, 136, 0.12);
+  border: 1px solid rgba(0, 255, 136, 0.25);
+  box-shadow: 0 0 8px rgba(0, 255, 136, 0.2);
 }
 
 .deviation-value.dev-warning {
-  color: #f59e0b;
-  background: rgba(245, 158, 11, 0.15);
-  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: #ffae00;
+  background: rgba(255, 174, 0, 0.12);
+  border: 1px solid rgba(255, 174, 0, 0.25);
+  box-shadow: 0 0 8px rgba(255, 174, 0, 0.2);
 }
 
 .deviation-value.dev-danger {
-  color: #ef4444;
-  background: rgba(239, 68, 68, 0.15);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  text-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+  color: #ff4444;
+  background: rgba(255, 68, 68, 0.12);
+  border: 1px solid rgba(255, 68, 68, 0.25);
+  text-shadow: 0 0 10px rgba(255, 68, 68, 0.5);
+  box-shadow: 0 0 8px rgba(255, 68, 68, 0.2);
 }
 
 .deviation-value.dev-neutral {
-  color: #8899aa;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  color: #8da0b7;
+  background: rgba(0, 204, 255, 0.05);
+  border: 1px solid rgba(0, 204, 255, 0.1);
 }
 
 .val-group {
@@ -1411,6 +1438,70 @@ onMounted(loadPlantGroups)
   0% { transform: scale(1); opacity: 0.3; }
   50% { transform: scale(1.1); opacity: 0.6; }
   100% { transform: scale(1); opacity: 0.3; }
+}
+
+/* === Loading Spinner === */
+.loading-state {
+  text-align: center;
+  padding: 70px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+}
+
+.loading-spinner {
+  width: 48px;
+  height: 48px;
+}
+
+.spinner {
+  width: 100%;
+  height: 100%;
+  animation: rotate 1.5s linear infinite;
+}
+
+.spinner .path {
+  stroke: #00c3ff;
+  stroke-linecap: round;
+  animation: dash 1.5s ease-in-out infinite;
+}
+
+@keyframes rotate {
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes dash {
+  0% {
+    stroke-dasharray: 1, 150;
+    stroke-dashoffset: 0;
+  }
+  50% {
+    stroke-dasharray: 90, 150;
+    stroke-dashoffset: -35;
+  }
+  100% {
+    stroke-dasharray: 90, 150;
+    stroke-dashoffset: -124;
+  }
+}
+
+.loading-message {
+  text-align: center;
+}
+
+.loading-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 6px;
+}
+
+.loading-tip {
+  font-size: 13px;
+  color: #8899aa;
 }
 
 /* Critical Alert */
@@ -1673,6 +1764,19 @@ onMounted(loadPlantGroups)
 
 .trajectory-date-picker .el-time-spinner__item:hover {
   background: rgba(0, 195, 255, 0.1) !important;
+}
+</style>
+
+<!-- Tooltip 样式：亮白色文字 -->
+<style>
+.el-tooltip__popper.is-dark {
+  background-color: rgba(30, 30, 30, 0.95) !important;
+  border: 1px solid rgba(0, 204, 255, 0.2) !important;
+}
+
+.el-tooltip__popper.is-dark .el-tooltip__inner {
+  color: #ffffff !important;
+  background-color: transparent !important;
 }
 </style>
 
