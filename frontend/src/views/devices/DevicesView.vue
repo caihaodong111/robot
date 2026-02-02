@@ -405,7 +405,7 @@
 
 <script setup>
 import { computed, ref, watch, nextTick } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { Refresh, Search, Close, Monitor, ArrowRight, ArrowLeft } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { DEMO_MODE } from '@/config/appConfig'
@@ -413,6 +413,7 @@ import { getRobotComponents, getRobotGroups, updateRobotComponent } from '@/api/
 import { getGroupStats, getRobotsByGroup, robotGroups as mockGroups } from '@/mock/robots'
 
 const router = useRouter()
+const route = useRoute()
 
 const CHECK_KEYS = ['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7']
 const REFERENCE_OPTIONS = [
@@ -428,7 +429,19 @@ const REFERENCE_OPTIONS = [
 ]
 
 const drawerVisible = ref(false)
-const selectedGroup = ref((DEMO_MODE ? mockGroups : [{ key: 'hop' }])[0].key)
+// 优先使用 URL query 参数中的 group，否则使用第一个车间
+const getInitialGroup = () => {
+  const queryGroup = route.query.group
+  if (queryGroup) {
+    // 如果 URL 有 group 参数，返回空字符串等待数据加载
+    return ''
+  }
+  if (DEMO_MODE) {
+    return mockGroups[0].key
+  }
+  return '' // 生产模式等待数据加载后使用第一个车间
+}
+const selectedGroup = ref(getInitialGroup())
 const activeTab = ref('highRisk')
 const keyword = ref('')
 const levelFilter = ref('')
@@ -476,12 +489,16 @@ const groups = computed(() => {
 })
 
 const activeGroupName = computed(() => {
+  if (!selectedGroup.value) return '加载中...'
   const list = DEMO_MODE ? mockGroups : groupsData.value
   const group = list.find((g) => g.key === selectedGroup.value)
   return group?.name || selectedGroup.value
 })
 
 const groupStats = computed(() => {
+  if (!selectedGroup.value) {
+    return { highRisk: 0, historyHighRisk: 0, total: 0 }
+  }
   if (DEMO_MODE) {
     const stats = getGroupStats(selectedGroup.value)
     return {
@@ -797,11 +814,26 @@ const openBI = (robot) => {
 }
 
 const loadGroups = async () => {
-  if (DEMO_MODE) return
   try {
     loading.value = true
+    if (DEMO_MODE) {
+      // DEMO 模式：检查 URL 参数
+      const queryGroup = route.query.group
+      if (queryGroup && mockGroups.find(g => g.key === queryGroup)) {
+        selectedGroup.value = queryGroup
+      } else if (!selectedGroup.value) {
+        selectedGroup.value = mockGroups[0].key
+      }
+      return
+    }
+
+    // 生产模式
     groupsData.value = await getRobotGroups()
-    if (!groupsData.value.find((g) => g.key === selectedGroup.value) && groupsData.value.length) {
+    const queryGroup = route.query.group
+
+    if (queryGroup && groupsData.value.find((g) => g.key === queryGroup)) {
+      selectedGroup.value = queryGroup
+    } else if (!selectedGroup.value && groupsData.value.length) {
       selectedGroup.value = groupsData.value[0].key
     }
   } finally {
