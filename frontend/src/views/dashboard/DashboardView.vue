@@ -47,12 +47,7 @@
       </section>
 
       <footer class="footer-layout">
-        <div class="ios-glass trend-panel entrance-scale-up-delay-2">
-          <div class="border-glow gold-tint entrance-border-glow"></div>
-          <div class="cell-header">高风险机器人统计</div>
-          <div ref="statusChartRef" class="mini-chart entrance-chart-fade"></div>
-        </div>
-        <div class="ios-glass feed-panel entrance-scale-up-delay-3">
+        <div class="ios-glass feed-panel entrance-scale-up-delay-2">
           <div class="border-glow blue-tint entrance-border-glow"></div>
           <div class="cell-header">实时预警流</div>
           <div class="log-stream entrance-content-fade">
@@ -155,7 +150,6 @@ const loadGroupsData = async () => {
 }
 
 const chartRef = ref(null)
-const statusChartRef = ref(null)
 const chartInstances = new Map()
 
 const detailVisible = ref(false)
@@ -325,64 +319,6 @@ const totalHighRisk = rows.reduce((sum, row) => sum + (row.stats?.highRisk || 0)
   })
 }
 
-// 渲染状态条形图
-const renderStatusChart = () => {
-  const chart = initChart('status', statusChartRef.value)
-  if (!chart) return
-  const rows = groupRows.value
-  
-  chart.setOption({
-    tooltip: {
-      trigger: 'axis',
-      axisPointer: { type: 'shadow' },
-      backgroundColor: 'rgba(10, 20, 35, 0.9)',
-      borderColor: 'rgba(255, 77, 79, 0.6)',
-      textStyle: { color: '#fff' },
-      formatter: (params) => {
-        const item = Array.isArray(params) ? params[0] : params
-        if (!item) return ''
-        return `${item.name}<br/>数量: ${item.value ?? 0}`
-      }
-    },
-    grid: { left: '3%', right: '4%', top: '15%', bottom: '5%', containLabel: true },
-    xAxis: { 
-      type: 'category', 
-      data: rows.map(r => r.name),
-      axisLabel: { color: '#8899aa', fontSize: 10 }
-    },
-    yAxis: {
-      type: 'value',
-      name: '数量',
-      nameTextStyle: { color: '#8899aa', fontSize: 10, padding: [0, 0, 0, 6] },
-      splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } },
-      axisLabel: { color: '#8899aa' }
-    },
-    series: [{
-      type: 'bar',
-      barWidth: '35%',
-      data: rows.map(r => r.stats?.highRisk || 0),
-      itemStyle: {
-        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-          { offset: 0, color: '#ff4d4f' },
-          { offset: 1, color: 'rgba(255, 77, 79, 0.15)' }
-        ]),
-        borderRadius: [4, 4, 0, 0]
-      }
-    }]
-  })
-
-  // 点击柱状图弹出与饼图一致的详情
-  chart.off('click')
-  chart.on('click', (params) => {
-    if (params.componentType === 'series' && params.seriesType === 'bar') {
-      const group = rows.find(r => r.name === params.name)
-      if (group) {
-        showGroupDetail(group.key, group.name)
-      }
-    }
-  })
-}
-
 const loadAlerts = async () => {
   alertLoading.value = true
   try {
@@ -398,21 +334,18 @@ const loadAlerts = async () => {
 const handleRefresh = async () => {
   await Promise.all([loadGroupsData(), loadAlerts()])
   renderMainPieChart()
-  renderStatusChart()
 }
 
 onMounted(async () => {
   // 先加载数据，再渲染图表
   await Promise.all([loadGroupsData(), loadAlerts()])
   renderMainPieChart()
-  renderStatusChart()
   window.addEventListener('resize', () => chartInstances.forEach(c => c.resize()))
 })
 
 onBeforeUnmount(() => chartInstances.forEach(c => c.dispose()))
 watch(groupRows, () => {
   renderMainPieChart()
-  renderStatusChart()
 }, { deep: true })
 </script>
 
@@ -679,7 +612,7 @@ watch(groupRows, () => {
 .layout-wrapper { padding: 40px; position: relative; z-index: 10; max-width: 1400px; margin: 0 auto; }
 .metrics-grid { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr; gap: 24px; margin-top: 40px; }
 .main-chart-box { height: 350px; }
-.footer-layout { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; margin-top: 24px; }
+.footer-layout { margin-top: 24px; }
 .mini-chart { height: 200px; width: 100%; }
 
 /* 页面头部 */
