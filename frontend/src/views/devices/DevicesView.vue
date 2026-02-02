@@ -40,8 +40,7 @@
             <div class="main-value">{{ activeGroupName }} <small>WORKSPACE</small></div>
             <div class="status-mini-tags">
               <span class="tag risk">高风险 {{ groupStats.highRisk }}</span>
-              <span class="tag online">在线 {{ groupStats.online }}</span>
-              <span class="tag total">总数 {{ groups.find(g => g.key === selectedGroup)?.total || 0 }}</span>
+              <span class="tag total">总数 {{ groupStats.total }}</span>
             </div>
           </div>
         </button>
@@ -67,14 +66,14 @@
               <span class="ws-name">{{ group.name }}</span>
               <div class="ws-badges">
                 <span v-if="group.stats.highRisk > 0" class="badge-risk">{{ group.stats.highRisk }}</span>
-                <span class="badge-online">{{ group.stats.online }}/{{ group.total }}</span>
+                <span class="badge-total">总数 {{ group.total }}</span>
               </div>
             </div>
             <div class="ws-progress-track">
               <div
                 class="ws-progress-fill"
                 :class="{ 'is-danger': group.stats.highRisk > 0 }"
-                :style="{ width: (group.stats.online / (group.total || 1) * 100) + '%' }"
+                :style="{ width: (group.stats.highRisk / (group.total || 1) * 100) + '%' }"
               ></div>
             </div>
           </div>
@@ -470,9 +469,6 @@ const groups = computed(() => {
     name: group.name,
     total: group.expected_total ?? group.stats?.total ?? 0,
     stats: {
-      online: group.stats?.online ?? 0,
-      offline: group.stats?.offline ?? 0,
-      maintenance: group.stats?.maintenance ?? 0,
       highRisk: group.stats?.highRisk ?? 0,
       historyHighRisk: group.stats?.historyHighRisk ?? 0
     }
@@ -486,9 +482,20 @@ const activeGroupName = computed(() => {
 })
 
 const groupStats = computed(() => {
-  if (DEMO_MODE) return getGroupStats(selectedGroup.value)
+  if (DEMO_MODE) {
+    const stats = getGroupStats(selectedGroup.value)
+    return {
+      highRisk: stats.highRisk ?? 0,
+      historyHighRisk: stats.historyHighRisk ?? 0,
+      total: stats.total ?? 0
+    }
+  }
   const group = groups.value.find((g) => g.key === selectedGroup.value)
-  return group?.stats || { online: 0, highRisk: 0, historyHighRisk: 0 }
+  return {
+    highRisk: group?.stats?.highRisk ?? 0,
+    historyHighRisk: group?.stats?.historyHighRisk ?? 0,
+    total: group?.total ?? 0
+  }
 })
 
 // 分页相关计算属性
@@ -1298,12 +1305,6 @@ initData()
   background: rgba(255, 68, 68, 0.1);
 }
 
-.tag.online {
-  color: #00ffcc;
-  border-color: rgba(0, 255, 204, 0.3);
-  background: rgba(0, 255, 204, 0.1);
-}
-
 .tag.total {
   color: #8899aa;
   border-color: rgba(136, 153, 170, 0.3);
@@ -1992,7 +1993,7 @@ initData()
   font-weight: 800;
 }
 
-.badge-online {
+.badge-total {
   color: #8899aa;
   font-size: 11px;
 }
