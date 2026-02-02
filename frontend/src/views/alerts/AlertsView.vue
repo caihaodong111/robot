@@ -13,13 +13,6 @@
         <div class="title-area">
           <h1 class="metallic-title">可视化BI <span>VISUAL ANALYTICS</span></h1>
         </div>
-        <div class="header-actions">
-          <el-button :icon="Refresh" circle @click="handleLoad" :disabled="!activeName" class="refresh-btn btn-entrance-1"></el-button>
-          <el-button type="primary" class="action-btn btn-entrance-2" :disabled="!activeName" @click="handleLoad">
-            <el-icon v-if="!isLoading"><Search /></el-icon>
-            {{ isLoading ? '加载中...' : '加载分析' }}
-          </el-button>
-        </div>
       </header>
 
       <!-- Control Panel -->
@@ -32,7 +25,7 @@
         <div class="control-content">
           <div class="control-row">
             <!-- 车间选择 -->
-            <div class="control-item entrance-fade-right-1">
+            <div class="control-item compact-item entrance-fade-right-1">
               <label><el-icon><Location /></el-icon> 目标车间</label>
               <el-select
                 v-model="selectedGroup"
@@ -51,7 +44,7 @@
             </div>
 
             <!-- 机器人选择 -->
-            <div class="control-item entrance-fade-right-2">
+            <div class="control-item compact-item robot-control entrance-fade-right-2">
               <label><el-icon><Monitor /></el-icon> 机器人</label>
               <el-select
                 v-model="selectedRobot"
@@ -72,6 +65,10 @@
                   :value="robot.value"
                 />
               </el-select>
+              <el-button type="primary" class="action-btn btn-entrance-2 inline-action-btn" :disabled="!activeName" @click="handleLoad">
+                <el-icon v-if="!isLoading"><Search /></el-icon>
+                {{ isLoading ? '加载中...' : '加载分析' }}
+              </el-button>
             </div>
 
             <!-- 当前选择显示 -->
@@ -140,7 +137,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { Refresh, Location, Monitor, Search, DataAnalysis, PieChart } from '@element-plus/icons-vue'
+import { Location, Monitor, Search, DataAnalysis, PieChart } from '@element-plus/icons-vue'
 import request from '@/utils/request'
 
 const route = useRoute()
@@ -149,6 +146,7 @@ const selectedGroup = ref('')
 const selectedRobot = ref('')
 const activeName = ref('')
 const currentRobotLabel = ref('')
+const reloadToken = ref(0)
 
 const groups = ref([])
 const robots = ref([])
@@ -158,7 +156,13 @@ const biFrame = ref(null)
 
 const biUrl = computed(() => {
   const name = activeName.value.trim()
-  return name ? `/api/robots/bi/?table=${encodeURIComponent(name)}&embed=1` : ''
+  const baseUrl = name ? `/api/robots/bi/?table=${encodeURIComponent(name)}&embed=1` : ''
+  if (!baseUrl) return ''
+  const url = new URL(baseUrl, window.location.origin)
+  if (reloadToken.value) {
+    url.searchParams.set('_t', String(reloadToken.value))
+  }
+  return url.pathname + url.search
 })
 
 // 加载车间列表
@@ -265,12 +269,14 @@ const handleFrameLoad = () => {
 const handleLoad = () => {
   if (!activeName.value) return
   startLoading()
+  reloadToken.value = Date.now()
 }
 
 // 监听activeName变化，自动开始加载
 watch(activeName, (newVal) => {
   if (newVal) {
     startLoading()
+    reloadToken.value = Date.now()
   }
 })
 
@@ -342,13 +348,6 @@ onMounted(async () => {
     opacity: 1;
     transform: scale(1) translateY(0);
   }
-}
-
-/* 按钮淡入效果 */
-.btn-entrance-1 {
-  animation: btnFadeIn 0.5s ease-out 0.6s forwards;
-  opacity: 0;
-  transform: translateY(-10px);
 }
 
 .btn-entrance-2 {
@@ -513,12 +512,6 @@ onMounted(async () => {
   letter-spacing: 2px;
 }
 
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
 .action-btn {
   background: linear-gradient(135deg, #00c3ff 0%, #0080ff 100%);
   border: none;
@@ -529,17 +522,11 @@ onMounted(async () => {
   box-shadow: 0 6px 20px rgba(0, 195, 255, 0.5);
 }
 
-.refresh-btn {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #8899aa;
-  transition: all 0.3s ease;
-}
-
-.refresh-btn:hover {
-  background: #00c3ff;
-  border-color: #00c3ff;
-  color: #fff;
+.inline-action-btn {
+  padding: 0 18px;
+  height: 40px;
+  border-radius: 12px;
+  white-space: nowrap;
 }
 
 /* === iOS 超透明玻璃卡片 === */
@@ -586,7 +573,7 @@ onMounted(async () => {
 
 /* 卡片标题 */
 .cell-header {
-  padding: 15px 20px;
+  padding: 10px 18px;
   font-size: 11px;
   color: #c0ccda;
   font-weight: bold;
@@ -614,7 +601,7 @@ onMounted(async () => {
 }
 
 .control-content {
-  padding: 20px;
+  padding: 14px 18px 16px;
   position: relative;
   z-index: 1;
 }
@@ -634,6 +621,15 @@ onMounted(async () => {
   flex: 1;
 }
 
+.compact-item {
+  min-width: 220px;
+  flex: 0 1 360px;
+}
+
+.robot-control {
+  flex: 0 1 420px;
+}
+
 .control-item label {
   font-size: 12px;
   font-weight: 600;
@@ -647,7 +643,7 @@ onMounted(async () => {
 
 .styled-select {
   flex: 1;
-  min-width: 180px;
+  min-width: 150px;
 }
 
 .styled-select :deep(.el-input__wrapper) {
@@ -680,7 +676,7 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 14px 20px;
+  padding: 10px 14px;
   background: rgba(0, 195, 255, 0.1);
   border-radius: 14px;
   border: 1px solid rgba(0, 195, 255, 0.3);
@@ -700,8 +696,8 @@ onMounted(async () => {
 
 .selection-text {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: 8px;
 }
 
 .selection-label {
@@ -717,7 +713,7 @@ onMounted(async () => {
 
 /* === 内容区域 === */
 .bi-content {
-  min-height: 560px;
+  min-height: 720px;
 }
 
 /* === 空状态 === */
@@ -727,7 +723,7 @@ onMounted(async () => {
   align-items: center;
   justify-content: center;
   gap: 16px;
-  min-height: 560px;
+  min-height: 720px;
   padding: 40px;
 }
 
@@ -757,7 +753,7 @@ onMounted(async () => {
 .bi-frame-wrapper {
   position: relative;
   width: 100%;
-  height: 720px;
+  height: 900px;
   border-radius: 24px;
   overflow: hidden;
   background: #000;

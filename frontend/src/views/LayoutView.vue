@@ -16,7 +16,7 @@
             <router-link to="/" class="nav-item" :class="{ active: route.path === '/' }">
               <div class="active-indicator"></div>
               <el-icon><Odometer /></el-icon>
-              <span>平台概览</span>
+              <span>机器人概览</span>
             </router-link>
 
             <router-link to="/devices" class="nav-item" :class="{ active: route.path === '/devices' }">

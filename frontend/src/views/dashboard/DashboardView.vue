@@ -11,7 +11,7 @@
     <div class="layout-wrapper">
       <header class="page-header entrance-slide-in">
         <div class="title-group">
-          <h1 class="ios-title">平台概览 <small>PLATFORM MONITORING</small></h1>
+          <h1 class="ios-title">机器人概览 <small>ROBOT MONITORING</small></h1>
           <div class="status-tag status-tag-entrance">
             <span class="dot pulse"></span> 系统运行中 | {{ lastUpdateTime }}
           </div>
@@ -84,7 +84,7 @@
         <div class="dialog-summary">
           <div class="summary-metric">
             <div class="summary-label">记录数量</div>
-            <div class="summary-value">{{ detailRows.length }}</div>
+          <div class="summary-value">{{ detailTotal }}</div>
           </div>
           <div class="summary-divider"></div>
           <div class="summary-metric">
@@ -161,6 +161,7 @@ const chartInstances = new Map()
 const detailVisible = ref(false)
 const detailTitle = ref('')
 const detailRows = ref([])
+const detailTotal = ref(0)
 const detailLoading = ref(false)
 
 const groupRows = computed(() => {
@@ -202,12 +203,13 @@ const showGroupDetail = async (groupKey, groupName) => {
   detailTitle.value = `${groupName} - 高风险机器人列表`
   detailLoading.value = true
   detailRows.value = []
+  detailTotal.value = 0
 
   try {
     if (DEMO_MODE) {
       // 演示模式使用 mock 数据，过滤高风险机器人
       const robots = getRobotsByGroup(groupKey)
-      detailRows.value = robots
+      const rows = robots
         .filter(r => r.isHighRisk)
         .map(r => ({
           name: r.name,
@@ -215,6 +217,8 @@ const showGroupDetail = async (groupKey, groupName) => {
           referenceNo: r.referenceNo,
           remark: r.remark
         }))
+      detailRows.value = rows
+      detailTotal.value = rows.length
     } else {
       // 生产模式调用真实 API
       const response = await getRobotComponents({ group: groupKey, tab: 'highRisk' })
@@ -225,6 +229,7 @@ const showGroupDetail = async (groupKey, groupName) => {
         referenceNo: r.referenceNo,
         remark: r.remark
       }))
+      detailTotal.value = typeof response?.count === 'number' ? response.count : detailRows.value.length
     }
   } catch (error) {
     console.error('加载组详情失败:', error)
@@ -364,6 +369,17 @@ const renderStatusChart = () => {
         borderRadius: [4, 4, 0, 0]
       }
     }]
+  })
+
+  // 点击柱状图弹出与饼图一致的详情
+  chart.off('click')
+  chart.on('click', (params) => {
+    if (params.componentType === 'series' && params.seriesType === 'bar') {
+      const group = rows.find(r => r.name === params.name)
+      if (group) {
+        showGroupDetail(group.key, group.name)
+      }
+    }
   })
 }
 
