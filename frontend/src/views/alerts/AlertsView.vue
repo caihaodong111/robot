@@ -71,8 +71,24 @@
               </el-button>
             </div>
 
+            <!-- 时间范围选择器 -->
+            <div class="control-item compact-item time-range-control entrance-fade-right-3">
+              <label><el-icon><Calendar /></el-icon> 时间范围</label>
+              <el-date-picker
+                v-model="timeRange"
+                type="daterange"
+                range-separator="至"
+                start-placeholder="开始日期"
+                end-placeholder="结束日期"
+                :shortcuts="shortcuts"
+                unlink-panels
+                popper-class="trajectory-date-picker"
+                @change="handleTimeRangeChange"
+              />
+            </div>
+
             <!-- 当前选择显示 -->
-            <div v-if="activeName" class="current-selection-info entrance-fade-right-3">
+            <div v-if="activeName" class="current-selection-info entrance-fade-right-4">
               <div class="selection-icon"><el-icon><DataAnalysis /></el-icon></div>
               <div class="selection-text">
                 <span class="selection-label">当前分析</span>
@@ -137,7 +153,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { Location, Monitor, Search, DataAnalysis, PieChart } from '@element-plus/icons-vue'
+import { Location, Monitor, Search, DataAnalysis, PieChart, Calendar } from '@element-plus/icons-vue'
 import request from '@/utils/request'
 
 const route = useRoute()
@@ -154,6 +170,41 @@ const robotsLoading = ref(false)
 const isLoading = ref(false)
 const biFrame = ref(null)
 
+// 时间范围选择器状态（数组格式：[开始日期, 结束日期]）
+const DEFAULT_TIME_SPAN_DAYS = 7
+const timeRange = ref([new Date(Date.now() - DEFAULT_TIME_SPAN_DAYS * 24 * 3600_000), new Date()])
+
+// 快捷选项
+const shortcuts = [
+  {
+    text: '最近一周',
+    value: () => {
+      const end = new Date()
+      const start = new Date()
+      start.setTime(start.getTime() - 3600 * 1000 * 24 * 7)
+      return [start, end]
+    }
+  },
+  {
+    text: '最近一个月',
+    value: () => {
+      const end = new Date()
+      const start = new Date()
+      start.setTime(start.getTime() - 3600 * 1000 * 24 * 30)
+      return [start, end]
+    }
+  },
+  {
+    text: '最近三个月',
+    value: () => {
+      const end = new Date()
+      const start = new Date()
+      start.setTime(start.getTime() - 3600 * 1000 * 24 * 90)
+      return [start, end]
+    }
+  }
+]
+
 const biUrl = computed(() => {
   const name = activeName.value.trim()
   const baseUrl = name ? `/api/robots/bi/?table=${encodeURIComponent(name)}&embed=1` : ''
@@ -161,6 +212,18 @@ const biUrl = computed(() => {
   const url = new URL(baseUrl, window.location.origin)
   if (reloadToken.value) {
     url.searchParams.set('_t', String(reloadToken.value))
+  }
+  // 添加时间范围参数（从timeRange数组格式转换）
+  if (timeRange.value && timeRange.value.length === 2) {
+    const formatDate = (date) => {
+      const d = new Date(date)
+      const year = d.getFullYear()
+      const month = String(d.getMonth() + 1).padStart(2, '0')
+      const day = String(d.getDate()).padStart(2, '0')
+      return `${year}-${month}-${day}`
+    }
+    url.searchParams.set('start_date', formatDate(timeRange.value[0]))
+    url.searchParams.set('end_date', formatDate(timeRange.value[1]))
   }
   return url.pathname + url.search
 })
@@ -272,6 +335,15 @@ const handleLoad = () => {
   reloadToken.value = Date.now()
 }
 
+// 时间范围变化处理
+const handleTimeRangeChange = () => {
+  // 重新加载iframe（biUrl会自动包含新的时间范围参数）
+  if (activeName.value && timeRange.value && timeRange.value.length === 2) {
+    startLoading()
+    reloadToken.value = Date.now()
+  }
+}
+
 // 监听activeName变化，自动开始加载
 watch(activeName, (newVal) => {
   if (newVal) {
@@ -378,6 +450,12 @@ onMounted(async () => {
 
 .entrance-fade-right-3 {
   animation: fadeRightIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.6s forwards;
+  opacity: 0;
+  transform: translateX(30px);
+}
+
+.entrance-fade-right-4 {
+  animation: fadeRightIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.7s forwards;
   opacity: 0;
   transform: translateX(30px);
 }
@@ -944,5 +1022,110 @@ onMounted(async () => {
 
 :deep(.el-select-dropdown__item.is-disabled) {
   color: #6a7a8a !important;
+}
+
+/* === 时间范围选择器样式（Element Plus日期选择器） === */
+.time-range-control {
+  flex: 0 1 320px;
+}
+
+.time-range-control :deep(.el-date-editor) {
+  flex: 1;
+  width: 100%;
+}
+
+.time-range-control :deep(.el-input__wrapper) {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  transition: all 0.3s ease;
+  padding: 8px 12px;
+}
+
+.time-range-control :deep(.el-input__wrapper:hover) {
+  border-color: rgba(0, 195, 255, 0.3);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.time-range-control :deep(.el-input__wrapper.is-focus) {
+  border-color: #00c3ff;
+  box-shadow: 0 0 0 3px rgba(0, 195, 255, 0.1);
+}
+
+.time-range-control :deep(.el-input__inner) {
+  color: #e0e6ed;
+  font-size: 13px;
+}
+
+.time-range-control :deep(.el-input__inner::placeholder) {
+  color: #6a7a8a;
+}
+
+.time-range-control :deep(.el-date-editor .el-icon) {
+  color: #8899aa;
+}
+</style>
+
+<!-- 全局样式：日期选择器青色主题（与关键轨迹检查界面一致） -->
+<style>
+.trajectory-date-picker.el-picker__popper {
+  --el-color-primary: #00c3ff !important;
+}
+
+.trajectory-date-picker .el-picker-panel__shortcut:hover {
+  color: #00c3ff !important;
+  background: rgba(0, 195, 255, 0.1) !important;
+}
+
+.trajectory-date-picker .el-picker-panel__icon-btn:hover {
+  color: #00c3ff !important;
+}
+
+.trajectory-date-picker .el-date-picker__header-label:hover {
+  color: #00c3ff !important;
+}
+
+.trajectory-date-picker .el-date-table td.today span {
+  color: #00c3ff !important;
+  font-weight: 600 !important;
+}
+
+.trajectory-date-picker .el-date-table td.in-range span {
+  background: rgba(0, 195, 255, 0.15) !important;
+  color: #00c3ff !important;
+}
+
+.trajectory-date-picker .el-date-table td.start-date span,
+.trajectory-date-picker .el-date-table td.end-date span {
+  background: #00c3ff !important;
+  color: #fff !important;
+}
+
+.trajectory-date-picker .el-month-table td.current span {
+  background: #00c3ff !important;
+  color: #fff !important;
+}
+
+.trajectory-date-picker .el-year-table td.current span {
+  background: #00c3ff !important;
+  color: #fff !important;
+}
+
+.trajectory-date-picker .el-month-table td:hover span,
+.trajectory-date-picker .el-year-table td:hover span {
+  color: #00c3ff !important;
+}
+
+.trajectory-date-picker .el-date-table td.available:hover span {
+  background: rgba(0, 195, 255, 0.15) !important;
+}
+
+.trajectory-date-picker .el-button.is-confirm {
+  color: #00c3ff !important;
+}
+
+.trajectory-date-picker .el-button.is-confirm:hover {
+  background: rgba(0, 195, 255, 0.1) !important;
 }
 </style>
