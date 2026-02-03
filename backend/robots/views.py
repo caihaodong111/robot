@@ -262,13 +262,12 @@ class RobotComponentViewSet(
         返回:
             {
                 "success": true,
-                "chart_url": "/media/error_charts/robot_1_trend.png",
+                "chart_data": "base64_encoded_image_data",
                 "axis": 1
             }
         """
         robot = self.get_object()
         axis_num = request.query_params.get("axis")
-        regenerate = request.query_params.get("regenerate", "0") == "1"
 
         # 参数验证
         if not axis_num:
@@ -287,36 +286,24 @@ class RobotComponentViewSet(
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 检查是否需要重新生成
-        chart_path = None
-        if regenerate or not chart_exists(robot.part_no, axis_num):
-            try:
-                chart_path = generate_trend_chart(robot.part_no, axis_num)
-            except FileNotFoundError as e:
-                return Response(
-                    {"success": False, "error": f"CSV 数据文件不存在: {str(e)}"},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            except Exception as e:
-                return Response(
-                    {"success": False, "error": f"生成图表失败: {str(e)}"},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
-        else:
-            # 图表已存在，直接返回路径
-            chart_path = f"{CHART_OUTPUT_PATH}/{robot.part_no}_{axis_num}_trend.png"
+        # 生成图表（每次都重新生成，因为不保存到磁盘了）
+        try:
+            chart_base64 = generate_trend_chart(robot.part_no, axis_num)
+        except FileNotFoundError as e:
+            return Response(
+                {"success": False, "error": f"CSV 数据文件不存在: {str(e)}"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {"success": False, "error": f"生成图表失败: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
-        # 构建返回数据
-        # 如果路径是绝对路径，转换为相对路径供前端使用
-        # 这里假设你需要通过 Django 的 static 或 media 服务来提供图片
-        # 实际部署时可能需要配置 nginx 或 Django staticfiles
-        chart_filename = f"{robot.part_no}_{axis_num}_trend.png"
-        chart_url = f"/api/robots/charts/{chart_filename}"
-
+        # 返回 base64 编码的图片数据
         return Response({
             "success": True,
-            "chart_url": chart_url,
-            "chart_path": chart_path,
+            "chart_data": chart_base64,
             "axis": axis_num,
             "robot_part_no": robot.part_no
         })
@@ -405,7 +392,7 @@ def bi_view(request):
 
     # 生成Bokeh图表（函数内部会获取数据库实际时间范围）
     # 传递轴和程序参数，只生成需要的图表
-    script, div, chart_info = create_bi_charts(
+    script, div, chart_info, energy_modal_html, energy_script = create_bi_charts(
         table_name,
         axis=axis,
         program=program,
@@ -428,6 +415,8 @@ def bi_view(request):
         'bokeh_script': script,
         'bokeh_div': div,
         'chart_info': chart_info,
+        'energy_modal_html': energy_modal_html,
+        'energy_script': energy_script,
         # 传递控件值到模板，用于设置默认选择
         'selected_program': program,
         'selected_axis': axis,

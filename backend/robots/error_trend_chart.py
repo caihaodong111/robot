@@ -3,6 +3,8 @@
 从 CSV 文件读取数据并生成 matplotlib 图表
 """
 import os
+import io
+import base64
 import matplotlib
 matplotlib.use('Agg')  # 使用非 GUI 后端，避免多线程问题
 import pandas as pd
@@ -26,7 +28,7 @@ def generate_trend_chart(robot_part_no: str, axis_num: int) -> str:
         axis_num: 关节编号 (1-7)
 
     Returns:
-        str: 生成的图片文件路径
+        str: base64 编码的图片数据
 
     Raises:
         FileNotFoundError: CSV 文件不存在
@@ -66,7 +68,7 @@ def _draw_chart(n: int, data: pd.DataFrame, robot: str) -> str:
         robot: 机器人部件编号
 
     Returns:
-        str: 保存的图片文件路径
+        str: base64 编码的图片数据
     """
     # 关节数据映射配置
     axis_config = {
@@ -97,7 +99,7 @@ def _draw_chart(n: int, data: pd.DataFrame, robot: str) -> str:
     plot_data = data[columns]
 
     # 创建图表
-    fig = plt.figure(figsize=(10, 15))
+    fig = plt.figure(figsize=(5, 7))
     gs = fig.add_gridspec(7, 1, height_ratios=[1, 1, 1, 1, 1, 1, 1])
 
     axes = [fig.add_subplot(gs[i]) for i in range(7)]
@@ -151,16 +153,17 @@ def _draw_chart(n: int, data: pd.DataFrame, robot: str) -> str:
     fig.subplots_adjust(hspace=0)
     plt.xticks(rotation='vertical')
 
-    # 确保输出目录存在
-    os.makedirs(CHART_OUTPUT_PATH, exist_ok=True)
-
-    # 保存图片
-    output_filename = f'{robot}_{n}_trend.png'
-    output_path = os.path.join(CHART_OUTPUT_PATH, output_filename)
-    fig.savefig(output_path, dpi=80, bbox_inches='tight')
+    # 将图片保存到内存，返回 base64 数据
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', dpi=80, bbox_inches='tight')
     plt.close(fig)
 
-    return output_path
+    # 获取 base64 编码的图片数据
+    buf.seek(0)
+    image_base64 = base64.b64encode(buf.read()).decode('utf-8')
+    buf.close()
+
+    return image_base64
 
 
 def chart_exists(robot_part_no: str, axis_num: int) -> bool:

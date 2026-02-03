@@ -36,14 +36,6 @@
               <el-icon><Bell /></el-icon>
               <span>可视化BI</span>
             </router-link>
-
-            <div class="nav-divider"></div>
-
-            <router-link to="/portal" class="nav-item portal-link" :class="{ active: route.path === '/portal' }">
-              <div class="active-indicator"></div>
-              <el-icon><Grid /></el-icon>
-              <span>应用门户</span>
-            </router-link>
           </nav>
 
           <div class="sidebar-footer">
@@ -63,7 +55,7 @@
 import { ref } from 'vue'
 import { useRoute, RouterView } from 'vue-router'
 import {
-  Odometer, Cpu, TrendCharts, Bell, Grid
+  Odometer, Cpu, TrendCharts, Bell
 } from '@element-plus/icons-vue'
 
 const route = useRoute()

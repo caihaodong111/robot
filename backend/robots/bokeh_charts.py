@@ -7,6 +7,7 @@ from bokeh.models import (
     ColumnDataSource, HoverTool, Select,
     CustomJS, LabelSet, BoxAnnotation, Band, DatePicker, Range1d
 )
+from bokeh.events import ButtonClick
 from bokeh.embed import components
 import pandas as pd
 import json
@@ -232,7 +233,7 @@ def create_bi_charts(
     energy_source = ColumnDataSource(energy_full) if not energy_full.empty else ColumnDataSource(pd.DataFrame())
 
     # ============ 创建控件 ============
-    from bokeh.models import Div
+    from bokeh.models import Div, Spacer, Button
 
     program_select = Select(
         title="程序:",
@@ -242,10 +243,10 @@ def create_bi_charts(
     )
 
     axis_select = Select(
-        title="轴:",
+        title="Axis:",
         value=default_axis,
         options=list(AXIS_CONFIG.keys()),
-        width=120
+        width=100
     )
 
     # ============ 创建图表 ============
@@ -637,99 +638,68 @@ def create_bi_charts(
     if EnergyP:
         energy_script_content, energy_div_content = components(EnergyP)
 
-    # 能耗模态框HTML（包含样式、模态框、脚本）
-    energy_modal_html = f'''
-    <style>
-    .energy-modal-bg-{energy_modal_id} {{
-        display: none;
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0,0,0,0.5);
-        z-index: 9999;
-    }}
-    .energy-modal-bg-{energy_modal_id}.show {{
-        display: block;
-    }}
-    .energy-modal-content-{energy_modal_id} {{
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        background: white;
-        border-radius: 12px;
-        padding: 20px;
-        max-width: 90%;
-        max-height: 90%;
-        overflow: auto;
-        box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);
-        z-index: 10000;
-    }}
-    </style>
-    <div id="{energy_modal_id}" class="energy-modal-bg-{energy_modal_id}"></div>
-    <div id="{energy_modal_id}_content" class="energy-modal-content-{energy_modal_id}" style="display: none;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-            <h2 style="margin: 0; font-size: 18px; font-weight: 600;">能耗分析</h2>
-            <button onclick="closeEnergyModal_{energy_modal_id}()"
-                style="padding: 6px 12px; background: #ef4444; color: white; border: none;
-                       border-radius: 6px; cursor: pointer; font-size: 14px;">关闭</button>
-        </div>
-        <div id="{energy_modal_id}_chart">{energy_div_content}</div>
-    </div>
-    <script>
-    function showEnergyModal_{energy_modal_id}() {{
-        document.getElementById('{energy_modal_id}').classList.add('show');
-        document.getElementById('{energy_modal_id}_content').style.display = 'block';
-    }}
-    function closeEnergyModal_{energy_modal_id}() {{
-        document.getElementById('{energy_modal_id}').classList.remove('show');
-        document.getElementById('{energy_modal_id}_content').style.display = 'none';
-    }}
-    // 点击背景关闭
-    document.getElementById('{energy_modal_id}').addEventListener('click', function(e) {{
-        if (e.target === this) {{
-            closeEnergyModal_{energy_modal_id}();
-        }}
-    }});
-    </script>
-    {energy_script_content}
-    '''
-
-    # 能耗按钮
-    energy_button_div = None
+    # 能耗模态框HTML（仅结构，交互由Bokeh按钮绑定）
+    energy_modal_html = ''
     if EnergyP:
-        button_html = f'''
-        <div style="padding: 4px 8px;">
-            <button onclick="showEnergyModal_{energy_modal_id}()"
-                style="padding: 6px 16px; background: linear-gradient(135deg, #f59e0b, #d97706);
-                       color: white; border: none; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer;">
-                能耗分析
-            </button>
+        energy_modal_html = f'''
+        <div id="{energy_modal_id}" class="energy-modal-bg" style="display: none;"></div>
+        <div id="{energy_modal_id}_content" class="energy-modal-content" style="display: none;">
+            <div class="energy-modal-header">
+                <div class="energy-modal-title">能耗分析</div>
+                <button id="{energy_modal_id}_close" class="energy-modal-close">关闭</button>
+            </div>
+            <div id="{energy_modal_id}_chart" class="energy-modal-body">{energy_div_content}</div>
         </div>
         '''
-        energy_button_div = Div(text=button_html, width=100, sizing_mode="fixed")
 
-    # 顶部控件栏 - 使用左右spacer实现居中
-    # 计算spacer宽度：(总宽度 - 控件宽度) / 2
-    # 控件总宽度约: 200 + 120 + 100 = 420
-    spacer_width = int((2100 - 420) / 2)
+    # 能耗按钮
+    energy_button = None
+    if EnergyP:
+        energy_button = Button(
+            label="能耗分析",
+            button_type="primary",
+            width=110,
+            height=32,
+            css_classes=["bk-btn-energy"]
+        )
+        energy_button.js_on_click(CustomJS(args=dict(energy_modal_id=energy_modal_id), code="""
+            const modalId = energy_modal_id;
+            const modalBg = document.getElementById(modalId);
+            const modalContent = document.getElementById(modalId + "_content");
+            if (!modalBg || !modalContent) {
+                return;
+            }
+            const hide = () => {
+                modalBg.style.display = "none";
+                modalContent.style.display = "none";
+            };
+            const closeBtn = document.getElementById(modalId + "_close");
+            if (closeBtn) {
+                closeBtn.onclick = hide;
+            }
+            modalBg.onclick = (e) => {
+                if (e.target === modalBg) {
+                    hide();
+                }
+            };
+            modalBg.style.display = "block";
+            modalContent.style.display = "block";
+        """))
 
-    top_controls = row(
-        Div(text='', width=spacer_width, sizing_mode="fixed"),  # 左侧spacer
+    # 顶部控件栏 - 使用弹性 Spacer 实现自适应居中
+    controls_center = row(
+        Spacer(sizing_mode="stretch_width"),
         program_select,
-        Div(text='', width=20, sizing_mode="fixed"),            # 控件间距
+        Spacer(width=16, height=1),
         axis_select,
-        Div(text='', width=20, sizing_mode="fixed"),            # 控件间距
-        energy_button_div if energy_button_div else Div(text='', width=0, sizing_mode="fixed"),
-        Div(text='', width=spacer_width, sizing_mode="fixed"),  # 右侧spacer
-        sizing_mode="fixed",
-        width=2100
+        Spacer(width=16, height=1),
+        energy_button if energy_button else Spacer(width=110, height=1),
+        Spacer(sizing_mode="stretch_width"),
+        sizing_mode="stretch_width",
+        css_classes=["bi-controls"]
     )
 
-    # 能耗模态框（放在顶部，使用绝对定位，高度为0不影响布局）
-    energy_modal_div = Div(text=energy_modal_html, sizing_mode="fixed", width=2100, height=0)
+    top_controls = controls_center
 
     # 图表区域 - 只拉伸宽度，保持各自高度
     charts_column = column(
@@ -744,8 +714,8 @@ def create_bi_charts(
         width=2100
     )
 
-    # 主布局 - 垂直排列：模态框 + 顶部控件 + 图表区域
-    main_layout = column(energy_modal_div, top_controls, charts_column, sizing_mode="stretch_width", width=2100)
+    # 主布局 - 垂直排列：顶部控件 + 图表区域
+    main_layout = column(top_controls, charts_column, sizing_mode="stretch_width", width=2100)
 
     # 使用components生成图表脚本和div
     script, div = components(main_layout)
@@ -757,4 +727,4 @@ def create_bi_charts(
         'energy_count': len(energy_full),
         'programs': programs,
         'date_range': f"{start_time.strftime('%Y-%m-%d')} 至 {end_time.strftime('%Y-%m-%d')}",
-    }
+    }, energy_modal_html, energy_script_content

@@ -28,6 +28,9 @@
             overflow-x: auto;
         }
         .bk-root { width: 100% !important; }
+        .bi-controls {
+            align-items: center;
+        }
 
         /* Element Plus 样式覆盖 - 匹配关键轨迹检查界面 */
         .el-input__wrapper {
@@ -122,11 +125,79 @@
             background: #eff6ff !important;
             color: #3b82f6 !important;
         }
+
+        .bk-btn-energy {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            border: none;
+            border-radius: 10px;
+            color: #fff;
+            font-weight: 600;
+            box-shadow: 0 6px 16px rgba(217, 119, 6, 0.25);
+        }
+
+        .bk-btn-energy:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 10px 22px rgba(217, 119, 6, 0.32);
+        }
+
+        .energy-modal-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 23, 42, 0.45);
+            z-index: 9999;
+            backdrop-filter: blur(2px);
+        }
+
+        .energy-modal-content {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: min(90vw, 980px);
+            max-height: 86vh;
+            background: #fff;
+            border-radius: 16px;
+            padding: 20px 22px 24px;
+            box-shadow: 0 24px 60px rgba(15, 23, 42, 0.2);
+            z-index: 10000;
+            overflow: auto;
+        }
+
+        .energy-modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+
+        .energy-modal-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #0f172a;
+        }
+
+        .energy-modal-close {
+            padding: 6px 12px;
+            background: #ef4444;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .energy-modal-close:hover {
+            background: #dc2626;
+        }
     </style>
 </head>
 <body>
     <div class="bi-container">
         {{ bokeh_div|safe }}
+        {{ energy_modal_html|safe }}
     </div>
 
     <!-- Vue 3 -->
@@ -144,5 +215,6 @@
 
     <!-- 图表脚本 -->
     {{ bokeh_script|safe }}
+    {{ energy_script|safe }}
 </body>
 </html>

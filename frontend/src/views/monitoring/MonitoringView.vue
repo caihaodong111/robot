@@ -150,16 +150,6 @@
                 <el-button v-else class="add-path-btn" size="small" @click="showInput">
                   + 新增路径
                 </el-button>
-                <div class="path-presets">
-                  <el-check-tag
-                    v-for="p in ['XLHP', 'PWLD']"
-                    :key="p"
-                    :checked="activePaths.includes(p)"
-                    @change="(checked) => handlePresetToggle(p, checked)"
-                  >
-                    {{ p }}
-                  </el-check-tag>
-                </div>
               </div>
             </div>
           </div>
@@ -448,7 +438,7 @@ const robotsLoading = ref(false)
 const timeRange = ref([new Date(Date.now() - DEFAULT_TIME_SPAN_DAYS * 24 * 3600_000), new Date()])
 
 // Key Paths (Improved Dynamic tags)
-const activePaths = ref(['XLHP', 'PWLD'])
+const activePaths = ref([])
 const inputVisible = ref(false)
 const inputValue = ref('')
 const InputRef = ref(null)

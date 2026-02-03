@@ -409,7 +409,8 @@
     <el-dialog
       v-model="chartDialogVisible"
       :title="`${chartDialogData.robotPartNo} - ${chartDialogData.axisName} 关节错误率趋势图`"
-      width="900px"
+      width="500px"
+      center
       class="dark-dialog chart-dialog"
     >
       <div v-loading="chartDialogLoading" class="chart-dialog-content">
@@ -897,7 +898,8 @@ const openErrorTrendChart = async (robot, axisKey) => {
   try {
     const response = await getErrorTrendChart(robot.id, axisNum)
     if (response.success) {
-      chartDialogData.value.chartUrl = response.chart_url
+      // 将 base64 数据转换为 data URL
+      chartDialogData.value.chartUrl = `data:image/png;base64,${response.chart_data}`
     } else {
       ElMessage.error(response.error || '获取图表失败')
       chartDialogVisible.value = false
@@ -2160,6 +2162,7 @@ initData()
 /* === 图表弹窗样式 === */
 :deep(.chart-dialog) {
   max-width: 95vw;
+  margin-top: 5vh !important;
 }
 
 :deep(.chart-dialog .el-dialog__header) {
@@ -2175,17 +2178,14 @@ initData()
 
 :deep(.chart-dialog .el-dialog__body) {
   padding: 0;
-  max-height: 75vh;
-  overflow: auto;
 }
 
 .chart-dialog-content {
-  min-height: 400px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.2);
-  padding: 20px;
+  background: #000;
+  padding: 0;
 }
 
 .chart-image-wrapper {
@@ -2195,10 +2195,9 @@ initData()
 }
 
 .chart-image {
-  max-width: 100%;
+  width: 100%;
   height: auto;
-  border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  display: block;
 }
 
 .chart-placeholder {
