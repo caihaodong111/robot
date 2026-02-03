@@ -81,7 +81,7 @@
                     </span>
                   </div>
                   <div class="mini-stat-row">
-                    <label>运行中</label>
+                    <label>总数</label>
                     <span class="value normal">{{ group.stats?.total || 0 }}</span>
                   </div>
                 </div>
