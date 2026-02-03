@@ -5,7 +5,7 @@ Bokeh图表生成模块 - 静态嵌入Django使用
 from bokeh.plotting import figure
 from bokeh.models import (
     ColumnDataSource, HoverTool, Select,
-    CustomJS, LabelSet, BoxAnnotation, Band, DatePicker
+    CustomJS, LabelSet, BoxAnnotation, Band, DatePicker, Range1d
 )
 from bokeh.embed import components
 import pandas as pd
@@ -13,6 +13,7 @@ import json
 from datetime import datetime, timedelta
 from sqlalchemy import create_engine
 import logging
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -247,90 +248,6 @@ def create_bi_charts(
         sizing_mode="stretch_width"
     )
 
-    # 日期范围选择器 - 合成一个框显示
-    import uuid
-    unique_id = uuid.uuid4().hex[:8]
-    start_date_val = start_time.strftime('%Y-%m-%d') if start_time else ''
-    end_date_val = end_time.strftime('%Y-%m-%d') if end_time else ''
-
-    date_range_html = f'''
-    <div style="position: relative; display: inline-block; width: 100%;">
-        <div id="dateDisplay_{unique_id}"
-            onclick="toggleDatePopup_{unique_id}()"
-            style="padding: 6px 12px; border: 1px solid #e2e8f0; border-radius: 4px;
-                   background: white; cursor: pointer; font-size: 12px; min-height: 32px;
-                   display: flex; align-items: center;">
-            📅 {start_date_val} ~ {end_date_val}
-        </div>
-        <div id="datePopup_{unique_id}" style="display: none; position: absolute; top: 100%; left: 0;
-            margin-top: 4px; padding: 12px; background: white; border: 1px solid #e2e8f0;
-            border-radius: 6px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); z-index: 100;
-            min-width: 280px;">
-            <div style="display: flex; flex-direction: column; gap: 8px;">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <label style="font-size: 12px; color: #64748b; min-width: 40px;">开始</label>
-                    <input type="date" id="start_{unique_id}" value="{start_date_val}"
-                        style="flex: 1; padding: 4px 8px; border: 1px solid #e2e8f0; border-radius: 4px;
-                               font-size: 12px; font-family: inherit; cursor: pointer;">
-                </div>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <label style="font-size: 12px; color: #64748b; min-width: 40px;">结束</label>
-                    <input type="date" id="end_{unique_id}" value="{end_date_val}"
-                        style="flex: 1; padding: 4px 8px; border: 1px solid #e2e8f0; border-radius: 4px;
-                               font-size: 12px; font-family: inherit; cursor: pointer;">
-                </div>
-                <div style="display: flex; gap: 8px; margin-top: 4px;">
-                    <button onclick="applyDateRange_{unique_id}()"
-                        style="flex: 1; padding: 6px 12px; background: linear-gradient(135deg, #3b82f6, #2563eb);
-                               color: white; border: none; border-radius: 4px; font-size: 12px;
-                               font-weight: 600; cursor: pointer;">
-                        应用
-                    </button>
-                    <button onclick="toggleDatePopup_{unique_id}()"
-                        style="flex: 1; padding: 6px 12px; background: #f1f5f9; color: #64748b;
-                               border: 1px solid #e2e8f0; border-radius: 4px; font-size: 12px;
-                               font-weight: 600; cursor: pointer;">
-                        取消
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-    <script>
-    function toggleDatePopup_{unique_id}() {{
-        const popup = document.getElementById('datePopup_{unique_id}');
-        const display = document.getElementById('dateDisplay_{unique_id}');
-        popup.style.display = popup.style.display === 'none' ? 'block' : 'none';
-    }}
-    // 点击外部关闭弹窗
-    document.addEventListener('click', function(e) {{
-        const container = document.getElementById('datePopup_{unique_id}').parentElement;
-        if (!container.contains(e.target)) {{
-            document.getElementById('datePopup_{unique_id}').style.display = 'none';
-        }}
-    }});
-    window.applyDateRange_{unique_id} = function() {{
-        const startDate = document.getElementById('start_{unique_id}').value;
-        const endDate = document.getElementById('end_{unique_id}').value;
-        if (startDate && endDate) {{
-            const url = new URL(window.location.href);
-            url.searchParams.set('start_date', startDate);
-            url.searchParams.set('end_date', endDate);
-            // 更新显示
-            document.getElementById('dateDisplay_{unique_id}').innerHTML = '📅 ' + startDate + ' ~ ' + endDate;
-            document.getElementById('datePopup_{unique_id}').style.display = 'none';
-            if (window.parent !== window) {{
-                window.parent.postMessage({{type: 'updateBIUrl', url: url.toString()}}, '*');
-            }} else {{
-                window.location.href = url.toString();
-            }}
-        }}
-    }};
-    </script>
-    '''
-
-    date_picker_div = Div(text=date_range_html, sizing_mode="stretch_width", width=200)
-
     # ============ 创建图表 ============
     # 创建代理数据源，使用固定的列名，这样渲染器不需要修改列引用
     # 当切换轴或程序时，我们只需要更新这些代理列的数据
@@ -361,17 +278,21 @@ def create_bi_charts(
     })
 
     # 聚合图表也使用固定列名
+    # 找到对应的_LQ和_HQ列名（例如 Curr_A1_LQ, Curr_A1_HQ）
+    curr_col = default_config['curr']
+    lq_col = f'{curr_col}_LQ'
+    hq_col = f'{curr_col}_HQ'
+
     proxy_agg_source = ColumnDataSource(data={
         'SNR_C': default_agg_data.get('SNR_C', []),
         'P_name': default_agg_data.get('P_name', []),
         'max_curr_value': default_agg_data.get(default_config['max_curr'], []),
         'min_curr_value': default_agg_data.get(default_config['min_curr'], []),
-        'lq_value': [],
-        'hq_value': [],
+        'lq_value': default_agg_data.get(lq_col, []),
+        'hq_value': default_agg_data.get(hq_col, []),
     })
 
     # 获取默认轴和程序的配置
-    curr_col = default_config['curr']
     max_curr_col = default_config['max_curr']
     min_curr_col = default_config['min_curr']
     torque_col = default_config['torque']
@@ -425,6 +346,9 @@ def create_bi_charts(
     ])
 
     # 创建图表 - 使用固定的代理列名
+    # 创建共享的y_range，让聚合分析和电流分析图联动
+    shared_y_range = Range1d(start=0, end=100, bounds='auto')
+
     p_curr = figure(
         title=f'{default_axis} - 电流分析',
         sizing_mode="stretch_width",
@@ -432,6 +356,7 @@ def create_bi_charts(
         height=220,
         x_axis_label='运动时间',
         y_axis_label='电流百分比 %',
+        y_range=shared_y_range,
         tools=[hover, 'pan', 'wheel_zoom', 'box_zoom', 'reset', 'save'],
         min_border_left=40,
         min_border_right=10,
@@ -543,12 +468,14 @@ def create_bi_charts(
     p_torque.xaxis.visible = False
 
     # 聚合分析图 - 使用代理数据源和固定列名
+    # 使用与电流分析图共享的y_range，实现纵轴联动
     line_plot = figure(
         title=f"聚合分析 - {default_program}",
         sizing_mode="stretch_width",
         width=2100,
         height=280,
         x_range=x_tex,
+        y_range=shared_y_range,
         tools=['pan', 'wheel_zoom', 'box_zoom', 'reset', 'save'],
         min_border_left=40,
         min_border_right=10,
@@ -788,7 +715,6 @@ def create_bi_charts(
     top_controls = row(
         program_select,
         axis_select,
-        date_picker_div,
         energy_button_div if energy_button_div else Div(text='', width=10),
         sizing_mode="stretch_width",
         width=2100
