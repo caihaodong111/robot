@@ -44,7 +44,7 @@
             </div>
 
             <!-- 机器人选择 -->
-            <div class="control-item compact-item robot-control entrance-fade-right-2">
+            <div class="control-item compact-item entrance-fade-right-2">
               <label><el-icon><Monitor /></el-icon> 机器人</label>
               <el-select
                 v-model="selectedRobot"
@@ -65,10 +65,6 @@
                   :value="robot.value"
                 />
               </el-select>
-              <el-button type="primary" class="action-btn btn-entrance-2 inline-action-btn" :disabled="!activeName" @click="handleLoad">
-                <el-icon v-if="!isLoading"><Search /></el-icon>
-                {{ isLoading ? '加载中...' : '加载分析' }}
-              </el-button>
             </div>
 
             <!-- 时间范围选择器 -->
@@ -84,26 +80,29 @@
                 unlink-panels
                 popper-class="trajectory-date-picker"
                 @change="handleTimeRangeChange"
+                class="styled-date-picker"
               />
             </div>
 
-            <!-- 当前选择显示 -->
-            <div v-if="activeName" class="current-selection-info entrance-fade-right-4">
-              <div class="selection-icon"><el-icon><DataAnalysis /></el-icon></div>
-              <div class="selection-text">
-                <span class="selection-label">当前分析</span>
-                <span class="selection-value">{{ currentRobotLabel }}</span>
-              </div>
-            </div>
+            <!-- 加载分析按钮 -->
+            <el-button
+              type="primary"
+              class="action-btn btn-entrance-2 load-analysis-btn"
+              :disabled="!activeName"
+              @click="handleLoad"
+            >
+              <el-icon v-if="!isLoading"><Search /></el-icon>
+              {{ isLoading ? '加载中...' : '加载分析' }}
+            </el-button>
           </div>
         </div>
       </div>
 
       <!-- Content Area -->
       <div class="bi-content entrance-delayed-fade">
-        <div v-if="!activeName" class="bi-empty-state ios-glass">
+        <div v-if="!shouldLoad" class="bi-empty-state ios-glass">
           <div class="empty-icon"><el-icon><PieChart /></el-icon></div>
-          <div class="empty-text">请选择车间和机器人后加载 BI 可视化界面</div>
+          <div class="empty-text">请选择车间和机器人后点击"加载分析"按钮</div>
         </div>
 
         <!-- BI图表容器 -->
@@ -151,18 +150,20 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
-import { Location, Monitor, Search, DataAnalysis, PieChart, Calendar } from '@element-plus/icons-vue'
+import { computed, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { Location, Monitor, Search, PieChart, Calendar } from '@element-plus/icons-vue'
 import request from '@/utils/request'
 
 const route = useRoute()
+const router = useRouter()
 
 const selectedGroup = ref('')
 const selectedRobot = ref('')
 const activeName = ref('')
 const currentRobotLabel = ref('')
 const reloadToken = ref(0)
+const shouldLoad = ref(false)  // 控制是否加载 iframe
 
 const groups = ref([])
 const robots = ref([])
@@ -244,6 +245,7 @@ const handleGroupChange = async () => {
   activeName.value = ''
   currentRobotLabel.value = ''
   isLoading.value = false
+  shouldLoad.value = false  // 重置加载状态
 
   // 重新搜索机器人
   await searchRobots('')
@@ -293,12 +295,13 @@ const searchRobots = async (query) => {
   }
 }
 
-// 机器人选择变化，自动设置对应车间并加载
+// 机器人选择变化
 const handleRobotChange = (value) => {
   if (!value) {
     activeName.value = ''
     currentRobotLabel.value = ''
     isLoading.value = false
+    shouldLoad.value = false  // 重置加载状态
     return
   }
 
@@ -311,8 +314,7 @@ const handleRobotChange = (value) => {
 
     activeName.value = value
     currentRobotLabel.value = robot.label
-    // 自动开始加载
-    startLoading()
+    shouldLoad.value = false  // 重置加载状态，等待手动点击"加载分析"
   }
 }
 
@@ -331,31 +333,23 @@ const handleFrameLoad = () => {
 
 const handleLoad = () => {
   if (!activeName.value) return
+  shouldLoad.value = true  // 设置为 true，触发 iframe 加载
   startLoading()
   reloadToken.value = Date.now()
 }
 
 // 时间范围变化处理
 const handleTimeRangeChange = () => {
-  // 重新加载iframe（biUrl会自动包含新的时间范围参数）
-  if (activeName.value && timeRange.value && timeRange.value.length === 2) {
-    startLoading()
-    reloadToken.value = Date.now()
-  }
+  // 不再自动加载，时间范围变化后需要手动点击"加载分析"按钮
 }
 
-// 监听activeName变化，自动开始加载
-watch(activeName, (newVal) => {
-  if (newVal) {
-    startLoading()
-    reloadToken.value = Date.now()
-  }
-})
 
 // 初始化：检查URL参数
 const initFromQuery = async () => {
   const queryGroup = route.query.group
   const queryRobot = route.query.robot
+  const queryStartDate = route.query.start_date
+  const queryEndDate = route.query.end_date
 
   if (queryGroup && queryRobot) {
     // 先设置车间
@@ -370,7 +364,19 @@ const initFromQuery = async () => {
       selectedRobot.value = robot.value
       activeName.value = robot.value
       currentRobotLabel.value = robot.label
+
+      // 如果有时间范围参数，设置时间范围并自动加载
+      if (queryStartDate && queryEndDate) {
+        timeRange.value = [new Date(queryStartDate), new Date(queryEndDate)]
+        shouldLoad.value = true  // 自动加载
+        startLoading()
+      } else {
+        shouldLoad.value = false  // 没有时间范围，需要手动点击"加载分析"
+      }
     }
+
+    // 清空URL参数，避免刷新后重新加载
+    router.replace({ query: {} })
   }
 }
 
@@ -450,12 +456,6 @@ onMounted(async () => {
 
 .entrance-fade-right-3 {
   animation: fadeRightIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.6s forwards;
-  opacity: 0;
-  transform: translateX(30px);
-}
-
-.entrance-fade-right-4 {
-  animation: fadeRightIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.7s forwards;
   opacity: 0;
   transform: translateX(30px);
 }
@@ -594,17 +594,29 @@ onMounted(async () => {
   background: linear-gradient(135deg, #00c3ff 0%, #0080ff 100%);
   border: none;
   box-shadow: 0 4px 14px rgba(0, 195, 255, 0.3);
+  transition: all 0.3s ease;
 }
 
-.action-btn:hover {
+.action-btn:hover:not(:disabled) {
   box-shadow: 0 6px 20px rgba(0, 195, 255, 0.5);
+  transform: translateY(-1px);
 }
 
-.inline-action-btn {
-  padding: 0 18px;
+.action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.load-analysis-btn {
+  flex: 0 0 auto;
+  padding: 0 24px;
   height: 40px;
   border-radius: 12px;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
 }
 
 /* === iOS 超透明玻璃卡片 === */
@@ -692,20 +704,11 @@ onMounted(async () => {
 }
 
 .control-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 280px;
-  flex: 1;
+  display: contents;
 }
 
 .compact-item {
-  min-width: 220px;
-  flex: 0 1 360px;
-}
-
-.robot-control {
-  flex: 0 1 420px;
+  min-width: 0;
 }
 
 .control-item label {
@@ -714,14 +717,16 @@ onMounted(async () => {
   color: #8899aa;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   white-space: nowrap;
-  min-width: 80px;
+  justify-content: flex-start;
 }
 
 .styled-select {
-  flex: 1;
-  min-width: 150px;
+  flex: 0 0 auto;
+  width: 220px;
+  max-width: none;
+  min-width: 0;
 }
 
 .styled-select :deep(.el-input__wrapper) {
@@ -747,46 +752,6 @@ onMounted(async () => {
 
 .styled-select :deep(.el-input__inner::placeholder) {
   color: #6a7a8a;
-}
-
-/* === 当前选择信息 === */
-.current-selection-info {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
-  background: rgba(0, 195, 255, 0.1);
-  border-radius: 14px;
-  border: 1px solid rgba(0, 195, 255, 0.3);
-}
-
-.selection-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  background: rgba(0, 195, 255, 0.15);
-  color: #00c3ff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 20px;
-}
-
-.selection-text {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.selection-label {
-  font-size: 12px;
-  color: #8899aa;
-}
-
-.selection-value {
-  font-size: 14px;
-  font-weight: 600;
-  color: #00c3ff;
 }
 
 /* === 内容区域 === */
@@ -1026,44 +991,70 @@ onMounted(async () => {
 
 /* === 时间范围选择器样式（Element Plus日期选择器） === */
 .time-range-control {
-  flex: 0 1 320px;
+  min-width: 0;
 }
 
-.time-range-control :deep(.el-date-editor) {
-  flex: 1;
-  width: 100%;
+.styled-date-picker {
+  flex: 0 0 auto;
+  width: 180px;
+  max-width: none;
+  min-width: 0;
 }
 
-.time-range-control :deep(.el-input__wrapper) {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-  transition: all 0.3s ease;
-  padding: 8px 12px;
+.load-analysis-btn {
+  margin-left: auto;
 }
 
-.time-range-control :deep(.el-input__wrapper:hover) {
-  border-color: rgba(0, 195, 255, 0.3);
-  background: rgba(255, 255, 255, 0.05);
+@media (max-width: 1200px) {
+  .control-row {
+    justify-content: flex-start;
+  }
+
+  .load-analysis-btn {
+    margin-left: 0;
+  }
 }
 
-.time-range-control :deep(.el-input__wrapper.is-focus) {
-  border-color: #00c3ff;
-  box-shadow: 0 0 0 3px rgba(0, 195, 255, 0.1);
+@media (max-width: 760px) {
+  .control-row {
+    gap: 12px;
+  }
+  .styled-select,
+  .styled-date-picker {
+    width: 100%;
+  }
+  .load-analysis-btn {
+    width: 100%;
+    justify-content: center;
+  }
 }
 
-.time-range-control :deep(.el-input__inner) {
-  color: #e0e6ed;
-  font-size: 13px;
+/* 日期选择器样式 - 与下拉框一致（使用全局样式，参考关键轨迹检查界面） */
+:deep(.el-date-editor) {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 12px !important;
 }
 
-.time-range-control :deep(.el-input__inner::placeholder) {
-  color: #6a7a8a;
+:deep(.el-date-editor:hover) {
+  border-color: rgba(0, 195, 255, 0.3) !important;
 }
 
-.time-range-control :deep(.el-date-editor .el-icon) {
-  color: #8899aa;
+:deep(.el-date-editor.is-active) {
+  border-color: #00c3ff !important;
+  box-shadow: 0 0 0 3px rgba(0, 195, 255, 0.1) !important;
+}
+
+/* 强制限制时间范围输入框宽度 */
+:deep(.el-date-editor.el-range-editor) {
+  width: 260px !important;
+  min-width: 260px !important;
+  max-width: 260px !important;
+}
+
+:deep(.el-date-editor.el-range-editor .el-range-input) {
+  width: 90px !important;
+  min-width: 90px !important;
 }
 </style>
 
@@ -1086,38 +1077,37 @@ onMounted(async () => {
   color: #00c3ff !important;
 }
 
-.trajectory-date-picker .el-date-table td.today span {
+.trajectory-date-picker .el-date-table td.today div {
   color: #00c3ff !important;
-  font-weight: 600 !important;
 }
 
-.trajectory-date-picker .el-date-table td.in-range span {
+.trajectory-date-picker .el-date-table td.in-range div {
   background: rgba(0, 195, 255, 0.15) !important;
   color: #00c3ff !important;
 }
 
-.trajectory-date-picker .el-date-table td.start-date span,
-.trajectory-date-picker .el-date-table td.end-date span {
+.trajectory-date-picker .el-date-table td.start-date div,
+.trajectory-date-picker .el-date-table td.end-date div {
   background: #00c3ff !important;
   color: #fff !important;
 }
 
-.trajectory-date-picker .el-month-table td.current span {
+.trajectory-date-picker .el-month-table td.current div {
   background: #00c3ff !important;
   color: #fff !important;
 }
 
-.trajectory-date-picker .el-year-table td.current span {
+.trajectory-date-picker .el-year-table td.current div {
   background: #00c3ff !important;
   color: #fff !important;
 }
 
-.trajectory-date-picker .el-month-table td:hover span,
-.trajectory-date-picker .el-year-table td:hover span {
+.trajectory-date-picker .el-month-table td:hover div,
+.trajectory-date-picker .el-year-table td:hover div {
   color: #00c3ff !important;
 }
 
-.trajectory-date-picker .el-date-table td.available:hover span {
+.trajectory-date-picker .el-date-table td.available:hover div {
   background: rgba(0, 195, 255, 0.15) !important;
 }
 

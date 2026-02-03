@@ -436,6 +436,7 @@ import { ElMessage } from 'element-plus'
 import { DEMO_MODE } from '@/config/appConfig'
 import { getRobotComponents, getRobotGroups, updateRobotComponent, getErrorTrendChart } from '@/api/robots'
 import { getGroupStats, getRobotsByGroup, robotGroups as mockGroups } from '@/mock/robots'
+import request from '@/utils/request'
 
 const router = useRouter()
 const route = useRoute()
@@ -837,16 +838,36 @@ const checkTooltip = (robot, key) => {
   return check.ok ? `${label}：正常/符合要求` : `${label}：存在异常/待处理`
 }
 
-const openBI = (robot) => {
+const openBI = async (robot) => {
   const partNo = robot?.partNo || robot?.part_no || ''
   const groupKey = robot?.group || selectedGroup.value || ''
-  router.push({
-    path: '/alerts',
-    query: {
-      group: groupKey,
-      robot: partNo
-    }
-  })
+
+  if (!partNo) {
+    ElMessage.warning('无法获取机器人信息')
+    return
+  }
+
+  try {
+    // 调用API获取数据库实际时间范围
+    const response = await request.get('/robots/components/time_range/', {
+      params: { robot: partNo }
+    })
+
+    const { start_date, end_date } = response
+
+    router.push({
+      path: '/alerts',
+      query: {
+        group: groupKey,
+        robot: partNo,
+        start_date: start_date,
+        end_date: end_date
+      }
+    })
+  } catch (error) {
+    console.error('获取时间范围失败:', error)
+    ElMessage.error('获取机器人数据时间范围失败，请稍后重试')
+  }
 }
 
 // 打开错误率趋势图弹窗

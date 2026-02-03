@@ -203,6 +203,53 @@ class RobotComponentViewSet(
 
         return Response({"results": results})
 
+    @action(detail=False, methods=["get"])
+    def time_range(self, request):
+        """
+        获取机器人数据的实际时间范围（从数据库表获取）
+
+        参数:
+            robot: 机器人部件编号（表名），必填
+
+        返回:
+            {
+                "start_date": "2024-01-01",
+                "end_date": "2024-12-31"
+            }
+        """
+        from .bokeh_charts import get_table_time_range, get_db_engine
+        from sqlalchemy import create_engine
+
+        table_name = request.query_params.get("robot")
+        if not table_name:
+            return Response(
+                {"error": "缺少参数 robot，请提供机器人部件编号"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            # 获取数据库连接配置
+            db_config = get_db_engine()
+            engine_url = f"mysql+pymysql://{db_config['user']}:{db_config['password']}@{db_config['host']}:{db_config['port']}/{db_config['database']}"
+            engine = create_engine(engine_url)
+
+            # 获取时间范围
+            start_time, end_time = get_table_time_range(table_name, engine)
+
+            # 格式化为 YYYY-MM-DD
+            start_date = start_time.strftime("%Y-%m-%d")
+            end_date = end_time.strftime("%Y-%m-%d")
+
+            return Response({
+                "start_date": start_date,
+                "end_date": end_date
+            })
+        except Exception as e:
+            return Response(
+                {"error": f"获取时间范围失败: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
     @action(detail=True, methods=["get"])
     def error_trend_chart(self, request, pk=None):
         """
