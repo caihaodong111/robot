@@ -26,10 +26,14 @@
             min-height: 100vh;
             background: #fff;
             overflow-x: auto;
+            position: relative;
         }
         .bk-root { width: 100% !important; }
         .bi-controls {
             align-items: center;
+        }
+        .bi-chart-wrap {
+            position: relative;
         }
 
         /* Element Plus 样式覆盖 - 匹配关键轨迹检查界面 */
@@ -126,18 +130,30 @@
             color: #3b82f6 !important;
         }
 
-        .bk-btn-energy {
-            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+        .energy-fab {
+            position: absolute;
+            top: 12px;
+            right: 20px;
+            padding: 8px 18px;
             border: none;
-            border-radius: 10px;
+            border-radius: 999px;
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
             color: #fff;
-            font-weight: 600;
-            box-shadow: 0 6px 16px rgba(217, 119, 6, 0.25);
+            font-weight: 700;
+            font-size: 13px;
+            letter-spacing: 0.5px;
+            box-shadow: 0 10px 26px rgba(217, 119, 6, 0.35);
+            cursor: pointer;
+            z-index: 50;
         }
 
-        .bk-btn-energy:hover {
+        .energy-fab:hover {
             transform: translateY(-1px);
-            box-shadow: 0 10px 22px rgba(217, 119, 6, 0.32);
+            box-shadow: 0 14px 30px rgba(217, 119, 6, 0.42);
+        }
+
+        .energy-fab:active {
+            transform: translateY(0);
         }
 
         .energy-modal-bg {
@@ -196,7 +212,12 @@
 </head>
 <body>
     <div class="bi-container">
-        {{ bokeh_div|safe }}
+        <div class="bi-chart-wrap">
+            {{ bokeh_div|safe }}
+            {% if energy_modal_html %}
+            <button class="energy-fab" id="energyModalTrigger">能耗分析</button>
+            {% endif %}
+        </div>
         {{ energy_modal_html|safe }}
     </div>
 
@@ -216,5 +237,36 @@
     <!-- 图表脚本 -->
     {{ bokeh_script|safe }}
     {{ energy_script|safe }}
+    {% if energy_modal_html %}
+    <script>
+        (function () {
+            const trigger = document.getElementById('energyModalTrigger');
+            if (!trigger) return;
+            const modalBg = document.querySelector('.energy-modal-bg');
+            const modalContent = document.querySelector('.energy-modal-content');
+            if (!modalBg || !modalContent) return;
+
+            const hide = () => {
+                modalBg.style.display = 'none';
+                modalContent.style.display = 'none';
+            };
+
+            const closeBtn = modalContent.querySelector('.energy-modal-close');
+            if (closeBtn) {
+                closeBtn.addEventListener('click', hide);
+            }
+            modalBg.addEventListener('click', (event) => {
+                if (event.target === modalBg) {
+                    hide();
+                }
+            });
+
+            trigger.addEventListener('click', () => {
+                modalBg.style.display = 'block';
+                modalContent.style.display = 'block';
+            });
+        })();
+    </script>
+    {% endif %}
 </body>
 </html>

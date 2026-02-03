@@ -233,7 +233,7 @@ def create_bi_charts(
     energy_source = ColumnDataSource(energy_full) if not energy_full.empty else ColumnDataSource(pd.DataFrame())
 
     # ============ 创建控件 ============
-    from bokeh.models import Div, Spacer, Button
+    from bokeh.models import Div, Spacer
 
     program_select = Select(
         title="程序:",
@@ -652,39 +652,7 @@ def create_bi_charts(
         </div>
         '''
 
-    # 能耗按钮
-    energy_button = None
-    if EnergyP:
-        energy_button = Button(
-            label="能耗分析",
-            button_type="primary",
-            width=110,
-            height=32,
-            css_classes=["bk-btn-energy"]
-        )
-        energy_button.js_on_click(CustomJS(args=dict(energy_modal_id=energy_modal_id), code="""
-            const modalId = energy_modal_id;
-            const modalBg = document.getElementById(modalId);
-            const modalContent = document.getElementById(modalId + "_content");
-            if (!modalBg || !modalContent) {
-                return;
-            }
-            const hide = () => {
-                modalBg.style.display = "none";
-                modalContent.style.display = "none";
-            };
-            const closeBtn = document.getElementById(modalId + "_close");
-            if (closeBtn) {
-                closeBtn.onclick = hide;
-            }
-            modalBg.onclick = (e) => {
-                if (e.target === modalBg) {
-                    hide();
-                }
-            };
-            modalBg.style.display = "block";
-            modalContent.style.display = "block";
-        """))
+    # 能耗按钮改为模板中的浮动按钮，这里不再创建Bokeh按钮
 
     # 顶部控件栏 - 使用弹性 Spacer 实现自适应居中
     controls_center = row(
@@ -692,8 +660,6 @@ def create_bi_charts(
         program_select,
         Spacer(width=16, height=1),
         axis_select,
-        Spacer(width=16, height=1),
-        energy_button if energy_button else Spacer(width=110, height=1),
         Spacer(sizing_mode="stretch_width"),
         sizing_mode="stretch_width",
         css_classes=["bi-controls"]
