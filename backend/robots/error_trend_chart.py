@@ -98,8 +98,19 @@ def _draw_chart(n: int, data: pd.DataFrame, robot: str) -> str:
                config['curr_max'], config['curr_min']]
     plot_data = data[columns]
 
+    # 保存原始字体设置并设置新的字体大小
+    original_font_size = matplotlib.rcParams['font.size']
+    original_axes_labelsize = matplotlib.rcParams['axes.labelsize']
+    original_xtick_labelsize = matplotlib.rcParams['xtick.labelsize']
+    original_ytick_labelsize = matplotlib.rcParams['ytick.labelsize']
+
+    matplotlib.rcParams['font.size'] = 7
+    matplotlib.rcParams['axes.labelsize'] = 7
+    matplotlib.rcParams['xtick.labelsize'] = 6
+    matplotlib.rcParams['ytick.labelsize'] = 6
+
     # 创建图表
-    fig = plt.figure(figsize=(5, 7))
+    fig = plt.figure(figsize=(10, 7))
     gs = fig.add_gridspec(7, 1, height_ratios=[1, 1, 1, 1, 1, 1, 1])
 
     axes = [fig.add_subplot(gs[i]) for i in range(7)]
@@ -157,6 +168,12 @@ def _draw_chart(n: int, data: pd.DataFrame, robot: str) -> str:
     buf = io.BytesIO()
     fig.savefig(buf, format='png', dpi=80, bbox_inches='tight')
     plt.close(fig)
+
+    # 恢复原始字体设置
+    matplotlib.rcParams['font.size'] = original_font_size
+    matplotlib.rcParams['axes.labelsize'] = original_axes_labelsize
+    matplotlib.rcParams['xtick.labelsize'] = original_xtick_labelsize
+    matplotlib.rcParams['ytick.labelsize'] = original_ytick_labelsize
 
     # 获取 base64 编码的图片数据
     buf.seek(0)

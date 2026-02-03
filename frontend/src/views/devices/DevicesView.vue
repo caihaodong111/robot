@@ -185,7 +185,7 @@
               <span class="mono">{{ row.number ?? 0 }}</span>
             </template>
           </el-table-column>
-          <el-table-column prop="typeSpec" label="类型(type)" min-width="170" show-overflow-tooltip />
+          <el-table-column prop="typeSpec" label="类型(type)" min-width="170" />
           <el-table-column prop="tech" label="工艺(tech)" min-width="140" show-overflow-tooltip />
           <el-table-column prop="mark" label="标记(mark)" width="110" align="center">
             <template #default="{ row }">
@@ -409,7 +409,7 @@
     <el-dialog
       v-model="chartDialogVisible"
       :title="`${chartDialogData.robotPartNo} - ${chartDialogData.axisName} 关节错误率趋势图`"
-      width="500px"
+      width="900px"
       center
       class="dark-dialog chart-dialog"
     >
