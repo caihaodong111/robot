@@ -238,14 +238,14 @@ def create_bi_charts(
         title="程序:",
         value=default_program,
         options=programs,
-        sizing_mode="stretch_width"
+        width=200
     )
 
     axis_select = Select(
-        title="Axis:",
+        title="轴:",
         value=default_axis,
         options=list(AXIS_CONFIG.keys()),
-        sizing_mode="stretch_width"
+        width=120
     )
 
     # ============ 创建图表 ============
@@ -347,7 +347,7 @@ def create_bi_charts(
 
     # 创建图表 - 使用固定的代理列名
     # 创建共享的y_range，让聚合分析和电流分析图联动
-    shared_y_range = Range1d(start=0, end=100, bounds='auto')
+    #shared_y_range = Range1d(start=0, end=100, bounds='auto')
 
     p_curr = figure(
         title=f'{default_axis} - 电流分析',
@@ -356,7 +356,7 @@ def create_bi_charts(
         height=220,
         x_axis_label='运动时间',
         y_axis_label='电流百分比 %',
-        y_range=shared_y_range,
+       #y_range=shared_y_range,
         tools=[hover, 'pan', 'wheel_zoom', 'box_zoom', 'reset', 'save'],
         min_border_left=40,
         min_border_right=10,
@@ -475,7 +475,7 @@ def create_bi_charts(
         width=2100,
         height=280,
         x_range=x_tex,
-        y_range=shared_y_range,
+        y_range=p_curr.y_range,
         tools=['pan', 'wheel_zoom', 'box_zoom', 'reset', 'save'],
         min_border_left=40,
         min_border_right=10,
@@ -711,12 +711,20 @@ def create_bi_charts(
         '''
         energy_button_div = Div(text=button_html, width=100, sizing_mode="fixed")
 
-    # 顶部控件栏 - 水平排列
+    # 顶部控件栏 - 使用左右spacer实现居中
+    # 计算spacer宽度：(总宽度 - 控件宽度) / 2
+    # 控件总宽度约: 200 + 120 + 100 = 420
+    spacer_width = int((2100 - 420) / 2)
+
     top_controls = row(
+        Div(text='', width=spacer_width, sizing_mode="fixed"),  # 左侧spacer
         program_select,
+        Div(text='', width=20, sizing_mode="fixed"),            # 控件间距
         axis_select,
-        energy_button_div if energy_button_div else Div(text='', width=10),
-        sizing_mode="stretch_width",
+        Div(text='', width=20, sizing_mode="fixed"),            # 控件间距
+        energy_button_div if energy_button_div else Div(text='', width=0, sizing_mode="fixed"),
+        Div(text='', width=spacer_width, sizing_mode="fixed"),  # 右侧spacer
+        sizing_mode="fixed",
         width=2100
     )
 
