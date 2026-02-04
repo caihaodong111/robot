@@ -16,7 +16,19 @@
           <h1 class="ios-title">机器人状态 <small>ROBOT STATUS</small></h1>
         </div>
         <div class="header-actions">
-          <el-button :icon="Refresh" @click="handleRefresh" class="ios-btn btn-entrance">同步数据</el-button>
+          <el-button
+            :icon="Refresh"
+            @click="handleRefresh"
+            :loading="syncing"
+            :disabled="syncing"
+            class="ios-btn btn-entrance"
+          >
+            {{ syncing ? '同步中...' : '同步数据' }}
+          </el-button>
+          <span class="last-sync-time" :class="{ 'syncing': syncing }">
+            <el-icon><Clock /></el-icon>
+            {{ syncing ? '正在同步...' : lastSyncTimeText }}
+          </span>
         </div>
       </header>
 
@@ -166,77 +178,175 @@
 
         <!-- Table -->
         <el-table :data="pagedRows" class="premium-table table-entrance" stripe height="520" v-loading="loading">
-          <el-table-column prop="partNo" label="部件编号(robot)" width="190" show-overflow-tooltip>
+          <!-- 基础列（所有标签页通用） -->
+          <el-table-column prop="partNo" label="robot" width="160">
             <template #default="{ row }">
               <el-button type="primary" link class="mono robot-name-cell" @click="openBI(row)">
-                {{ row.partNo }}
+                {{ row.partNo || row.robot }}
               </el-button>
             </template>
           </el-table-column>
-          <el-table-column label="参考编号(reference)" width="170">
+          <el-table-column label="reference" width="150">
             <template #default="{ row }">
               <el-button type="primary" link class="mono" @click="openEdit(row, 'referenceNo')">
-                {{ row.referenceNo }}
+                {{ row.referenceNo || row.reference }}
               </el-button>
             </template>
           </el-table-column>
-          <el-table-column prop="number" label="Number" width="110" align="center">
+          <el-table-column prop="number" label="number" width="90" align="center">
             <template #default="{ row }">
               <span class="mono">{{ row.number ?? 0 }}</span>
             </template>
           </el-table-column>
-          <el-table-column prop="typeSpec" label="类型(type)" min-width="170" />
-          <el-table-column prop="tech" label="工艺(tech)" min-width="140" show-overflow-tooltip />
-          <el-table-column prop="mark" label="标记(mark)" width="110" align="center">
+          <el-table-column prop="typeSpec" label="type" width="120">
             <template #default="{ row }">
-              <el-button type="primary" link class="mono" @click="openEdit(row, 'mark')">
-                {{ row.mark ?? 0 }}
-              </el-button>
+              <span>{{ row.typeSpec || row.type }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="备注(remark)" min-width="220" show-overflow-tooltip>
-            <template #default="{ row }">
-              <el-button type="primary" link class="remark-link" @click="openEdit(row, 'remark')">
-                {{ row.remark || '-' }}
-              </el-button>
-            </template>
-          </el-table-column>
+          <el-table-column prop="tech" label="tech" width="120" />
 
-          <el-table-column v-for="key in CHECK_KEYS" :key="key" :label="key" width="58" align="center">
-            <template #default="{ row }">
-              <el-tooltip
-                :content="checkTooltip(row, key)"
-                placement="top"
-                :show-after="120"
-              >
-                <span
-                  class="dot clickable-dot"
-                  :class="row.checks?.[key]?.ok ? 'dot-ok' : 'dot-bad'"
-                  @click="openErrorTrendChart(row, key)"
-                ></span>
-              </el-tooltip>
-            </template>
-          </el-table-column>
-
-          <el-table-column label="等级(level)" width="110" align="center">
-            <template #default="{ row }">
-              <el-button type="primary" link @click="openEdit(row, 'level')">
+          <!-- all 标签页的详细列 -->
+          <template v-if="activeTab === 'all'">
+            <el-table-column prop="mark" label="mark" width="80" align="center">
+              <template #default="{ row }">
+                <span class="mono">{{ row.mark ?? 0 }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="remark" width="150">
+              <template #default="{ row }">
+                <span>{{ row.remark || '-' }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="error1_c1" label="error1_c1" width="100" align="center">
+              <template #default="{ row }">
+                <span class="mono">{{ formatNumber(row.error1_c1) }}</span>
+              </template>
+            </el-table-column>
+            <!-- 温度列 tem1_m - tem7_m -->
+            <el-table-column v-for="i in 7" :key="`tem${i}_m`" :label="`tem${i}_m`" width="80" align="center">
+              <template #default="{ row }">
+                <span class="mono">{{ formatNumber(row[`tem${i}_m`]) }}</span>
+              </template>
+            </el-table-column>
+            <!-- A1-A7 错误率列 A1_e_rate - A7_e_rate -->
+            <el-table-column v-for="i in 7" :key="`a${i}_e_rate`" :label="`A${i}_e_rate`" width="90" align="center">
+              <template #default="{ row }">
+                <span class="mono">{{ formatNumber(row[`a${i}_e_rate`]) }}</span>
+              </template>
+            </el-table-column>
+            <!-- A1-A7 Rms列 A1_Rms - A7_Rms -->
+            <el-table-column v-for="i in 7" :key="`a${i}_rms`" :label="`A${i}_Rms`" width="85" align="center">
+              <template #default="{ row }">
+                <span class="mono">{{ formatNumber(row[`a${i}_rms`]) }}</span>
+              </template>
+            </el-table-column>
+            <!-- A1-A7 E列 A1_E - A7_E -->
+            <el-table-column v-for="i in 7" :key="`a${i}_e`" :label="`A${i}_E`" width="75" align="center">
+              <template #default="{ row }">
+                <span class="mono">{{ formatNumber(row[`a${i}_e`]) }}</span>
+              </template>
+            </el-table-column>
+            <!-- Q1-Q7列 -->
+            <el-table-column v-for="i in 7" :key="`q${i}`" :label="`Q${i}`" width="65" align="center">
+              <template #default="{ row }">
+                <span class="mono">{{ formatNumber(row[`q${i}`]) }}</span>
+              </template>
+            </el-table-column>
+            <!-- Curr_A1_max - Curr_A7_max -->
+            <el-table-column v-for="i in 7" :key="`curr_a${i}_max`" :label="`Curr_A${i}_max`" width="100" align="center">
+              <template #default="{ row }">
+                <span class="mono">{{ formatNumber(row[`curr_a${i}_max`]) }}</span>
+              </template>
+            </el-table-column>
+            <!-- Curr_A1_min - Curr_A7_min -->
+            <el-table-column v-for="i in 7" :key="`curr_a${i}_min`" :label="`Curr_A${i}_min`" width="100" align="center">
+              <template #default="{ row }">
+                <span class="mono">{{ formatNumber(row[`curr_a${i}_min`]) }}</span>
+              </template>
+            </el-table-column>
+            <!-- A1-A7列 -->
+            <el-table-column v-for="i in 7" :key="`a${i}`" :label="`A${i}`" width="65" align="center">
+              <template #default="{ row }">
+                <el-tooltip
+                  :content="`A${i}: ${getAxisStatusText(row, i)}`"
+                  placement="top"
+                  :show-after="120"
+                >
+                  <span
+                    class="dot clickable-dot"
+                    :class="isAxisHigh(row, i) ? 'dot-bad' : 'dot-ok'"
+                    @click="openErrorTrendChart(row, `A${i}`)"
+                  ></span>
+                </el-tooltip>
+              </template>
+            </el-table-column>
+            <!-- P_Change -->
+            <el-table-column prop="p_change" label="P_Change" width="95" align="center">
+              <template #default="{ row }">
+                <span class="mono">{{ formatNumber(row.p_change) }}</span>
+              </template>
+            </el-table-column>
+            <!-- level -->
+            <el-table-column label="level" width="75" align="center">
+              <template #default="{ row }">
                 <el-tag :type="levelTagType(row.level)" effect="light">{{ row.level }}</el-tag>
-              </el-button>
-            </template>
-          </el-table-column>
+              </template>
+            </el-table-column>
+          </template>
 
-          <el-table-column label="操作" width="110" fixed="right" align="center">
-            <template #default="{ row }">
-              <el-button type="primary" link @click="openDetail(row)">详情</el-button>
-            </template>
-          </el-table-column>
+          <!-- highRisk 和 history 标签页的列 -->
+          <template v-else>
+            <el-table-column prop="mark" label="mark" width="80" align="center">
+              <template #default="{ row }">
+                <el-button type="primary" link class="mono" @click="openEdit(row, 'mark')">
+                  {{ row.mark ?? 0 }}
+                </el-button>
+              </template>
+            </el-table-column>
+            <el-table-column label="remark" width="200">
+              <template #default="{ row }">
+                <el-button type="primary" link class="remark-link" @click="openEdit(row, 'remark')">
+                  {{ row.remark || '-' }}
+                </el-button>
+              </template>
+            </el-table-column>
+
+            <el-table-column v-for="key in CHECK_KEYS" :key="key" :label="key" width="60" align="center">
+              <template #default="{ row }">
+                <el-tooltip
+                  :content="getAxisTooltipText(row, key)"
+                  placement="top"
+                  :show-after="120"
+                >
+                  <span
+                    class="dot clickable-dot"
+                    :class="isCheckHigh(row, key) ? 'dot-bad' : 'dot-ok'"
+                    @click="openErrorTrendChart(row, key)"
+                  ></span>
+                </el-tooltip>
+              </template>
+            </el-table-column>
+
+            <el-table-column label="level" width="80" align="center">
+              <template #default="{ row }">
+                <el-button type="primary" link @click="openEdit(row, 'level')">
+                  <el-tag :type="levelTagType(row.level)" effect="light">{{ row.level }}</el-tag>
+                </el-button>
+              </template>
+            </el-table-column>
+
+            <el-table-column label="Action" width="85" align="center">
+              <template #default="{ row }">
+                <el-button type="primary" link @click="openDetail(row)">Details</el-button>
+              </template>
+            </el-table-column>
+          </template>
         </el-table>
 
         <!-- Pagination -->
         <div class="pagination-wrapper">
           <div class="pagination-info">
-            <span class="pagination-total">共 {{ DEMO_MODE ? filteredRows.length : serverTotal }} 条</span>
+            <span class="pagination-total">共 {{ serverTotal }} 条</span>
             <el-select v-model="pageSize" class="pagination-size-select">
               <el-option :value="10" label="10 条/页" />
               <el-option :value="20" label="20 条/页" />
@@ -293,23 +403,23 @@
     </div>
 
     <!-- Detail Dialog -->
-    <el-dialog v-model="detailVisible" title="部件详情" width="760px" class="dark-dialog">
+    <el-dialog v-model="detailVisible" title="Details" width="760px" class="dark-dialog">
       <div v-if="detailRobot" class="detail">
         <el-descriptions :column="2" border>
-          <el-descriptions-item label="部件编号(robot)"><span class="mono">{{ detailRobot.partNo }}</span></el-descriptions-item>
-          <el-descriptions-item label="参考编号(reference)"><span class="mono">{{ detailRobot.referenceNo }}</span></el-descriptions-item>
-          <el-descriptions-item label="Number"><span class="mono">{{ detailRobot.number ?? 0 }}</span></el-descriptions-item>
-          <el-descriptions-item label="类型(type)">{{ detailRobot.typeSpec }}</el-descriptions-item>
-          <el-descriptions-item label="工艺(tech)">{{ detailRobot.tech }}</el-descriptions-item>
-          <el-descriptions-item label="标记(mark)"><span class="mono">{{ detailRobot.mark ?? 0 }}</span></el-descriptions-item>
-          <el-descriptions-item label="等级(level)">
+          <el-descriptions-item label="robot"><span class="mono">{{ detailRobot.partNo }}</span></el-descriptions-item>
+          <el-descriptions-item label="reference"><span class="mono">{{ detailRobot.referenceNo }}</span></el-descriptions-item>
+          <el-descriptions-item label="number"><span class="mono">{{ detailRobot.number ?? 0 }}</span></el-descriptions-item>
+          <el-descriptions-item label="type">{{ detailRobot.typeSpec }}</el-descriptions-item>
+          <el-descriptions-item label="tech">{{ detailRobot.tech }}</el-descriptions-item>
+          <el-descriptions-item label="mark"><span class="mono">{{ detailRobot.mark ?? 0 }}</span></el-descriptions-item>
+          <el-descriptions-item label="level">
             <el-tag :type="levelTagType(detailRobot.level)" effect="light">{{ detailRobot.level }}</el-tag>
           </el-descriptions-item>
-          <el-descriptions-item label="备注(remark)" :span="2">{{ detailRobot.remark }}</el-descriptions-item>
+          <el-descriptions-item label="remark" :span="2">{{ detailRobot.remark }}</el-descriptions-item>
         </el-descriptions>
 
         <div class="detail-checks">
-          <div class="detail-checks-title">A1-A7 检查项</div>
+          <div class="detail-checks-title">A1-A7 Checks</div>
           <div class="detail-checks-grid">
             <div v-for="k in CHECK_KEYS" :key="k" class="detail-check">
               <el-tooltip :content="checkTooltip(detailRobot, k)" placement="top" :show-after="120">
@@ -324,23 +434,22 @@
         </div>
       </div>
       <template #footer>
-        <el-button @click="detailVisible = false">关闭</el-button>
+        <el-button @click="detailVisible = false">Close</el-button>
       </template>
     </el-dialog>
 
     <!-- Edit Dialog -->
-    <el-dialog v-model="editVisible" title="编辑字段" width="560px" class="dark-dialog">
+    <el-dialog v-model="editVisible" title="Edit" width="560px" class="dark-dialog">
       <el-form v-if="editTarget" :model="editForm" label-position="top" class="edit-form">
         <el-row :gutter="14">
           <el-col :span="16">
             <el-form-item>
               <template #label>
                 <span class="form-label">
-                  <span class="form-label-title">参考编号</span>
-                  <span class="form-label-hint">(reference)</span>
+                  <span class="form-label-title">reference</span>
                 </span>
               </template>
-              <el-select v-model="editForm.referenceNo" placeholder="请选择参考编号" style="width: 100%" @change="handleReferenceChange">
+              <el-select v-model="editForm.referenceNo" placeholder="Select reference" style="width: 100%" @change="handleReferenceChange">
                 <el-option v-for="item in REFERENCE_OPTIONS" :key="item" :label="item" :value="item" />
               </el-select>
             </el-form-item>
@@ -349,8 +458,7 @@
             <el-form-item>
               <template #label>
                 <span class="form-label">
-                  <span class="form-label-title">Number</span>
-                  <span class="form-label-hint">&nbsp;</span>
+                  <span class="form-label-title">number</span>
                 </span>
               </template>
               <el-input v-model="editForm.number" readonly />
@@ -363,8 +471,7 @@
             <el-form-item>
               <template #label>
                 <span class="form-label">
-                  <span class="form-label-title">标记</span>
-                  <span class="form-label-hint">(mark)</span>
+                  <span class="form-label-title">mark</span>
                 </span>
               </template>
               <el-input-number v-model="editForm.mark" :min="0" :max="999999" controls-position="right" style="width: 100%" />
@@ -374,11 +481,10 @@
             <el-form-item>
               <template #label>
                 <span class="form-label">
-                  <span class="form-label-title">等级</span>
-                  <span class="form-label-hint">(level)</span>
+                  <span class="form-label-title">level</span>
                 </span>
               </template>
-              <el-select v-model="editForm.level" placeholder="请选择等级" style="width: 100%">
+              <el-select v-model="editForm.level" placeholder="Select level" style="width: 100%">
                 <el-option label="H" value="H" />
                 <el-option label="M" value="M" />
                 <el-option label="L" value="L" />
@@ -392,51 +498,48 @@
         <el-form-item>
           <template #label>
             <span class="form-label">
-              <span class="form-label-title">备注</span>
-              <span class="form-label-hint">(remark)</span>
+              <span class="form-label-title">remark</span>
             </span>
           </template>
-          <el-input v-model="editForm.remark" type="textarea" :rows="4" placeholder="请输入备注" />
+          <el-input v-model="editForm.remark" type="textarea" :rows="4" placeholder="Enter remark" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="editVisible = false">取消</el-button>
-        <el-button type="primary" :loading="editSaving" @click="saveEdit">保存</el-button>
+        <el-button @click="editVisible = false">Cancel</el-button>
+        <el-button type="primary" :loading="editSaving" @click="saveEdit">Save</el-button>
       </template>
     </el-dialog>
 
     <!-- Error Trend Chart Dialog -->
     <el-dialog
       v-model="chartDialogVisible"
-      :title="`${chartDialogData.robotPartNo} - ${chartDialogData.axisName} 关节错误率趋势图`"
+      :title="`${chartDialogData.robotPartNo} - ${chartDialogData.axisName} Error Rate Trend Chart`"
       width="900px"
       center
       class="dark-dialog chart-dialog"
     >
       <div v-loading="chartDialogLoading" class="chart-dialog-content">
         <div v-if="chartDialogData.chartUrl" class="chart-image-wrapper">
-          <img :src="chartDialogData.chartUrl" :alt="`${chartDialogData.axisName} 错误率趋势图`" class="chart-image" />
+          <img :src="chartDialogData.chartUrl" :alt="`${chartDialogData.axisName} Error Rate Trend Chart`" class="chart-image" />
         </div>
         <div v-else-if="!chartDialogLoading" class="chart-placeholder">
           <el-icon :size="48"><Picture /></el-icon>
-          <p>暂无图表数据</p>
+          <p>No chart data available</p>
         </div>
       </div>
       <template #footer>
-        <el-button @click="chartDialogVisible = false">关闭</el-button>
+        <el-button @click="chartDialogVisible = false">Close</el-button>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { computed, ref, watch, nextTick } from 'vue'
+import { computed, ref, watch, nextTick, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Refresh, Search, Close, Monitor, ArrowRight, ArrowLeft, Picture } from '@element-plus/icons-vue'
+import { Refresh, Search, Close, Monitor, ArrowRight, ArrowLeft, Picture, Clock } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { DEMO_MODE } from '@/config/appConfig'
-import { getRobotComponents, getRobotGroups, updateRobotComponent, getErrorTrendChart } from '@/api/robots'
-import { getGroupStats, getRobotsByGroup, robotGroups as mockGroups } from '@/mock/robots'
+import { getRobotComponents, getRobotGroups, updateRobotComponent, getErrorTrendChart, importRobotComponents, getHighRiskHistories } from '@/api/robots'
 import request from '@/utils/request'
 
 const router = useRouter()
@@ -456,6 +559,14 @@ const REFERENCE_OPTIONS = [
 ]
 
 const drawerVisible = ref(false)
+
+// 同步状态
+const syncing = ref(false)
+const lastSyncTime = ref(null)
+
+// 排除的车间 key 列表（与后端保持一致）
+const EXCLUDED_GROUP_KEYS = ['', '(空)', 'MRA1 BS', '未分配']
+
 // 优先使用 URL query 参数中的 group，否则使用第一个车间
 const getInitialGroup = () => {
   const queryGroup = route.query.group
@@ -463,10 +574,7 @@ const getInitialGroup = () => {
     // 如果 URL 有 group 参数，返回空字符串等待数据加载
     return ''
   }
-  if (DEMO_MODE) {
-    return mockGroups[0].key
-  }
-  return '' // 生产模式等待数据加载后使用第一个车间
+  return '' // 等待数据加载后使用第一个车间
 }
 const selectedGroup = ref(getInitialGroup())
 const activeTab = ref('highRisk')
@@ -497,10 +605,9 @@ const chartDialogVisible = ref(false)
 const chartDialogLoading = ref(false)
 const chartDialogData = ref({
   robot: null,
-  axis: null,
+  robotPartNo: '',
   axisName: '',
-  chartUrl: '',
-  robotPartNo: ''
+  chartUrl: ''
 })
 
 const loading = ref(false)
@@ -509,41 +616,31 @@ const serverRows = ref([])
 const serverTotal = ref(0)
 
 const groups = computed(() => {
-  if (DEMO_MODE) {
-    return mockGroups.map((group) => ({
-      ...group,
-      stats: getGroupStats(group.key)
-    }))
-  }
-  return groupsData.value.map((group) => ({
-    key: group.key,
-    name: group.name,
-    total: group.expected_total ?? group.stats?.total ?? 0,
-    stats: {
-      highRisk: group.stats?.highRisk ?? 0,
-      historyHighRisk: group.stats?.historyHighRisk ?? 0
+  // 过滤掉排除的车间
+  const filteredGroups = groupsData.value.filter(g => !EXCLUDED_GROUP_KEYS.includes(g.key))
+
+  return filteredGroups.map((group) => {
+    return {
+      key: group.key,
+      name: group.name,
+      total: group.stats?.total ?? group.expected_total ?? 0,
+      stats: {
+        highRisk: group.stats?.highRisk ?? 0,
+        historyHighRisk: group.stats?.historyHighRisk ?? 0
+      }
     }
-  }))
+  })
 })
 
 const activeGroupName = computed(() => {
   if (!selectedGroup.value) return '加载中...'
-  const list = DEMO_MODE ? mockGroups : groupsData.value
-  const group = list.find((g) => g.key === selectedGroup.value)
+  const group = groupsData.value.find((g) => g.key === selectedGroup.value)
   return group?.name || selectedGroup.value
 })
 
 const groupStats = computed(() => {
   if (!selectedGroup.value) {
     return { highRisk: 0, historyHighRisk: 0, total: 0 }
-  }
-  if (DEMO_MODE) {
-    const stats = getGroupStats(selectedGroup.value)
-    return {
-      highRisk: stats.highRisk ?? 0,
-      historyHighRisk: stats.historyHighRisk ?? 0,
-      total: stats.total ?? 0
-    }
   }
   const group = groups.value.find((g) => g.key === selectedGroup.value)
   return {
@@ -555,7 +652,7 @@ const groupStats = computed(() => {
 
 // 分页相关计算属性
 const totalPages = computed(() => {
-  const total = DEMO_MODE ? filteredRows.value.length : serverTotal.value
+  const total = serverTotal.value
   return Math.ceil(total / pageSize.value) || 1
 })
 
@@ -577,6 +674,35 @@ const displayPages = computed(() => {
   }
   return pages
 })
+
+// 最近同步时间文本
+const lastSyncTimeText = computed(() => {
+  if (!lastSyncTime.value) return '最近更新：暂无同步记录'
+
+  const syncTime = new Date(lastSyncTime.value)
+
+  // 始终显示具体的日期时间：YYYY-MM-DD HH:mm:ss
+  const year = syncTime.getFullYear()
+  const month = String(syncTime.getMonth() + 1).padStart(2, '0')
+  const day = String(syncTime.getDate()).padStart(2, '0')
+  const hour = String(syncTime.getHours()).padStart(2, '0')
+  const minute = String(syncTime.getMinutes()).padStart(2, '0')
+  const second = String(syncTime.getSeconds()).padStart(2, '0')
+
+  return `最近更新：${year}-${month}-${day} ${hour}:${minute}:${second}`
+})
+
+// 获取最近同步时间
+const fetchLastSyncTime = async () => {
+  try {
+    const response = await request.get('/robots/last_sync_time/')
+    if (response.last_sync_time) {
+      lastSyncTime.value = response.last_sync_time
+    }
+  } catch (error) {
+    console.error('获取同步时间失败:', error)
+  }
+}
 
 const handleJump = () => {
   const page = Math.max(1, Math.min(totalPages.value, jumpPage.value))
@@ -605,13 +731,10 @@ const setupPaginationDebug = () => {
 
 // 统一的页码跳转方法
 const goToPage = (page) => {
-  console.log('goToPage called with page:', page, 'DEMO_MODE:', DEMO_MODE)
+  console.log('goToPage called with page:', page)
   currentPage.value = page
   jumpPage.value = page
-  // 非DEMO模式需要重新加载数据
-  if (!DEMO_MODE) {
-    loadRows()
-  }
+  loadRows()
 }
 
 // 同步jumpPage与currentPage
@@ -636,7 +759,7 @@ const getIconClass = (groupKey) => {
   return colorMap[groupKey] || 'blue'
 }
 
-const robots = computed(() => (DEMO_MODE ? getRobotsByGroup(selectedGroup.value) : serverRows.value))
+const robots = computed(() => serverRows.value)
 
 const riskName = (level) => {
   const names = { critical: '严重', high: '高', medium: '中', low: '低' }
@@ -651,6 +774,15 @@ const riskTagType = (level) => {
 const levelTagType = (level) => {
   const types = { H: 'danger', M: 'warning', L: 'info' }
   return types[level] || 'info'
+}
+
+const formatNumber = (val) => {
+  if (val === null || val === undefined) return '-'
+  if (typeof val === 'number') {
+    // 如果是整数，直接返回；如果是小数，保留2位
+    return Number.isInteger(val) ? val : val.toFixed(2)
+  }
+  return '-'
 }
 
 const formatDateTime = (dateString) => {
@@ -672,9 +804,9 @@ const matchesKeyword = (robot) => {
     (robot.robot_id || robot.id || '').toString().toLowerCase().includes(key) ||
     (robot.name || '').toLowerCase().includes(key) ||
     (robot.model || '').toLowerCase().includes(key) ||
-    (robot.partNo || robot.part_no || '').toLowerCase().includes(key) ||
-    (robot.referenceNo || robot.reference_no || '').toLowerCase().includes(key) ||
-    (robot.typeSpec || robot.type_spec || '').toLowerCase().includes(key) ||
+    (robot.partNo || '').toLowerCase().includes(key) ||
+    (robot.referenceNo || '').toLowerCase().includes(key) ||
+    (robot.typeSpec || '').toLowerCase().includes(key) ||
     (robot.tech || '').toLowerCase().includes(key) ||
     (robot.remark || '').toLowerCase().includes(key)
   )
@@ -687,10 +819,12 @@ const matchesFilters = (robot) => {
   if (axisKeysFilter.value.length) {
     const keys = axisKeysFilter.value
     if (axisStateFilter.value === 'bad') {
-      const anyBad = keys.some((k) => robot?.checks?.[k]?.ok === false)
+      // 筛选 label 为 'high' 的项
+      const anyBad = keys.some((k) => robot?.checks?.[k]?.label?.toLowerCase() === 'high')
       if (!anyBad) return false
     } else if (axisStateFilter.value === 'ok') {
-      const allOk = keys.every((k) => robot?.checks?.[k]?.ok !== false)
+      // 筛选 label 不为 'high' 的项
+      const allOk = keys.every((k) => robot?.checks?.[k]?.label?.toLowerCase() !== 'high')
       if (!allOk) return false
     }
   }
@@ -705,7 +839,8 @@ const filteredRows = computed(() => {
   if (activeTab.value === 'highRisk') {
     filtered = list.filter((r) => r.isHighRisk)
   } else if (activeTab.value === 'history') {
-    filtered = list.filter((r) => r.riskHistory?.length)
+    // 历史列表数据直接从 API 获取，已经是完整的历史高风险数据，不需要额外过滤
+    filtered = list
   }
 
   // 应用所有过滤器（包括关键词搜索）
@@ -714,11 +849,8 @@ const filteredRows = computed(() => {
 })
 
 const pagedRows = computed(() => {
-  // 非 DEMO 模式下，使用服务器分页
-  if (!DEMO_MODE) return filteredRows.value
-  // DEMO 模式下，前端分页
-  const start = (currentPage.value - 1) * pageSize.value
-  return filteredRows.value.slice(start, start + pageSize.value)
+  // 使用服务器分页，直接返回服务器数据
+  return filteredRows.value
 })
 
 const resetFilters = () => {
@@ -728,24 +860,62 @@ const resetFilters = () => {
   axisStateFilter.value = ''
   markMode.value = ''
   currentPage.value = 1
-  if (!DEMO_MODE) loadRows()
+  loadRows()
 }
 
 // 搜索处理函数
 const handleSearch = () => {
   currentPage.value = 1
-  if (!DEMO_MODE) {
-    // 搜索时请求所有数据，由前端进行过滤
-    loadRows(true)
-  }
+  // 搜索时请求所有数据，由前端进行过滤
+  loadRows(true)
 }
 
 const handleRefresh = () => {
-  currentPage.value = 1
-  if (!DEMO_MODE) {
+  if (syncing.value) {
+    ElMessage.warning('数据同步中，请稍候...')
+    return
+  }
+
+  syncing.value = true
+
+  // 保存同步状态到 sessionStorage
+  const syncStartTime = Date.now()
+  sessionStorage.setItem('robot_sync_state', JSON.stringify({
+    syncing: true,
+    startTime: syncStartTime
+  }))
+
+  // 异步执行同步，不阻塞UI
+  importRobotComponents({}).then(async (result) => {
+    syncing.value = false
+
+    // 清除 sessionStorage 中的同步状态
+    sessionStorage.removeItem('robot_sync_state')
+
+    // 显示成功消息
+    ElMessage.success(`同步成功！新增 ${result.records_created || 0} 条，更新 ${result.records_updated || 0} 条`)
+
+    // 刷新页面数据
+    currentPage.value = 1
+    await loadGroups()
+    await loadRows()
+    await fetchLastSyncTime()
+  }).catch((error) => {
+    syncing.value = false
+
+    // 即使失败也清除 sessionStorage
+    sessionStorage.removeItem('robot_sync_state')
+
+    console.error('导入数据失败:', error)
+
+    // 显示失败消息
+    ElMessage.error(`同步失败：${error.message || '未知错误'}`)
+
+    // 即使导入失败，也刷新页面数据
+    currentPage.value = 1
     loadGroups()
     loadRows()
-  }
+  })
 }
 
 const openDetail = (robot) => {
@@ -766,6 +936,12 @@ const normalizeRow = (row) => {
 }
 
 const openEdit = (row, focusField) => {
+  // 同步期间禁止编辑
+  if (syncing.value) {
+    ElMessage.warning('数据同步中，暂时无法编辑')
+    return
+  }
+
   const next = normalizeRow(row)
   if (!next?.id) return
   editTarget.value = row
@@ -805,25 +981,16 @@ const saveEdit = async () => {
 
   editSaving.value = true
   try {
-    if (DEMO_MODE) {
-      applyEditToRow(editTarget.value, payload)
-      ElMessage.success('已保存（演示模式）')
-      editVisible.value = false
-      return
-    }
-
     await updateRobotComponent(editTarget.value.id, payload)
     applyEditToRow(editTarget.value, payload)
     ElMessage.success('保存成功')
     editVisible.value = false
-    if (!DEMO_MODE) {
-      await loadGroups()
-      if (keyword.value.trim()) {
-        currentPage.value = 1
-        await loadRows(true)
-      } else {
-        await loadRows()
-      }
+    await loadGroups()
+    if (keyword.value.trim()) {
+      currentPage.value = 1
+      await loadRows(true)
+    } else {
+      await loadRows()
     }
   } catch (error) {
     ElMessage.error(error?.response?.data?.detail || error?.message || '保存失败')
@@ -839,12 +1006,50 @@ const checkTooltip = (robot, key) => {
   return check.ok ? `${label}：正常/符合要求` : `${label}：存在异常/待处理`
 }
 
+// 判断 checks 中的值是否为 high（用于 highRisk 和 history 标签页）
+const isCheckHigh = (robot, key) => {
+  const check = robot?.checks?.[key]
+  // 检查 label 字段是否为 "high"
+  return check?.label?.toLowerCase() === 'high'
+}
+
+// 获取轴的提示文本（用于 highRisk 和 history 标签页）
+const getAxisTooltipText = (robot, key) => {
+  const check = robot?.checks?.[key]
+  if (!check) return `${key}: 无数据`
+  const label = check.label || ''
+  const isHigh = label.toLowerCase() === 'high'
+  return `${key}: ${label}${isHigh ? ' (高风险)' : ' (正常)'}`
+}
+
+// 判断 A1-A7 的值是否为 high（用于 all 标签页）
+const isAxisHigh = (row, axisNum) => {
+  const axisKey = `A${axisNum}`
+  // 检查 checks 中的 label 是否为 "high"
+  const check = row?.checks?.[axisKey]
+  if (check?.label) {
+    return check.label.toLowerCase() === 'high'
+  }
+  return false
+}
+
+// 获取轴的状态文本（用于 all 标签页）
+const getAxisStatusText = (row, axisNum) => {
+  const axisKey = `A${axisNum}`
+  const check = row?.checks?.[axisKey]
+  if (check?.label) {
+    const isHigh = check.label.toLowerCase() === 'high'
+    return `${check.label}${isHigh ? ' (高风险)' : ' (正常)'}`
+  }
+  return '无数据'
+}
+
 const openBI = async (robot) => {
-  const partNo = robot?.partNo || robot?.part_no || ''
+  const partNo = robot?.partNo || ''
   const groupKey = robot?.group || selectedGroup.value || ''
 
   if (!partNo) {
-    ElMessage.warning('无法获取机器人信息')
+    ElMessage.warning('Cannot get robot information')
     return
   }
 
@@ -866,18 +1071,13 @@ const openBI = async (robot) => {
       }
     })
   } catch (error) {
-    console.error('获取时间范围失败:', error)
-    ElMessage.error('获取机器人数据时间范围失败，请稍后重试')
+    console.error('Failed to get time range:', error)
+    ElMessage.error('Failed to get robot data time range, please try again later')
   }
 }
 
 // 打开错误率趋势图弹窗
 const openErrorTrendChart = async (robot, axisKey) => {
-  if (DEMO_MODE) {
-    ElMessage.info('演示模式下图表功能不可用')
-    return
-  }
-
   const axisNum = parseInt(axisKey.replace('A', ''))
   if (!robot?.id) {
     ElMessage.error('无法获取机器人信息')
@@ -916,18 +1116,6 @@ const openErrorTrendChart = async (robot, axisKey) => {
 const loadGroups = async () => {
   try {
     loading.value = true
-    if (DEMO_MODE) {
-      // DEMO 模式：检查 URL 参数
-      const queryGroup = route.query.group
-      if (queryGroup && mockGroups.find(g => g.key === queryGroup)) {
-        selectedGroup.value = queryGroup
-      } else if (!selectedGroup.value) {
-        selectedGroup.value = mockGroups[0].key
-      }
-      return
-    }
-
-    // 生产模式
     groupsData.value = await getRobotGroups()
     const queryGroup = route.query.group
 
@@ -942,25 +1130,41 @@ const loadGroups = async () => {
 }
 
 const loadRows = async (fetchAll = false) => {
-  if (DEMO_MODE) return
   loading.value = true
   try {
     const tabMap = { highRisk: 'highRisk', all: 'all', history: 'history' }
     // 搜索时获取所有数据用于前端过滤
     const actualPageSize = fetchAll ? 10000 : pageSize.value
-    const params = {
-      group: selectedGroup.value,
-      tab: tabMap[activeTab.value] || 'highRisk',
-      // 不发送 keyword 参数，由前端过滤
-      level: levelFilter.value || undefined,
-      axisKeys: axisKeysFilter.value.length ? axisKeysFilter.value.join(',') : undefined,
-      axisOk: axisStateFilter.value ? axisStateFilter.value === 'ok' : undefined,
-      markMode: markMode.value || undefined,
-      page: fetchAll ? 1 : currentPage.value,
-      page_size: actualPageSize
+
+    // 根据标签页选择不同的 API
+    let data
+    if (activeTab.value === 'history') {
+      // 历史高风险机器人列表使用 HighRiskHistory API
+      const historyParams = {
+        group: selectedGroup.value,
+        keyword: keyword.value || undefined,
+        level: levelFilter.value || undefined,
+        axisOk: axisStateFilter.value || undefined,
+        page: fetchAll ? 1 : currentPage.value,
+        page_size: actualPageSize
+      }
+      data = await getHighRiskHistories(historyParams)
+    } else {
+      // highRisk 和 all 标签页都使用 RobotComponent API
+      const params = {
+        group: selectedGroup.value,
+        tab: tabMap[activeTab.value] || 'highRisk',
+        keyword: keyword.value || undefined,
+        level: levelFilter.value || undefined,
+        axisKeys: axisKeysFilter.value.length ? axisKeysFilter.value.join(',') : undefined,
+        axisOk: axisStateFilter.value ? axisStateFilter.value === 'ok' : undefined,
+        markMode: markMode.value || undefined,
+        page: fetchAll ? 1 : currentPage.value,
+        page_size: actualPageSize
+      }
+      data = await getRobotComponents(params)
     }
-    console.log('Loading rows with params:', params)
-    const data = await getRobotComponents(params)
+
     console.log('Loaded data:', { count: data.count, resultsLength: data.results?.length })
     serverRows.value = data.results || data
     serverTotal.value = data.count ?? serverRows.value.length
@@ -978,34 +1182,109 @@ const loadRows = async (fetchAll = false) => {
 
 // 初始化加载数据
 const initData = async () => {
-  if (!DEMO_MODE) {
-    await loadGroups()
-    await loadRows()
-  }
+  // 检查并恢复同步状态
+  await checkAndRestoreSyncState()
+
+  await loadGroups()
+  await loadRows()
+  await fetchLastSyncTime()
+
   // 设置分页调试
   setupPaginationDebug()
+}
+
+// 检查并恢复同步状态
+const checkAndRestoreSyncState = async () => {
+  try {
+    const syncStateStr = sessionStorage.getItem('robot_sync_state')
+    if (!syncStateStr) return
+
+    const syncState = JSON.parse(syncStateStr)
+
+    // 检查同步状态是否太旧（超过5分钟则认为已失效）
+    const SYNC_TIMEOUT = 5 * 60 * 1000 // 5分钟
+    const now = Date.now()
+
+    if (now - syncState.startTime > SYNC_TIMEOUT) {
+      // 同步状态已过期，清除
+      sessionStorage.removeItem('robot_sync_state')
+      console.log('同步状态已过期，已清除')
+      return
+    }
+
+    // 恢复同步状态
+    syncing.value = true
+    console.log('恢复同步状态:', syncState)
+
+    // 启动轮询检查后端同步状态
+    pollSyncStatus()
+  } catch (error) {
+    console.error('检查同步状态失败:', error)
+    sessionStorage.removeItem('robot_sync_state')
+  }
+}
+
+// 轮询检查后端同步状态
+let syncPollTimer = null
+const pollSyncStatus = async () => {
+  // 清除之前的定时器
+  if (syncPollTimer) {
+    clearInterval(syncPollTimer)
+  }
+
+  // 每秒检查一次
+  syncPollTimer = setInterval(async () => {
+    try {
+      // 通过获取最后同步时间来检查同步是否完成
+      // 如果后端同步时间距离现在很近（几秒内），说明刚完成
+      const response = await request.get('/robots/last_sync_time/')
+      const lastSyncTime = response.last_sync_time
+
+      if (lastSyncTime) {
+        const syncTime = new Date(lastSyncTime).getTime()
+        const now = Date.now()
+        const timeDiff = now - syncTime
+
+        // 如果最后同步时间在最近5秒内，说明同步刚完成
+        if (timeDiff < 5000 && timeDiff > 0) {
+          // 同步完成
+          syncing.value = false
+          sessionStorage.removeItem('robot_sync_state')
+          clearInterval(syncPollTimer)
+          syncPollTimer = null
+
+          // 显示成功消息
+          ElMessage.success('数据同步已成功完成')
+
+          // 刷新数据
+          currentPage.value = 1
+          await loadGroups()
+          await loadRows()
+          await fetchLastSyncTime()
+        }
+      }
+    } catch (error) {
+      console.error('检查同步状态失败:', error)
+    }
+  }, 2000) // 每2秒检查一次
 }
 
 // 监听页码变化
 watch(currentPage, (newPage) => {
   console.log('Current page changed:', newPage)
-  if (!DEMO_MODE) {
-    loadRows()
-  }
+  loadRows()
 })
 
 // 监听其他过滤器变化
 watch([selectedGroup, activeTab], () => {
   console.log('selectedGroup or activeTab changed, resetting page to 1')
   currentPage.value = 1
-  if (!DEMO_MODE) loadRows()
+  loadRows()
 })
 
 watch(pageSize, () => {
-  if (!DEMO_MODE) {
-    currentPage.value = 1
-    loadRows()
-  }
+  currentPage.value = 1
+  loadRows()
 })
 
 // 过滤器变化时自动触发（关键词需要按回车）
@@ -1016,10 +1295,8 @@ watch([levelFilter, axisKeysFilter, axisStateFilter, markMode], () => {
     axisState: axisStateFilter.value,
     markMode: markMode.value
   })
-  if (!DEMO_MODE) {
-    currentPage.value = 1
-    loadRows()
-  }
+  currentPage.value = 1
+  loadRows()
 })
 
 // 当 axisKeysFilter 清空时，同步清空 axisStateFilter
@@ -1031,6 +1308,14 @@ watch(axisKeysFilter, (newVal) => {
 
 // 初始化数据
 initData()
+
+// 组件卸载时清理定时器
+onUnmounted(() => {
+  if (syncPollTimer) {
+    clearInterval(syncPollTimer)
+    syncPollTimer = null
+  }
+})
 </script>
 
 <style scoped>
@@ -1171,7 +1456,7 @@ initData()
   position: relative;
   z-index: 1;
   padding: 40px;
-  max-width: 1400px;
+  max-width: 100%;
   margin: 0 auto;
 }
 
@@ -1280,6 +1565,52 @@ initData()
   display: flex;
   align-items: center;
   gap: 16px;
+}
+
+.last-sync-time {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 215, 0, 0.15);
+  border-radius: 999px;
+  color: #ffd700;
+  font-size: 13px;
+  transition: all 0.3s ease;
+}
+
+.last-sync-time.syncing {
+  background: rgba(34, 197, 94, 0.15);
+  border-color: rgba(34, 197, 94, 0.4);
+  color: #4ade80;
+  animation: syncPulse 2s ease-in-out infinite;
+}
+
+.last-sync-time .el-icon {
+  font-size: 14px;
+}
+
+.last-sync-time.syncing .el-icon {
+  animation: syncSpin 1s linear infinite;
+}
+
+@keyframes syncPulse {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(74, 222, 128, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 15px rgba(74, 222, 128, 0.6);
+  }
+}
+
+@keyframes syncSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .ios-btn {
@@ -1602,9 +1933,15 @@ initData()
   background: rgba(255, 255, 255, 0.04) !important;
   border-color: rgba(255, 255, 255, 0.06) !important;
   color: #8da0b7 !important;
-  font-size: 10px;
-  letter-spacing: 1.2px;
+  font-size: 12px;
+  letter-spacing: 0.5px;
   font-weight: 600;
+  white-space: nowrap;
+}
+
+.data-table-section :deep(.el-table__header th .cell) {
+  white-space: nowrap;
+  padding: 0 8px;
 }
 
 .data-table-section :deep(.el-table__body tr) {
@@ -1670,7 +2007,7 @@ initData()
   display: inline-flex;
   justify-content: flex-start;
   text-align: left;
-  white-space: normal;
+  white-space: nowrap;
   line-height: 1.2;
 }
 

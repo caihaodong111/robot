@@ -205,6 +205,19 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
 
+# Celery Beat 定时任务配置
+CELERY_BEAT_SCHEDULE = {
+    'auto-sync-robot-data-daily': {
+        'task': 'robots.tasks.auto_sync_robot_data',
+        'schedule': 86400.0,  # 每24小时执行一次（秒）
+        # 或使用 crontab: 'schedule': crontab(hour=2, minute=0),  # 每天凌晨2点执行
+    },
+    'sync-from-weeklyresult-hourly': {
+        'task': 'robots.tasks.sync_from_weeklyresult',
+        'schedule': 3600.0,  # 每小时执行一次（秒）
+    },
+}
+
 
 # 缓存配置
 CACHES = {

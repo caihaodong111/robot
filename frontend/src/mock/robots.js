@@ -2,7 +2,6 @@ const ROBOT_GROUPS = [
   { key: 'PT', name: 'PT', total: 88 },
   { key: 'EATS', name: 'EATS', total: 965 },
   { key: 'EB5', name: 'EB5', total: 128 },
-  { key: 'MRA1BS', name: 'MRA1BS', total: 156 },
   { key: 'MRA2BS', name: 'MRA2BS', total: 143 },
   { key: 'Hop', name: 'Hop', total: 655 },
   { key: '540', name: '540', total: 89 },

@@ -10,7 +10,10 @@ from .views import (
     RobotComponentViewSet,
     RobotGroupViewSet,
     GripperCheckViewSet,
+    WeeklyResultViewSet,
+    HighRiskHistoryViewSet,
     bi_view,
+    get_last_sync_time,
 )
 from .error_trend_chart import CHART_OUTPUT_PATH
 
@@ -34,9 +37,12 @@ router.register(r"groups", RobotGroupViewSet, basename="robot-group")
 router.register(r"components", RobotComponentViewSet, basename="robot-component")
 router.register(r"risk-events", RiskEventViewSet, basename="risk-event")
 router.register(r"gripper-check", GripperCheckViewSet, basename="gripper-check")
+router.register(r"weekly-results", WeeklyResultViewSet, basename="weekly-result")
+router.register(r"high-risk-histories", HighRiskHistoryViewSet, basename="high-risk-history")
 
 urlpatterns = [
     path("bi/", bi_view, name="robot-bi"),
     path("charts/<path:filename>", serve_chart, name="robot-chart"),
+    path("last_sync_time/", get_last_sync_time, name="last-sync-time"),
     path("", include(router.urls)),
 ]

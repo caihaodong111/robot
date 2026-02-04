@@ -3,17 +3,22 @@ from django.shortcuts import render
 from django.db.models import Count, Q
 from django.views.decorators.clickjacking import xframe_options_exempt
 from rest_framework import mixins, viewsets, status
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
-from .models import RiskEvent, RobotComponent, RobotGroup
+from .models import RiskEvent, RobotComponent, RobotGroup, WeeklyResult, HighRiskHistory
 from .serializers import (
     RiskEventSerializer,
     RobotComponentSerializer,
     RobotGroupSerializer,
     BIRobotSerializer,
     GripperCheckSerializer,
+    WeeklyResultSerializer,
+    WeeklyResultListSerializer,
+    WeeklyResultImportSerializer,
+    WeeklyResultFileSerializer,
+    HighRiskHistorySerializer,
 )
 from .gripper_service import check_gripper_from_config
 from .error_trend_chart import generate_trend_chart, chart_exists, CHART_OUTPUT_PATH
@@ -28,6 +33,13 @@ class StandardResultsSetPagination(PageNumberPagination):
 class RobotGroupViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     queryset = RobotGroup.objects.all()
     serializer_class = RobotGroupSerializer
+
+    # 排除的车间 key 列表
+    EXCLUDED_GROUP_KEYS = ['', '(空)', 'MRA1 BS', '未分配']
+
+    def get_queryset(self):
+        """过滤掉排除的车间"""
+        return super().get_queryset().exclude(key__in=self.EXCLUDED_GROUP_KEYS)
 
     def list(self, request, *args, **kwargs):
         groups = list(self.get_queryset())
@@ -542,3 +554,313 @@ class GripperCheckViewSet(viewsets.GenericViewSet):
             'default_time_range_hours': 168,  # 7天
             'description': '关键轨迹检查用于检测机器人抓放点动作的电流异常'
         })
+
+
+class WeeklyResultViewSet(
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    viewsets.GenericViewSet,
+):
+    """周结果数据 ViewSet"""
+    queryset = WeeklyResult.objects.all()
+    serializer_class = WeeklyResultSerializer
+    pagination_class = StandardResultsSetPagination
+
+    def get_serializer_class(self):
+        """根据操作返回不同的序列化器"""
+        # 使用 full 参数控制是否返回完整字段
+        # 如果请求参数 full=1，则返回完整字段
+        if self.action == 'list' and self.request.query_params.get('full') != '1':
+            return WeeklyResultListSerializer
+        return super().get_serializer_class()
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+
+        # 按车间筛选
+        shop = self.request.query_params.get('shop')
+        if shop:
+            qs = qs.filter(shop__icontains=shop)
+
+        # 按等级筛选
+        level = self.request.query_params.get('level')
+        if level:
+            qs = qs.filter(level=level)
+
+        # 按高风险筛选
+        high_risk = self.request.query_params.get('highRisk')
+        if high_risk in ['1', 'true', 'True']:
+            qs = qs.filter(level='H')
+
+        # 搜索关键词
+        keyword = (self.request.query_params.get('keyword') or '').strip()
+        if keyword:
+            qs = qs.filter(
+                Q(robot__icontains=keyword)
+                | Q(type__icontains=keyword)
+                | Q(tech__icontains=keyword)
+                | Q(remark__icontains=keyword)
+            )
+
+        # 按周范围筛选
+        week_start = self.request.query_params.get('week_start')
+        week_end = self.request.query_params.get('week_end')
+        if week_start:
+            qs = qs.filter(week_start__gte=week_start)
+        if week_end:
+            qs = qs.filter(week_end__lte=week_end)
+
+        return qs
+
+    @action(detail=False, methods=['get'])
+    def stats(self, request):
+        """
+        获取统计数据
+
+        返回各车间、各等级的统计信息
+        """
+        qs = self.get_queryset()
+
+        # 按车间统计
+        shop_stats = qs.values('shop').annotate(
+            total=Count('id'),
+            high_risk=Count('id', filter=Q(level='H')),
+        )
+
+        # 按等级统计
+        level_stats = qs.values('level').annotate(
+            count=Count('id')
+        ).order_by('level')
+
+        return Response({
+            'total': qs.count(),
+            'high_risk': qs.filter(level='H').count(),
+            'by_shop': list(shop_stats),
+            'by_level': list(level_stats),
+        })
+
+    @action(detail=False, methods=['post'])
+    def import_csv(self, request):
+        """
+        导入 weeklyresult.csv 文件到数据库
+
+        请求体:
+        {
+            "folder_path": "P:/error rate trend/",  // 可选
+            "project": "reuse",  // 可选，默认为 reuse
+            "file_path": "/path/to/specific/file.csv"  // 可选，直接指定文件
+        }
+
+        返回:
+        {
+            "success": true,
+            "file": "文件路径",
+            "source_file": "文件名",
+            "records_imported": 100,
+            "records_updated": 10,
+            "total_records": 110,
+            "week_start": "2025-04-10",
+            "week_end": "2025-05-16"
+        }
+        """
+        from .weekly_result_service import import_weeklyresult_csv
+
+        serializer = WeeklyResultImportSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({
+                'success': False,
+                'error': 'Invalid request data',
+                'details': serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            data = serializer.validated_data
+            result = import_weeklyresult_csv(
+                file_path=data.get('file_path'),
+                folder_path=data.get('folder_path') or None,
+                project=data.get('project') or None,
+            )
+            return Response(result)
+        except FileNotFoundError as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'])
+    def files(self, request):
+        """
+        获取所有可用的 weeklyresult.csv 文件列表
+
+        参数:
+            folder_path: 文件夹路径（可选）
+            project: 项目名称（可选）
+
+        返回:
+        {
+            "results": [
+                {
+                    "path": "完整路径",
+                    "name": "文件名",
+                    "created_time": "创建时间",
+                    "week_start": "周开始日期",
+                    "week_end": "周结束日期"
+                },
+                ...
+            ]
+        }
+        """
+        from .weekly_result_service import get_available_csv_files
+
+        folder_path = request.query_params.get('folder_path')
+        project = request.query_params.get('project')
+
+        try:
+            files = get_available_csv_files(folder_path, project)
+            serializer = WeeklyResultFileSerializer(files, many=True)
+            return Response({'results': serializer.data})
+        except Exception as e:
+            return Response({
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['post'])
+    def import_robot_components(self, request):
+        """
+        直接导入 weeklyresult.csv 到 RobotComponent 表
+        跳过 WeeklyResult 表，直接更新机器人状态界面数据
+
+        请求体:
+        {
+            "folder_path": "/Users/caihd/Desktop/sg",  // 可选
+            "project": "reuse",  // 可选
+            "file_path": "/path/to/specific/file.csv"  // 可选，直接指定文件
+        }
+
+        返回:
+        {
+            "success": true,
+            "file": "文件路径",
+            "source_file": "文件名",
+            "records_created": 100,
+            "records_updated": 10,
+            "total_records": 110,
+            "shop_stats": {"MRA1 BS": {"created": 50, "updated": 5}}
+        }
+        """
+        from .weekly_result_service import import_robot_components_csv
+
+        serializer = WeeklyResultImportSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({
+                'success': False,
+                'error': 'Invalid request data',
+                'details': serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            data = serializer.validated_data
+            result = import_robot_components_csv(
+                file_path=data.get('file_path'),
+                folder_path=data.get('folder_path') or None,
+                project=data.get('project') or None,
+            )
+            return Response(result)
+        except FileNotFoundError as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['post'])
+    def sync_robot_status(self, request):
+        """
+        将 WeeklyResult 数据批量同步到 RobotComponent 表
+
+        用于更新机器人状态页面的数据来源
+        同步所有 WeeklyResult 数据到 RobotComponent 表（包含所有详细字段）
+        """
+        from .weekly_result_service import sync_weeklyresult_to_robotcomponent
+
+        try:
+            result = sync_weeklyresult_to_robotcomponent()
+            return Response(result)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class HighRiskHistoryViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
+    """历史高风险机器人 ViewSet"""
+    queryset = HighRiskHistory.objects.all()
+    serializer_class = HighRiskHistorySerializer
+    pagination_class = StandardResultsSetPagination
+
+    # 排除的车间 key 列表（与前端保持一致）
+    EXCLUDED_GROUP_KEYS = ['', '(空)', 'MRA1 BS', '未分配']
+
+    def get_queryset(self):
+        """获取查询集，支持过滤"""
+        qs = super().get_queryset()
+
+        # 过滤排除的车间
+        qs = qs.exclude(group_key__in=self.EXCLUDED_GROUP_KEYS)
+
+        # 按车间筛选
+        group = self.request.query_params.get('group')
+        if group:
+            qs = qs.filter(group_key=group)
+
+        # 按等级筛选
+        level = self.request.query_params.get('level')
+        if level:
+            qs = qs.filter(level=level)
+
+        # 搜索关键词
+        keyword = (self.request.query_params.get('keyword') or '').strip()
+        if keyword:
+            qs = qs.filter(
+                Q(robot_id__icontains=keyword)
+                | Q(part_no__icontains=keyword)
+                | Q(name__icontains=keyword)
+                | Q(tech__icontains=keyword)
+                | Q(remark__icontains=keyword)
+            )
+
+        # 按轴状态筛选
+        axis_ok = self.request.query_params.get('axisOk')
+        if axis_ok:
+            # 从 checks JSON 字段中筛选
+            if axis_ok == 'ok':
+                qs = qs.filter(checks__axis_ok=True)
+            else:
+                qs = qs.filter(checks__axis_ok=False)
+
+        return qs
+
+
+# API 端点：获取最后同步时间
+@api_view(['GET'])
+def get_last_sync_time(request):
+    """
+    获取最后同步时间
+    """
+    from .models import SystemConfig
+
+    last_sync_time = SystemConfig.get('last_sync_time', None)
+
+    return Response({
+        'last_sync_time': last_sync_time
+    })
