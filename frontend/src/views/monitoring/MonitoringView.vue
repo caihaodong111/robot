@@ -488,6 +488,14 @@ const sortState = ref({ prop: 'robot', order: 'ascending' })
 
 const canExecute = computed(() => selectedPlant.value && selectedRobots.value.length > 0 && timeRange.value?.length === 2)
 
+const normalizeGroupName = (group) => {
+  if (!group) return group
+  if (group.name === 'SA1' || group.key === 'SA1') {
+    return { ...group, name: 'AS1' }
+  }
+  return group
+}
+
 const loadPlantGroups = async () => {
   plantsLoading.value = true
   try {
@@ -499,7 +507,7 @@ const loadPlantGroups = async () => {
       ]
     } else {
       const response = await getRobotGroups()
-      availablePlants.value = response || []
+      availablePlants.value = (response || []).map(normalizeGroupName)
     }
   } catch (e) {
     ElMessage.error('获取车间列表失败')

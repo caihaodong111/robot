@@ -10,8 +10,7 @@ from .views import (
     RobotComponentViewSet,
     RobotGroupViewSet,
     GripperCheckViewSet,
-    WeeklyResultViewSet,
-    HighRiskHistoryViewSet,
+    RobotHighRiskSnapshotViewSet,
     bi_view,
     get_last_sync_time,
 )
@@ -37,8 +36,7 @@ router.register(r"groups", RobotGroupViewSet, basename="robot-group")
 router.register(r"components", RobotComponentViewSet, basename="robot-component")
 router.register(r"risk-events", RiskEventViewSet, basename="risk-event")
 router.register(r"gripper-check", GripperCheckViewSet, basename="gripper-check")
-router.register(r"weekly-results", WeeklyResultViewSet, basename="weekly-result")
-router.register(r"high-risk-histories", HighRiskHistoryViewSet, basename="high-risk-history")
+router.register(r"high-risk-histories", RobotHighRiskSnapshotViewSet, basename="high-risk-history")
 
 urlpatterns = [
     path("bi/", bi_view, name="robot-bi"),

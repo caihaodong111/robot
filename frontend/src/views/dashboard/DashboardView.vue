@@ -13,7 +13,7 @@
         <div class="title-group">
           <h1 class="ios-title">机器人概览 <small>ROBOT MONITORING</small></h1>
           <div class="status-tag status-tag-entrance">
-            <span class="dot pulse"></span> 系统运行中 | {{ lastUpdateTime }}
+            <span class="dot pulse"></span> 最近更新时间：{{ lastUpdateTime }}
           </div>
         </div>
       </header>
@@ -152,6 +152,7 @@ import { ElMessage } from 'element-plus'
 import { DEMO_MODE } from '@/config/appConfig'
 import { getRobotComponents, getRobotGroups, getRiskEventStatistics } from '@/api/robots'
 import { createRiskEvents, getGroupStats, getRobotsByGroup, robotGroups as mockGroups } from '@/mock/robots'
+import request from '@/utils/request'
 
 const router = useRouter()
 
@@ -159,7 +160,26 @@ const loading = ref(false)
 const alertLoading = ref(false)
 const groupsData = ref([])
 const recentAlerts = ref([])
-const lastUpdateTime = ref(new Date().toLocaleTimeString())
+const lastSyncTime = ref(null)
+const lastUpdateTime = computed(() => {
+  if (!lastSyncTime.value) return '暂无同步记录'
+  const syncTime = new Date(lastSyncTime.value)
+  const year = syncTime.getFullYear()
+  const month = String(syncTime.getMonth() + 1).padStart(2, '0')
+  const day = String(syncTime.getDate()).padStart(2, '0')
+  const hour = String(syncTime.getHours()).padStart(2, '0')
+  const minute = String(syncTime.getMinutes()).padStart(2, '0')
+  const second = String(syncTime.getSeconds()).padStart(2, '0')
+  return `${year}年${month}月${day}日${hour}时${minute}分${second}秒`
+})
+
+const normalizeGroupName = (group) => {
+  if (!group) return group
+  if (group.name === 'SA1' || group.key === 'SA1') {
+    return { ...group, name: 'AS1' }
+  }
+  return group
+}
 
 // 加载机器人组数据
 const loadGroupsData = async () => {
@@ -170,10 +190,10 @@ const loadGroupsData = async () => {
         key: group.key,
         name: group.name,
         stats: getGroupStats(group.key)
-      }))
+      })).map(normalizeGroupName)
     } else {
       const response = await getRobotGroups()
-      groupsData.value = response || []
+      groupsData.value = (response || []).map(normalizeGroupName)
     }
   } catch (error) {
     console.error('加载机器人组数据失败:', error)
@@ -181,7 +201,6 @@ const loadGroupsData = async () => {
     groupsData.value = []
   } finally {
     loading.value = false
-    lastUpdateTime.value = new Date().toLocaleTimeString()
   }
 }
 
@@ -453,14 +472,28 @@ const loadAlerts = async () => {
   } finally { alertLoading.value = false }
 }
 
+const fetchLastSyncTime = async () => {
+  if (DEMO_MODE) {
+    lastSyncTime.value = new Date().toISOString()
+    return
+  }
+  try {
+    const response = await request.get('/robots/last_sync_time/')
+    lastSyncTime.value = response?.last_sync_time || null
+  } catch (error) {
+    console.error('获取同步时间失败:', error)
+    lastSyncTime.value = null
+  }
+}
+
 const handleRefresh = async () => {
-  await Promise.all([loadGroupsData(), loadAlerts()])
+  await Promise.all([loadGroupsData(), loadAlerts(), fetchLastSyncTime()])
   renderMainPieChart()
   renderWorkshopCharts()
 }
 
 onMounted(async () => {
-  await Promise.all([loadGroupsData(), loadAlerts()])
+  await Promise.all([loadGroupsData(), loadAlerts(), fetchLastSyncTime()])
 
   nextTick(() => {
     renderMainPieChart()

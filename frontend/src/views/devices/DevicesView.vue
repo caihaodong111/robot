@@ -179,7 +179,7 @@
         <!-- Table -->
         <el-table :data="pagedRows" class="premium-table table-entrance" stripe height="520" v-loading="loading">
           <!-- 基础列（所有标签页通用） -->
-          <el-table-column prop="partNo" label="robot" width="160">
+          <el-table-column prop="partNo" label="robot" width="160" class-name="robot-column">
             <template #default="{ row }">
               <el-button type="primary" link class="mono robot-name-cell" @click="openBI(row)">
                 {{ row.partNo || row.robot }}
@@ -566,6 +566,14 @@ const lastSyncTime = ref(null)
 
 // 排除的车间 key 列表（与后端保持一致）
 const EXCLUDED_GROUP_KEYS = ['', '(空)', 'MRA1 BS', '未分配']
+
+const normalizeGroupName = (group) => {
+  if (!group) return group
+  if (group.name === 'SA1' || group.key === 'SA1') {
+    return { ...group, name: 'AS1' }
+  }
+  return group
+}
 
 // 优先使用 URL query 参数中的 group，否则使用第一个车间
 const getInitialGroup = () => {
@@ -1000,46 +1008,45 @@ const saveEdit = async () => {
 }
 
 const checkTooltip = (robot, key) => {
-  const check = robot?.checks?.[key]
-  const label = check?.label ? `${key}（${check.label}）` : key
-  if (!check) return label
-  return check.ok ? `${label}：正常/符合要求` : `${label}：存在异常/待处理`
+  const axisKey = key.toUpperCase()
+  const value = robot?.[axisKey] ?? robot?.[axisKey.toLowerCase()]
+  const label = value ? `${key}（${value}）` : key
+  if (!value) return label
+  const isHigh = value.toLowerCase() === 'high'
+  return isHigh ? `${label}：存在异常/待处理` : `${label}：正常/符合要求`
 }
 
-// 判断 checks 中的值是否为 high（用于 highRisk 和 history 标签页）
+// 判断 A1-A7 字段的值是否为 high
 const isCheckHigh = (robot, key) => {
-  const check = robot?.checks?.[key]
-  // 检查 label 字段是否为 "high"
-  return check?.label?.toLowerCase() === 'high'
+  // 直接读取 A1-A7 字段的值（大写字段名）
+  const axisKey = key.toUpperCase()  // 'A1' -> 'A1'
+  const value = robot?.[axisKey] ?? robot?.[axisKey.toLowerCase()]
+  return value?.toLowerCase() === 'high'
 }
 
 // 获取轴的提示文本（用于 highRisk 和 history 标签页）
 const getAxisTooltipText = (robot, key) => {
-  const check = robot?.checks?.[key]
-  if (!check) return `${key}: 无数据`
-  const label = check.label || ''
-  const isHigh = label.toLowerCase() === 'high'
-  return `${key}: ${label}${isHigh ? ' (高风险)' : ' (正常)'}`
+  const axisKey = key.toUpperCase()
+  const value = robot?.[axisKey] ?? robot?.[axisKey.toLowerCase()]
+  if (!value) return `${key}: 无数据`
+  const isHigh = value.toLowerCase() === 'high'
+  return `${key}: ${value}${isHigh ? ' (高风险)' : ' (正常)'}`
 }
 
 // 判断 A1-A7 的值是否为 high（用于 all 标签页）
 const isAxisHigh = (row, axisNum) => {
   const axisKey = `A${axisNum}`
-  // 检查 checks 中的 label 是否为 "high"
-  const check = row?.checks?.[axisKey]
-  if (check?.label) {
-    return check.label.toLowerCase() === 'high'
-  }
-  return false
+  const value = row?.[axisKey] ?? row?.[axisKey.toLowerCase()]
+  return value?.toLowerCase() === 'high'
 }
 
 // 获取轴的状态文本（用于 all 标签页）
 const getAxisStatusText = (row, axisNum) => {
   const axisKey = `A${axisNum}`
-  const check = row?.checks?.[axisKey]
-  if (check?.label) {
-    const isHigh = check.label.toLowerCase() === 'high'
-    return `${check.label}${isHigh ? ' (高风险)' : ' (正常)'}`
+  const value = row?.[axisKey] ?? row?.[axisKey.toLowerCase()]
+  if (value) {
+    const isHigh = value.toLowerCase() === 'high'
+    return `${value}${isHigh ? ' (高风险)' : ' (正常)'}`
   }
   return '无数据'
 }
@@ -1116,7 +1123,8 @@ const openErrorTrendChart = async (robot, axisKey) => {
 const loadGroups = async () => {
   try {
     loading.value = true
-    groupsData.value = await getRobotGroups()
+    const response = await getRobotGroups()
+    groupsData.value = (response || []).map(normalizeGroupName)
     const queryGroup = route.query.group
 
     if (queryGroup && groupsData.value.find((g) => g.key === queryGroup)) {
@@ -1942,6 +1950,27 @@ onUnmounted(() => {
 .data-table-section :deep(.el-table__header th .cell) {
   white-space: nowrap;
   padding: 0 8px;
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
+
+/* 永久禁用表头排序激活色 - 统一为浅蓝灰色 */
+.data-table-section :deep(.el-table__header th:hover .cell),
+.data-table-section :deep(.el-table__header th.ascending .cell),
+.data-table-section :deep(.el-table__header th.descending .cell),
+.data-table-section :deep(.el-table__header th.is-sortable .cell:hover) {
+  color: #8da0b7 !important;
+}
+
+/* 排序图标颜色 */
+.data-table-section :deep(.el-table__header th .caret-wrapper .sort-caret.ascending),
+.data-table-section :deep(.el-table__header th .caret-wrapper .sort-caret.descending) {
+  color: #8da0b7 !important;
+}
+
+/* robot 列表头右移，内容不变 */
+.data-table-section :deep(.el-table__header th.robot-column .cell) {
+  padding-left: 34px !important;
 }
 
 .data-table-section :deep(.el-table__body tr) {

@@ -6,7 +6,7 @@ Changes:
 - engine -> PT (keep existing data)
 - hop -> Hop (keep existing data)
 - reuse -> 214reuse (keep existing data)
-- Add new workshops: EB5, MRA1BS, MRA2BS, 540, MMABS, shunyiBS, SA1, AS2
+- Add new workshops: EB5, MRA1BS, MRA2BS, 540, MMABS, shunyiBS, AS1, AS2
 """
 import math
 from datetime import timedelta
@@ -23,6 +23,7 @@ WORKSHOP_RENAME_MAP = {
     "engine": "PT",
     "hop": "Hop",
     "reuse": "214reuse",
+    "SA1": "AS1",
 }
 
 # New workshops to add with their expected totals
@@ -33,7 +34,7 @@ NEW_WORKSHOPS = [
     {"key": "540", "name": "540", "total": 89},
     {"key": "MMABS", "name": "MMABS", "total": 198},
     {"key": "shunyiBS", "name": "shunyiBS", "total": 245},
-    {"key": "SA1", "name": "SA1", "total": 176},
+    {"key": "AS1", "name": "AS1", "total": 176},
     {"key": "AS2", "name": "AS2", "total": 212},
 ]
 

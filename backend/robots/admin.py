@@ -12,21 +12,24 @@ class RobotGroupAdmin(admin.ModelAdmin):
 @admin.register(RobotComponent)
 class RobotComponentAdmin(admin.ModelAdmin):
     list_display = (
-        "robot_id",
-        "part_no",
-        "reference_no",
-        "type_spec",
+        "robot",
+        "shop",
+        "reference",
+        "type",
         "tech",
         "mark",
         "level",
-        "status",
-        "risk_level",
-        "risk_score",
-        "last_seen",
+        "a1",
+        "a2",
+        "a3",
+        "a4",
+        "a5",
+        "a6",
+        "a7",
         "updated_at",
     )
-    list_filter = ("group", "status", "level", "risk_level")
-    search_fields = ("robot_id", "name", "part_no", "reference_no", "type_spec", "tech", "remark")
+    list_filter = ("group", "shop", "level")
+    search_fields = ("robot", "reference", "type", "tech", "remark")
 
 
 @admin.register(RiskEvent)

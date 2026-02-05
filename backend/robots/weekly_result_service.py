@@ -17,132 +17,167 @@ def log_print(message: str):
     return f"[{timestamp}] {message}"
 
 
-def add_to_high_risk_history(component, source_file: str = "", record_source: str = "sync") -> bool:
-    """
-    将高风险机器人添加到历史记录表
-
-    Args:
-        component: RobotComponent 实例
-        source_file: 数据来源文件名
-        record_source: 记录来源 (sync/manual/api)
-
-    Returns:
-        是否成功添加到历史表
-    """
-    from .models import HighRiskHistory
-
-    # 始终追加新记录到历史表（不检查是否已存在）
-    HighRiskHistory.objects.create(
-        component=component,
-        part_no=component.part_no,
-        group_key=component.group.key,
-        group_name=component.group.name,
-        robot_id=component.robot_id,
-        name=component.name,
-        reference_no=component.reference_no,
-        number=component.number,
-        type_spec=component.type_spec,
-        tech=component.tech,
-        mark=component.mark,
-        remark=component.remark,
-        checks=component.checks,
-        level=component.level,
-        status=component.status,
-        battery=component.battery,
-        health=component.health,
-        motor_temp=component.motor_temp,
-        network_latency=component.network_latency,
-        last_seen=component.last_seen,
-        risk_score=component.risk_score,
-        risk_level=component.risk_level,
-        record_source=record_source
-    )
-    return True
-
-
-def create_high_risk_snapshot(component, source_file: str = "", snapshot_source: str = "manual") -> bool:
+def create_high_risk_snapshot(component) -> bool:
     """
     为高风险机器人创建数据快照
 
     Args:
         component: RobotComponent 实例
-        source_file: 数据来源文件名
-        snapshot_source: 快照来源 (manual/auto_sync/api)
 
     Returns:
-        是否创建了新快照
+        是否成功创建快照
     """
     from .models import RobotHighRiskSnapshot
 
-    part_no = component.part_no
-
-    # 检查是否已存在快照
-    existing = RobotHighRiskSnapshot.objects.filter(part_no=part_no).first()
-    if existing:
-        # 更新现有快照
-        existing.component = component
-        existing.group_key = component.group.key
-        existing.group_name = component.group.name
-        existing.robot_id = component.robot_id
-        existing.name = component.name
-        existing.reference_no = component.reference_no
-        existing.number = component.number
-        existing.type_spec = component.type_spec
-        existing.tech = component.tech
-        existing.mark = component.mark
-        existing.remark = component.remark
-        existing.checks = component.checks
-        existing.level = component.level
-        existing.status = component.status
-        existing.battery = component.battery
-        existing.health = component.health
-        existing.motor_temp = component.motor_temp
-        existing.network_latency = component.network_latency
-        existing.last_seen = component.last_seen
-        existing.risk_score = component.risk_score
-        existing.risk_level = component.risk_level
-        existing.risk_history = component.risk_history
-        existing.snapshot_source = snapshot_source
-        existing.is_active = True
-        existing.save(update_fields=[
-            'component', 'group_key', 'group_name', 'robot_id', 'name',
-            'reference_no', 'number', 'type_spec', 'tech', 'mark', 'remark',
-            'checks', 'level', 'status', 'battery', 'health', 'motor_temp',
-            'network_latency', 'last_seen', 'risk_score', 'risk_level',
-            'risk_history', 'snapshot_source', 'is_active'
-        ])
-        return False
-
-    # 创建新快照
+    # 字段与 RobotComponent 完全一致
     RobotHighRiskSnapshot.objects.create(
-        component=component,
-        part_no=part_no,
-        group_key=component.group.key,
-        group_name=component.group.name,
-        robot_id=component.robot_id,
-        name=component.name,
-        reference_no=component.reference_no,
+        group=component.group,
+        robot=component.robot,
+        shop=component.shop,
+        reference=component.reference,
         number=component.number,
-        type_spec=component.type_spec,
+        type=component.type,
         tech=component.tech,
         mark=component.mark,
         remark=component.remark,
-        checks=component.checks,
+        error1_c1=component.error1_c1,
+        tem1_m=component.tem1_m,
+        tem2_m=component.tem2_m,
+        tem3_m=component.tem3_m,
+        tem4_m=component.tem4_m,
+        tem5_m=component.tem5_m,
+        tem6_m=component.tem6_m,
+        tem7_m=component.tem7_m,
+        a1_e_rate=component.a1_e_rate,
+        a2_e_rate=component.a2_e_rate,
+        a3_e_rate=component.a3_e_rate,
+        a4_e_rate=component.a4_e_rate,
+        a5_e_rate=component.a5_e_rate,
+        a6_e_rate=component.a6_e_rate,
+        a7_e_rate=component.a7_e_rate,
+        a1_rms=component.a1_rms,
+        a2_rms=component.a2_rms,
+        a3_rms=component.a3_rms,
+        a4_rms=component.a4_rms,
+        a5_rms=component.a5_rms,
+        a6_rms=component.a6_rms,
+        a7_rms=component.a7_rms,
+        a1_e=component.a1_e,
+        a2_e=component.a2_e,
+        a3_e=component.a3_e,
+        a4_e=component.a4_e,
+        a5_e=component.a5_e,
+        a6_e=component.a6_e,
+        a7_e=component.a7_e,
+        q1=component.q1,
+        q2=component.q2,
+        q3=component.q3,
+        q4=component.q4,
+        q5=component.q5,
+        q6=component.q6,
+        q7=component.q7,
+        curr_a1_max=component.curr_a1_max,
+        curr_a2_max=component.curr_a2_max,
+        curr_a3_max=component.curr_a3_max,
+        curr_a4_max=component.curr_a4_max,
+        curr_a5_max=component.curr_a5_max,
+        curr_a6_max=component.curr_a6_max,
+        curr_a7_max=component.curr_a7_max,
+        curr_a1_min=component.curr_a1_min,
+        curr_a2_min=component.curr_a2_min,
+        curr_a3_min=component.curr_a3_min,
+        curr_a4_min=component.curr_a4_min,
+        curr_a5_min=component.curr_a5_min,
+        curr_a6_min=component.curr_a6_min,
+        curr_a7_min=component.curr_a7_min,
+        a1=component.a1,
+        a2=component.a2,
+        a3=component.a3,
+        a4=component.a4,
+        a5=component.a5,
+        a6=component.a6,
+        a7=component.a7,
+        p_change=component.p_change,
         level=component.level,
-        status=component.status,
-        battery=component.battery,
-        health=component.health,
-        motor_temp=component.motor_temp,
-        network_latency=component.network_latency,
-        last_seen=component.last_seen,
-        risk_score=component.risk_score,
-        risk_level=component.risk_level,
-        risk_history=component.risk_history,
-        snapshot_reason=f"从 {source_file} 导入时等级为 H",
-        snapshot_source=snapshot_source,
-        is_active=True
     )
     return True
+
+
+def archive_high_risk_robots() -> dict:
+    """
+    将上次记录的高风险机器人数据存入历史快照表
+
+    流程：
+    1. 从 SystemConfig 获取上次记录的高风险机器人 robot 列表
+    2. 根据 robot 列表从 robot_components 表获取数据
+    3. 将数据存入 _robot_high_risk_snapshots 表
+
+    Returns:
+        归档结果统计
+    """
+    from .models import RobotComponent, SystemConfig
+
+    # 获取上次记录的高风险机器人列表
+    last_high_risk_robots = SystemConfig.get('last_high_risk_robots', '[]')
+
+    try:
+        import json
+        robot_list = json.loads(last_high_risk_robots)
+    except json.JSONDecodeError:
+        log_print("警告：上次的高风险机器人列表格式错误，重新初始化")
+        robot_list = []
+
+    if not robot_list:
+        # 兜底：SystemConfig 缺失或为空时，直接使用当前高风险机器人
+        robot_list = list(
+            RobotComponent.objects.filter(level='H').values_list('robot', flat=True)
+        )
+        if not robot_list:
+            log_print("没有需要归档的高风险机器人（首次同步或上次无高风险数据）")
+            return {'archived_count': 0, 'message': '没有需要归档的高风险机器人'}
+        log_print("未找到上次高风险列表，改用当前高风险机器人进行归档")
+
+    log_print(f"准备归档 {len(robot_list)} 个高风险机器人: {', '.join(robot_list[:10])}{'...' if len(robot_list) > 10 else ''}")
+
+    # 获取这些机器人的数据
+    components = RobotComponent.objects.filter(robot__in=robot_list)
+    archived_count = 0
+
+    for component in components:
+        create_high_risk_snapshot(component)
+        archived_count += 1
+
+    log_print(f"已归档 {archived_count} 条高风险机器人数据到历史快照表")
+
+    return {'archived_count': archived_count}
+
+
+def save_current_high_risk_robots() -> None:
+    """
+    记录当前的高风险机器人列表到 SystemConfig
+    供下次同步时归档使用
+    """
+    from .models import RobotComponent, SystemConfig
+    import json
+
+    # 获取当前 level='H' 的机器人列表
+    high_risk_robots = list(
+        RobotComponent.objects.filter(level='H').values_list('robot', flat=True).distinct()
+    )
+
+    # 存入 SystemConfig
+    SystemConfig.set(
+        'last_high_risk_robots',
+        json.dumps(high_risk_robots),
+        '上次同步时的高风险机器人列表（用于下次同步时归档）'
+    )
+
+    # 详细日志
+    if high_risk_robots:
+        log_print(f"已记录 {len(high_risk_robots)} 个高风险机器人，供下次同步时归档")
+        log_print(f"高风险机器人列表: {', '.join(high_risk_robots[:10])}{'...' if len(high_risk_robots) > 10 else ''}")
+    else:
+        log_print("当前没有高风险机器人需要记录")
 
 
 def get_latest_weeklyresult_csv(folder_path: str = None, project: str = None) -> str:
@@ -228,238 +263,6 @@ def parse_week_from_filename(filename: str) -> tuple:
     return date_start, date_end
 
 
-def import_weeklyresult_csv(file_path: str = None, folder_path: str = None, project: str = None) -> dict:
-    """
-    从 weeklyresult.csv 文件导入数据到数据库
-
-    参数:
-        file_path: CSV 文件路径，如果为 None 则自动获取最新文件
-        folder_path: 文件夹路径（用于自动查找）
-        project: 项目名称（用于自动查找）
-
-    返回:
-        导入结果统计:
-        {
-            'success': True,
-            'file': '文件路径',
-            'records_imported': 100,
-            'records_updated': 10,
-            'week_start': '2025-04-10',
-            'week_end': '2025-05-16'
-        }
-    """
-    from .models import WeeklyResult
-
-    # 获取文件路径
-    if file_path is None:
-        file_path = get_latest_weeklyresult_csv(folder_path, project)
-
-    # 解析周日期
-    week_start, week_end = parse_week_from_filename(file_path)
-    source_file = os.path.basename(file_path)
-
-    # 读取 CSV 文件
-    df = pd.read_csv(file_path)
-
-    # 统计信息
-    records_imported = 0
-    records_updated = 0
-
-    # 删除该批次之前的旧数据（可选，根据需求决定是否保留历史数据）
-    # WeeklyResult.objects.filter(source_file=source_file).delete()
-
-    for _, row in df.iterrows():
-        # 处理 NaN 值
-        def safe_float(val):
-            if pd.isna(val) or val == '':
-                return None
-            # 处理字符串值（如 "high"）
-            if isinstance(val, str):
-                return None  # 将 "high" 等字符串值转换为 None
-            try:
-                return float(val)
-            except (ValueError, TypeError):
-                return None
-
-        def safe_str(val):
-            if pd.isna(val):
-                return ''
-            return str(val) if val is not None else ''
-
-        def safe_int(val):
-            if pd.isna(val) or val == '':
-                return 0
-            try:
-                return int(val)
-            except (ValueError, TypeError):
-                return 0
-
-        # 检查是否已存在相同机器人和周的数据
-        existing = WeeklyResult.objects.filter(
-            robot=safe_str(row.get('robot', '')),
-            source_file=source_file
-        ).first()
-
-        if existing:
-            # 更新现有记录
-            existing.shop = safe_str(row.get('shop', ''))
-            existing.reference = safe_str(row.get('reference', ''))
-            existing.number = safe_float(row.get('number'))
-            existing.type = safe_str(row.get('type', ''))
-            existing.tech = safe_str(row.get('tech', ''))
-            existing.mark = safe_int(row.get('mark', 0))
-            existing.remark = safe_str(row.get('remark', ''))
-            existing.error1_c1 = safe_float(row.get('error1_c1'))
-            existing.tem1_m = safe_float(row.get('tem1_m'))
-            existing.tem2_m = safe_float(row.get('tem2_m'))
-            existing.tem3_m = safe_float(row.get('tem3_m'))
-            existing.tem4_m = safe_float(row.get('tem4_m'))
-            existing.tem5_m = safe_float(row.get('tem5_m'))
-            existing.tem6_m = safe_float(row.get('tem6_m'))
-            existing.tem7_m = safe_float(row.get('tem7_m'))
-            existing.a1_e_rate = safe_float(row.get('A1_e_rate'))
-            existing.a2_e_rate = safe_float(row.get('A2_e_rate'))
-            existing.a3_e_rate = safe_float(row.get('A3_e_rate'))
-            existing.a4_e_rate = safe_float(row.get('A4_e_rate'))
-            existing.a5_e_rate = safe_float(row.get('A5_e_rate'))
-            existing.a6_e_rate = safe_float(row.get('A6_e_rate'))
-            existing.a7_e_rate = safe_float(row.get('A7_e_rate'))
-            existing.a1_rms = safe_float(row.get('A1_Rms'))
-            existing.a2_rms = safe_float(row.get('A2_Rms'))
-            existing.a3_rms = safe_float(row.get('A3_Rms'))
-            existing.a4_rms = safe_float(row.get('A4_Rms'))
-            existing.a5_rms = safe_float(row.get('A5_Rms'))
-            existing.a6_rms = safe_float(row.get('A6_Rms'))
-            existing.a7_rms = safe_float(row.get('A7_Rms'))
-            existing.a1_e = safe_float(row.get('A1_E'))
-            existing.a2_e = safe_float(row.get('A2_E'))
-            existing.a3_e = safe_float(row.get('A3_E'))
-            existing.a4_e = safe_float(row.get('A4_E'))
-            existing.a5_e = safe_float(row.get('A5_E'))
-            existing.a6_e = safe_float(row.get('A6_E'))
-            existing.a7_e = safe_float(row.get('A7_E'))
-            existing.q1 = safe_float(row.get('Q1'))
-            existing.q2 = safe_float(row.get('Q2'))
-            existing.q3 = safe_float(row.get('Q3'))
-            existing.q4 = safe_float(row.get('Q4'))
-            existing.q5 = safe_float(row.get('Q5'))
-            existing.q6 = safe_float(row.get('Q6'))
-            existing.q7 = safe_float(row.get('Q7'))
-            existing.curr_a1_max = safe_float(row.get('Curr_A1_max'))
-            existing.curr_a2_max = safe_float(row.get('Curr_A2_max'))
-            existing.curr_a3_max = safe_float(row.get('Curr_A3_max'))
-            existing.curr_a4_max = safe_float(row.get('Curr_A4_max'))
-            existing.curr_a5_max = safe_float(row.get('Curr_A5_max'))
-            existing.curr_a6_max = safe_float(row.get('Curr_A6_max'))
-            existing.curr_a7_max = safe_float(row.get('Curr_A7_max'))
-            existing.curr_a1_min = safe_float(row.get('Curr_A1_min'))
-            existing.curr_a2_min = safe_float(row.get('Curr_A2_min'))
-            existing.curr_a3_min = safe_float(row.get('Curr_A3_min'))
-            existing.curr_a4_min = safe_float(row.get('Curr_A4_min'))
-            existing.curr_a5_min = safe_float(row.get('Curr_A5_min'))
-            existing.curr_a6_min = safe_float(row.get('Curr_A6_min'))
-            existing.curr_a7_min = safe_float(row.get('Curr_A7_min'))
-            existing.a1 = safe_float(row.get('A1'))
-            existing.a2 = safe_float(row.get('A2'))
-            existing.a3 = safe_float(row.get('A3'))
-            existing.a4 = safe_float(row.get('A4'))
-            existing.a5 = safe_float(row.get('A5'))
-            existing.a6 = safe_float(row.get('A6'))
-            existing.a7 = safe_float(row.get('A7'))
-            existing.p_change = safe_float(row.get('P_Change'))
-            existing.level = safe_str(row.get('level', 'L'))
-            existing.week_start = week_start
-            existing.week_end = week_end
-            existing.save()
-            records_updated += 1
-        else:
-            # 创建新记录
-            WeeklyResult.objects.create(
-                robot=safe_str(row.get('robot', '')),
-                shop=safe_str(row.get('shop', '')),
-                reference=safe_str(row.get('reference', '')),
-                number=safe_float(row.get('number')),
-                type=safe_str(row.get('type', '')),
-                tech=safe_str(row.get('tech', '')),
-                mark=safe_int(row.get('mark', 0)),
-                remark=safe_str(row.get('remark', '')),
-                error1_c1=safe_float(row.get('error1_c1')),
-                tem1_m=safe_float(row.get('tem1_m')),
-                tem2_m=safe_float(row.get('tem2_m')),
-                tem3_m=safe_float(row.get('tem3_m')),
-                tem4_m=safe_float(row.get('tem4_m')),
-                tem5_m=safe_float(row.get('tem5_m')),
-                tem6_m=safe_float(row.get('tem6_m')),
-                tem7_m=safe_float(row.get('tem7_m')),
-                a1_e_rate=safe_float(row.get('A1_e_rate')),
-                a2_e_rate=safe_float(row.get('A2_e_rate')),
-                a3_e_rate=safe_float(row.get('A3_e_rate')),
-                a4_e_rate=safe_float(row.get('A4_e_rate')),
-                a5_e_rate=safe_float(row.get('A5_e_rate')),
-                a6_e_rate=safe_float(row.get('A6_e_rate')),
-                a7_e_rate=safe_float(row.get('A7_e_rate')),
-                a1_rms=safe_float(row.get('A1_Rms')),
-                a2_rms=safe_float(row.get('A2_Rms')),
-                a3_rms=safe_float(row.get('A3_Rms')),
-                a4_rms=safe_float(row.get('A4_Rms')),
-                a5_rms=safe_float(row.get('A5_Rms')),
-                a6_rms=safe_float(row.get('A6_Rms')),
-                a7_rms=safe_float(row.get('A7_Rms')),
-                a1_e=safe_float(row.get('A1_E')),
-                a2_e=safe_float(row.get('A2_E')),
-                a3_e=safe_float(row.get('A3_E')),
-                a4_e=safe_float(row.get('A4_E')),
-                a5_e=safe_float(row.get('A5_E')),
-                a6_e=safe_float(row.get('A6_E')),
-                a7_e=safe_float(row.get('A7_E')),
-                q1=safe_float(row.get('Q1')),
-                q2=safe_float(row.get('Q2')),
-                q3=safe_float(row.get('Q3')),
-                q4=safe_float(row.get('Q4')),
-                q5=safe_float(row.get('Q5')),
-                q6=safe_float(row.get('Q6')),
-                q7=safe_float(row.get('Q7')),
-                curr_a1_max=safe_float(row.get('Curr_A1_max')),
-                curr_a2_max=safe_float(row.get('Curr_A2_max')),
-                curr_a3_max=safe_float(row.get('Curr_A3_max')),
-                curr_a4_max=safe_float(row.get('Curr_A4_max')),
-                curr_a5_max=safe_float(row.get('Curr_A5_max')),
-                curr_a6_max=safe_float(row.get('Curr_A6_max')),
-                curr_a7_max=safe_float(row.get('Curr_A7_max')),
-                curr_a1_min=safe_float(row.get('Curr_A1_min')),
-                curr_a2_min=safe_float(row.get('Curr_A2_min')),
-                curr_a3_min=safe_float(row.get('Curr_A3_min')),
-                curr_a4_min=safe_float(row.get('Curr_A4_min')),
-                curr_a5_min=safe_float(row.get('Curr_A5_min')),
-                curr_a6_min=safe_float(row.get('Curr_A6_min')),
-                curr_a7_min=safe_float(row.get('Curr_A7_min')),
-                a1=safe_float(row.get('A1')),
-                a2=safe_float(row.get('A2')),
-                a3=safe_float(row.get('A3')),
-                a4=safe_float(row.get('A4')),
-                a5=safe_float(row.get('A5')),
-                a6=safe_float(row.get('A6')),
-                a7=safe_float(row.get('A7')),
-                p_change=safe_float(row.get('P_Change')),
-                level=safe_str(row.get('level', 'L')),
-                source_file=source_file,
-                week_start=week_start,
-                week_end=week_end,
-            )
-            records_imported += 1
-
-    return {
-        'success': True,
-        'file': file_path,
-        'source_file': source_file,
-        'records_imported': records_imported,
-        'records_updated': records_updated,
-        'total_records': records_imported + records_updated,
-        'week_start': week_start.isoformat() if week_start else None,
-        'week_end': week_end.isoformat() if week_end else None,
-    }
-
-
 def get_available_csv_files(folder_path: str = None, project: str = None) -> list:
     """
     获取所有可用的 weeklyresult.csv 文件列表
@@ -504,20 +307,34 @@ def get_available_csv_files(folder_path: str = None, project: str = None) -> lis
     return results
 
 
-def import_robot_components_csv(file_path: str = None, folder_path: str = None, project: str = None) -> dict:
+def import_robot_components_csv(
+    file_path: str = None,
+    folder_path: str = None,
+    project: str = None,
+    source: str = "manual"
+) -> dict:
     """
     直接将 weeklyresult.csv 文件导入到 RobotComponent 表
     跳过 WeeklyResult 表，直接更新机器人状态界面数据
+
+    真覆盖模式：CSV 中不存在的机器人数据将被删除
 
     参数:
         file_path: CSV 文件路径，如果为 None 则自动获取最新文件
         folder_path: 文件夹路径（用于自动查找）
         project: 项目名称（用于自动查找）
+        source: 数据来源 ("manual" 手动同步 / "auto" 自动同步)
 
     返回:
         导入结果统计
     """
-    from .models import RobotComponent, RobotGroup
+    from .models import RobotComponent, RobotGroup, RefreshLog
+
+    # 步骤0：先归档上次的高风险数据（必须在导入新数据之前执行！）
+    log_print("开始归档上次的高风险数据...")
+    archive_result = archive_high_risk_robots()
+    if archive_result.get('archived_count', 0) > 0:
+        log_print(f"已归档 {archive_result['archived_count']} 条高风险数据到历史快照表")
 
     # 获取文件路径
     log_print("开始导入流程...")
@@ -546,6 +363,7 @@ def import_robot_components_csv(file_path: str = None, folder_path: str = None, 
     records_protected = 0
     shop_stats = {}
     skipped_no_robot = 0
+    csv_robots = set()  # 记录 CSV 中所有的 robot 值，用于删除旧数据
 
     log_print("开始处理数据行...")
 
@@ -590,34 +408,25 @@ def import_robot_components_csv(file_path: str = None, folder_path: str = None, 
         )
 
         # 获取机器人编号
-        robot_id = safe_str(row.get('robot', ''))
-        if not robot_id:
+        robot_val = safe_str(row.get('robot', ''))
+        if not robot_val:
             skipped_no_robot += 1
-            continue  # 跳过没有 robot_id 的行
+            continue  # 跳过没有 robot 的行
 
-        # 检查 RobotComponent 是否存在（通过 part_no 查找）
-        existing = RobotComponent.objects.filter(part_no=robot_id).first()
+        # 记录 CSV 中所有的 robot 值，用于后续删除旧数据
+        csv_robots.add(robot_val)
+
+        # 检查 RobotComponent 是否存在（通过 robot 查找）
+        existing = RobotComponent.objects.filter(robot=robot_val).first()
 
         if existing:
-            # 检查是否有高风险快照保护
-            from .models import RobotHighRiskSnapshot
-            snapshot = RobotHighRiskSnapshot.objects.filter(
-                part_no=robot_id,
-                is_active=True
-            ).first()
-
-            if snapshot:
-                # 有快照保护，跳过更新，保持原有数据
-                records_protected += 1
-                continue
-
-            # 更新现有记录
+            # 更新现有记录（不再使用快照保护机制，快照表只用于历史记录）
             existing.group = group
-            existing.robot_id = robot_id
-            existing.name = f"{safe_str(row.get('type', ''))} - {safe_str(row.get('tech', ''))}"
-            existing.reference_no = safe_str(row.get('reference', ''))
+            existing.robot = robot_val
+            existing.shop = shop_name  # 修复：更新 shop 字段
+            existing.reference = safe_str(row.get('reference', ''))
             existing.number = safe_int(row.get('number', 0))
-            existing.type_spec = safe_str(row.get('type', ''))
+            existing.type = safe_str(row.get('type', ''))
             existing.tech = safe_str(row.get('tech', ''))
             existing.mark = safe_int(row.get('mark', 0))
             existing.remark = safe_str(row.get('remark', ''))
@@ -673,17 +482,17 @@ def import_robot_components_csv(file_path: str = None, folder_path: str = None, 
             existing.curr_a5_min = safe_float(row.get('Curr_A5_min'))
             existing.curr_a6_min = safe_float(row.get('Curr_A6_min'))
             existing.curr_a7_min = safe_float(row.get('Curr_A7_min'))
-            existing.a1 = safe_float(row.get('A1'))
-            existing.a2 = safe_float(row.get('A2'))
-            existing.a3 = safe_float(row.get('A3'))
-            existing.a4 = safe_float(row.get('A4'))
-            existing.a5 = safe_float(row.get('A5'))
-            existing.a6 = safe_float(row.get('A6'))
-            existing.a7 = safe_float(row.get('A7'))
+            existing.a1 = safe_str(row.get('A1'))
+            existing.a2 = safe_str(row.get('A2'))
+            existing.a3 = safe_str(row.get('A3'))
+            existing.a4 = safe_str(row.get('A4'))
+            existing.a5 = safe_str(row.get('A5'))
+            existing.a6 = safe_str(row.get('A6'))
+            existing.a7 = safe_str(row.get('A7'))
             existing.p_change = safe_float(row.get('P_Change'))
             existing.save(update_fields=[
-                'group', 'robot_id', 'name', 'reference_no',
-                'number', 'type_spec', 'tech', 'mark', 'remark', 'level',
+                'group', 'robot', 'shop', 'reference',  # 修复：添加 'shop' 字段
+                'number', 'type', 'tech', 'mark', 'remark', 'level',
                 'error1_c1', 'tem1_m', 'tem2_m', 'tem3_m', 'tem4_m', 'tem5_m', 'tem6_m', 'tem7_m',
                 'a1_e_rate', 'a2_e_rate', 'a3_e_rate', 'a4_e_rate', 'a5_e_rate', 'a6_e_rate', 'a7_e_rate',
                 'a1_rms', 'a2_rms', 'a3_rms', 'a4_rms', 'a5_rms', 'a6_rms', 'a7_rms',
@@ -697,20 +506,16 @@ def import_robot_components_csv(file_path: str = None, folder_path: str = None, 
             records_updated += 1
             shop_stats[shop_name]['updated'] += 1
 
-            # 如果更新后的等级为 H，自动创建快照并添加到历史表
-            if existing.level == 'H':
-                create_high_risk_snapshot(existing, source_file, 'auto_sync')
-                add_to_high_risk_history(existing, source_file, 'sync')
+            # 注意：不再立即创建快照，快照将在下次同步时创建
         else:
             # 创建新记录
             new_component = RobotComponent.objects.create(
                 group=group,
-                robot_id=robot_id,
-                part_no=robot_id,
-                name=f"{safe_str(row.get('type', ''))} - {safe_str(row.get('tech', ''))}",
-                reference_no=safe_str(row.get('reference', '')),
+                robot=robot_val,
+                shop=shop_name,  # 修复：创建时设置 shop 字段
+                reference=safe_str(row.get('reference', '')),
                 number=safe_int(row.get('number', 0)),
-                type_spec=safe_str(row.get('type', '')),
+                type=safe_str(row.get('type', '')),
                 tech=safe_str(row.get('tech', '')),
                 mark=safe_int(row.get('mark', 0)),
                 remark=safe_str(row.get('remark', '')),
@@ -766,22 +571,19 @@ def import_robot_components_csv(file_path: str = None, folder_path: str = None, 
                 curr_a5_min=safe_float(row.get('Curr_A5_min')),
                 curr_a6_min=safe_float(row.get('Curr_A6_min')),
                 curr_a7_min=safe_float(row.get('Curr_A7_min')),
-                a1=safe_float(row.get('A1')),
-                a2=safe_float(row.get('A2')),
-                a3=safe_float(row.get('A3')),
-                a4=safe_float(row.get('A4')),
-                a5=safe_float(row.get('A5')),
-                a6=safe_float(row.get('A6')),
-                a7=safe_float(row.get('A7')),
+                a1=safe_str(row.get('A1')),
+                a2=safe_str(row.get('A2')),
+                a3=safe_str(row.get('A3')),
+                a4=safe_str(row.get('A4')),
+                a5=safe_str(row.get('A5')),
+                a6=safe_str(row.get('A6')),
+                a7=safe_str(row.get('A7')),
                 p_change=safe_float(row.get('P_Change')),
             )
             records_created += 1
             shop_stats[shop_name]['created'] += 1
 
-            # 如果新创建的等级为 H，自动创建快照并添加到历史表
-            if new_component.level == 'H':
-                create_high_risk_snapshot(new_component, source_file, 'auto_sync')
-                add_to_high_risk_history(new_component, source_file, 'sync')
+            # 注意：不再立即创建快照，快照将在下次同步时创建
 
         # 每处理50行记录一次日志
         if (idx + 1) % 50 == 0:
@@ -814,6 +616,31 @@ def import_robot_components_csv(file_path: str = None, folder_path: str = None, 
     )
     log_print(f"已记录同步时间: {sync_time}")
 
+    # 真覆盖模式：删除 CSV 中不存在的机器人数据
+    deleted_count = 0
+    if csv_robots:
+        deleted_count = RobotComponent.objects.exclude(robot__in=csv_robots).delete()[0]
+        if deleted_count > 0:
+            log_print(f"已删除 {deleted_count} 条 CSV 中不存在的旧数据（真覆盖模式）")
+    else:
+        log_print("警告：CSV 中没有有效的 robot 数据，不执行删除操作")
+
+    # 记录当前的高风险机器人列表，供下次同步时归档使用
+    save_current_high_risk_robots()
+
+    # 写入刷新日志
+    RefreshLog.objects.create(
+        source=source,
+        status="success",
+        source_file=source_file,
+        file_date=week_start,
+        records_created=records_created,
+        records_updated=records_updated,
+        records_deleted=deleted_count,
+        total_records=records_created + records_updated,
+    )
+    log_print(f"已记录刷新日志: {source} 同步完成")
+
     return {
         'success': True,
         'file': file_path,
@@ -826,251 +653,4 @@ def import_robot_components_csv(file_path: str = None, folder_path: str = None, 
         'skipped_no_robot': skipped_no_robot,
         'total_rows': total_rows,
         'date': week_start.isoformat() if week_start else None,
-    }
-
-
-def sync_weeklyresult_to_robotcomponent() -> dict:
-    """
-    将 WeeklyResult 表的数据同步到 RobotComponent 表
-    包含所有详细字段
-
-    返回:
-        同步结果统计
-    """
-    from .models import RobotComponent, RobotGroup, WeeklyResult
-
-    log_print("开始从 WeeklyResult 同步数据到 RobotComponent...")
-
-    wr_count = WeeklyResult.objects.count()
-    if wr_count == 0:
-        return {
-            'success': False,
-            'error': '没有可用的周结果数据，请先导入 CSV 文件'
-        }
-
-    synced_count = 0
-    updated_count = 0
-    shop_stats = {}
-
-    # 同步所有 WeeklyResult 数据
-    for wr in WeeklyResult.objects.all():
-        shop_name = wr.shop or '(空)'
-
-        # 统计各车间数量
-        if shop_name not in shop_stats:
-            shop_stats[shop_name] = {'created': 0, 'updated': 0}
-
-        # 获取或创建 RobotGroup
-        group, _ = RobotGroup.objects.get_or_create(
-            key=shop_name,
-            defaults={'name': shop_name, 'expected_total': 0}
-        )
-
-        # 检查 RobotComponent 是否存在
-        existing = RobotComponent.objects.filter(part_no=wr.robot).first()
-
-        if existing:
-            # 检查是否有高风险快照保护
-            from .models import RobotHighRiskSnapshot
-            snapshot = RobotHighRiskSnapshot.objects.filter(
-                part_no=wr.robot,
-                is_active=True
-            ).first()
-
-            if snapshot:
-                # 有快照保护，跳过更新
-                continue
-
-            # 更新现有记录（包含所有详细字段）
-            existing.group = group
-            existing.robot_id = wr.robot
-            existing.name = f"{wr.type or ''} - {wr.tech or ''}"
-            existing.reference_no = wr.reference or ''
-            existing.number = int(wr.number) if wr.number else 0
-            existing.type_spec = wr.type or ''
-            existing.tech = wr.tech or ''
-            existing.mark = wr.mark
-            existing.remark = wr.remark or ''
-            existing.level = wr.level or 'L'
-            # 详细数据字段
-            existing.error1_c1 = wr.error1_c1
-            existing.tem1_m = wr.tem1_m
-            existing.tem2_m = wr.tem2_m
-            existing.tem3_m = wr.tem3_m
-            existing.tem4_m = wr.tem4_m
-            existing.tem5_m = wr.tem5_m
-            existing.tem6_m = wr.tem6_m
-            existing.tem7_m = wr.tem7_m
-            existing.a1_e_rate = wr.a1_e_rate
-            existing.a2_e_rate = wr.a2_e_rate
-            existing.a3_e_rate = wr.a3_e_rate
-            existing.a4_e_rate = wr.a4_e_rate
-            existing.a5_e_rate = wr.a5_e_rate
-            existing.a6_e_rate = wr.a6_e_rate
-            existing.a7_e_rate = wr.a7_e_rate
-            existing.a1_rms = wr.a1_rms
-            existing.a2_rms = wr.a2_rms
-            existing.a3_rms = wr.a3_rms
-            existing.a4_rms = wr.a4_rms
-            existing.a5_rms = wr.a5_rms
-            existing.a6_rms = wr.a6_rms
-            existing.a7_rms = wr.a7_rms
-            existing.a1_e = wr.a1_e
-            existing.a2_e = wr.a2_e
-            existing.a3_e = wr.a3_e
-            existing.a4_e = wr.a4_e
-            existing.a5_e = wr.a5_e
-            existing.a6_e = wr.a6_e
-            existing.a7_e = wr.a7_e
-            existing.q1 = wr.q1
-            existing.q2 = wr.q2
-            existing.q3 = wr.q3
-            existing.q4 = wr.q4
-            existing.q5 = wr.q5
-            existing.q6 = wr.q6
-            existing.q7 = wr.q7
-            existing.curr_a1_max = wr.curr_a1_max
-            existing.curr_a2_max = wr.curr_a2_max
-            existing.curr_a3_max = wr.curr_a3_max
-            existing.curr_a4_max = wr.curr_a4_max
-            existing.curr_a5_max = wr.curr_a5_max
-            existing.curr_a6_max = wr.curr_a6_max
-            existing.curr_a7_max = wr.curr_a7_max
-            existing.curr_a1_min = wr.curr_a1_min
-            existing.curr_a2_min = wr.curr_a2_min
-            existing.curr_a3_min = wr.curr_a3_min
-            existing.curr_a4_min = wr.curr_a4_min
-            existing.curr_a5_min = wr.curr_a5_min
-            existing.curr_a6_min = wr.curr_a6_min
-            existing.curr_a7_min = wr.curr_a7_min
-            existing.a1 = wr.a1
-            existing.a2 = wr.a2
-            existing.a3 = wr.a3
-            existing.a4 = wr.a4
-            existing.a5 = wr.a5
-            existing.a6 = wr.a6
-            existing.a7 = wr.a7
-            existing.p_change = wr.p_change
-            existing.save(update_fields=[
-                'group', 'robot_id', 'name', 'reference_no',
-                'number', 'type_spec', 'tech', 'mark', 'remark', 'level',
-                'error1_c1', 'tem1_m', 'tem2_m', 'tem3_m', 'tem4_m', 'tem5_m', 'tem6_m', 'tem7_m',
-                'a1_e_rate', 'a2_e_rate', 'a3_e_rate', 'a4_e_rate', 'a5_e_rate', 'a6_e_rate', 'a7_e_rate',
-                'a1_rms', 'a2_rms', 'a3_rms', 'a4_rms', 'a5_rms', 'a6_rms', 'a7_rms',
-                'a1_e', 'a2_e', 'a3_e', 'a4_e', 'a5_e', 'a6_e', 'a7_e',
-                'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7',
-                'curr_a1_max', 'curr_a2_max', 'curr_a3_max', 'curr_a4_max', 'curr_a5_max', 'curr_a6_max', 'curr_a7_max',
-                'curr_a1_min', 'curr_a2_min', 'curr_a3_min', 'curr_a4_min', 'curr_a5_min', 'curr_a6_min', 'curr_a7_min',
-                'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7',
-                'p_change',
-            ])
-            updated_count += 1
-            shop_stats[shop_name]['updated'] += 1
-
-            # 如果更新后的等级为 H，自动创建快照并添加到历史表
-            if existing.level == 'H':
-                create_high_risk_snapshot(existing, 'WeeklyResult同步', 'sync')
-                add_to_high_risk_history(existing, 'WeeklyResult同步', 'sync')
-        else:
-            # 创建新记录（包含所有详细字段）
-            new_component = RobotComponent.objects.create(
-                group=group,
-                robot_id=wr.robot,
-                part_no=wr.robot,
-                name=f"{wr.type or ''} - {wr.tech or ''}",
-                reference_no=wr.reference or '',
-                number=int(wr.number) if wr.number else 0,
-                type_spec=wr.type or '',
-                tech=wr.tech or '',
-                mark=wr.mark,
-                remark=wr.remark or '',
-                level=wr.level or 'L',
-                # 详细数据字段
-                error1_c1=wr.error1_c1,
-                tem1_m=wr.tem1_m,
-                tem2_m=wr.tem2_m,
-                tem3_m=wr.tem3_m,
-                tem4_m=wr.tem4_m,
-                tem5_m=wr.tem5_m,
-                tem6_m=wr.tem6_m,
-                tem7_m=wr.tem7_m,
-                a1_e_rate=wr.a1_e_rate,
-                a2_e_rate=wr.a2_e_rate,
-                a3_e_rate=wr.a3_e_rate,
-                a4_e_rate=wr.a4_e_rate,
-                a5_e_rate=wr.a5_e_rate,
-                a6_e_rate=wr.a6_e_rate,
-                a7_e_rate=wr.a7_e_rate,
-                a1_rms=wr.a1_rms,
-                a2_rms=wr.a2_rms,
-                a3_rms=wr.a3_rms,
-                a4_rms=wr.a4_rms,
-                a5_rms=wr.a5_rms,
-                a6_rms=wr.a6_rms,
-                a7_rms=wr.a7_rms,
-                a1_e=wr.a1_e,
-                a2_e=wr.a2_e,
-                a3_e=wr.a3_e,
-                a4_e=wr.a4_e,
-                a5_e=wr.a5_e,
-                a6_e=wr.a6_e,
-                a7_e=wr.a7_e,
-                q1=wr.q1,
-                q2=wr.q2,
-                q3=wr.q3,
-                q4=wr.q4,
-                q5=wr.q5,
-                q6=wr.q6,
-                q7=wr.q7,
-                curr_a1_max=wr.curr_a1_max,
-                curr_a2_max=wr.curr_a2_max,
-                curr_a3_max=wr.curr_a3_max,
-                curr_a4_max=wr.curr_a4_max,
-                curr_a5_max=wr.curr_a5_max,
-                curr_a6_max=wr.curr_a6_max,
-                curr_a7_max=wr.curr_a7_max,
-                curr_a1_min=wr.curr_a1_min,
-                curr_a2_min=wr.curr_a2_min,
-                curr_a3_min=wr.curr_a3_min,
-                curr_a4_min=wr.curr_a4_min,
-                curr_a5_min=wr.curr_a5_min,
-                curr_a6_min=wr.curr_a6_min,
-                curr_a7_min=wr.curr_a7_min,
-                a1=wr.a1,
-                a2=wr.a2,
-                a3=wr.a3,
-                a4=wr.a4,
-                a5=wr.a5,
-                a6=wr.a6,
-                a7=wr.a7,
-                p_change=wr.p_change,
-            )
-            synced_count += 1
-            shop_stats[shop_name]['created'] += 1
-
-            # 如果新创建的等级为 H，自动创建快照并添加到历史表
-            if new_component.level == 'H':
-                create_high_risk_snapshot(new_component, 'WeeklyResult同步', 'sync')
-                add_to_high_risk_history(new_component, 'WeeklyResult同步', 'sync')
-
-    # 记录同步时间
-    from django.utils import timezone
-    from .models import SystemConfig
-    sync_time = timezone.now().isoformat()
-    SystemConfig.set(
-        'last_sync_time',
-        sync_time,
-        '最后同步机器人数据的时间'
-    )
-
-    log_print(f"同步完成！处理 {wr_count} 条 WeeklyResult 记录")
-    log_print(f"  新增: {synced_count} 条")
-    log_print(f"  更新: {updated_count} 条")
-
-    return {
-        'success': True,
-        'total_processed': wr_count,
-        'records_created': synced_count,
-        'records_updated': updated_count,
-        'shop_stats': shop_stats,
     }

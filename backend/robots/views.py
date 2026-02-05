@@ -7,18 +7,14 @@ from rest_framework.decorators import action, api_view
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
-from .models import RiskEvent, RobotComponent, RobotGroup, WeeklyResult, HighRiskHistory
+from .models import RiskEvent, RobotComponent, RobotGroup, RobotHighRiskSnapshot
 from .serializers import (
     RiskEventSerializer,
     RobotComponentSerializer,
     RobotGroupSerializer,
     BIRobotSerializer,
     GripperCheckSerializer,
-    WeeklyResultSerializer,
-    WeeklyResultListSerializer,
-    WeeklyResultImportSerializer,
-    WeeklyResultFileSerializer,
-    HighRiskHistorySerializer,
+    RobotHighRiskSnapshotSerializer,
 )
 from .gripper_service import check_gripper_from_config
 from .error_trend_chart import generate_trend_chart, chart_exists, CHART_OUTPUT_PATH
@@ -60,46 +56,28 @@ class RobotGroupViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
                     end_dt = end_dt.replace(hour=23, minute=59, second=59)
 
                     # 统计在指定时间范围内有高风险的机器人
-                    # 这里假设RiskEvent有triggered_at字段
                     from django.db.models import Exists, OuterRef
                     high_risk_in_period = qs.filter(
                         level='H',
                         riskevent__triggered_at__range=(start_dt, end_dt)
                     ).distinct().count()
 
-                    # 统计历史高风险（在时间范围内的）
-                    history_in_period = qs.filter(
-                        riskevent__triggered_at__range=(start_dt, end_dt)
-                    ).exclude(risk_history=[]).distinct().count()
-
                     group._stats = {
                         "total": qs.count(),
-                        "online": qs.filter(status="online").count(),
-                        "offline": qs.filter(status="offline").count(),
-                        "maintenance": qs.filter(status="maintenance").count(),
                         "highRisk": high_risk_in_period,
-                        "historyHighRisk": history_in_period,
                         "timeRange": f"{start_date} ~ {end_date}"
                     }
                 except ValueError:
                     # 日期格式错误，使用默认统计
                     group._stats = {
                         "total": qs.count(),
-                        "online": qs.filter(status="online").count(),
-                        "offline": qs.filter(status="offline").count(),
-                        "maintenance": qs.filter(status="maintenance").count(),
                         "highRisk": qs.filter(level="H").count(),
-                        "historyHighRisk": qs.exclude(risk_history=[]).count(),
                     }
             else:
                 # 默认统计（不限制时间范围）
                 group._stats = {
                     "total": qs.count(),
-                    "online": qs.filter(status="online").count(),
-                    "offline": qs.filter(status="offline").count(),
-                    "maintenance": qs.filter(status="maintenance").count(),
                     "highRisk": qs.filter(level="H").count(),
-                    "historyHighRisk": qs.exclude(risk_history=[]).count(),
                 }
 
         serializer = self.get_serializer(groups, many=True)
@@ -127,26 +105,19 @@ class RobotComponentViewSet(
         if tab == "highRisk":
             qs = qs.filter(level="H")
         elif tab == "history":
-            qs = qs.exclude(risk_history=[])
+            # history 标签页不使用 robot_components 表，由单独的 API 处理
+            qs = qs.none()  # 返回空查询集，前端应该请求 /api/robots/high-risk-histories/
 
         keyword = (self.request.query_params.get("keyword") or "").strip()
         if keyword:
             qs = qs.filter(
-                Q(robot_id__icontains=keyword)
-                | Q(name__icontains=keyword)
-                | Q(part_no__icontains=keyword)
-                | Q(reference_no__icontains=keyword)
-                | Q(type_spec__icontains=keyword)
+                Q(robot__icontains=keyword)
+                | Q(shop__icontains=keyword)
+                | Q(reference__icontains=keyword)
+                | Q(type__icontains=keyword)
                 | Q(tech__icontains=keyword)
+                | Q(remark__icontains=keyword)
             )
-
-        status_filter = self.request.query_params.get("status")
-        if status_filter:
-            qs = qs.filter(status=status_filter)
-
-        risk_filter = self.request.query_params.get("riskLevel")
-        if risk_filter:
-            qs = qs.filter(risk_level=risk_filter)
 
         level_filter = self.request.query_params.get("level")
         if level_filter:
@@ -170,12 +141,14 @@ class RobotComponentViewSet(
         if axis_keys and axis_ok is not None:
             axis_ok_bool = str(axis_ok).lower() in {"1", "true", "yes"}
             if axis_ok_bool:
+                # 轴状态为 ok（不是 "high"）
                 for k in axis_keys:
-                    qs = qs.filter(**{f"checks__{k}__ok": True})
+                    qs = qs.filter(**{k.lower(): "ok"})  # a1, a2, ...
             else:
+                # 轴状态为 high
                 axis_q = Q()
                 for k in axis_keys:
-                    axis_q |= Q(**{f"checks__{k}__ok": False})
+                    axis_q |= Q(**{k.lower(): "high"})  # a1="high" OR a2="high" OR ...
                 qs = qs.filter(axis_q)
 
         return qs
@@ -194,22 +167,21 @@ class RobotComponentViewSet(
         keyword = (request.query_params.get("keyword") or "").strip()
         if keyword:
             qs = qs.filter(
-                Q(robot_id__icontains=keyword)
-                | Q(name__icontains=keyword)
-                | Q(part_no__icontains=keyword)
+                Q(robot__icontains=keyword)
+                | Q(shop__icontains=keyword)
             )
 
-        # 按robot_id去重并排序，同时包含group_key
-        robots = qs.values("robot_id", "part_no", "name", "group__key").distinct().order_by("robot_id")
+        # 按robot去重并排序，同时包含group_key
+        robots = qs.values("robot", "shop", "group__key").distinct().order_by("robot")
 
         # 手动构建返回数据
         results = []
         for r in robots:
             results.append({
-                "value": r["part_no"],  # BI使用的表名
-                "label": f"{r['robot_id']} ({r['part_no']})",
-                "robot_id": r["robot_id"],
-                "name": r.get("name", ""),
+                "value": r["robot"],  # BI使用的robot值
+                "label": f"{r['robot']}",
+                "robot_id": r["robot"],
+                "shop": r.get("shop", ""),
                 "group_key": r.get("group__key", ""),
             })
 
@@ -317,8 +289,66 @@ class RobotComponentViewSet(
             "success": True,
             "chart_data": chart_base64,
             "axis": axis_num,
-            "robot_part_no": robot.part_no
+            "robot": robot.robot
         })
+
+    @action(detail=False, methods=["post"])
+    def import_csv(self, request):
+        """
+        导入 weeklyresult.csv 文件到 robot_components 表
+
+        请求体:
+        {
+            "folder_path": "/Users/caihd/Desktop/sg",  // 可选
+            "project": "reuse",  // 可选
+            "file_path": "/path/to/specific/file.csv"  // 可选，直接指定文件
+        }
+
+        返回:
+        {
+            "success": true,
+            "file": "文件路径",
+            "source_file": "文件名",
+            "records_created": 100,
+            "records_updated": 10,
+            "total_records": 110,
+            "shop_stats": {"MRA1 BS": {"created": 50, "updated": 5}}
+        }
+        """
+        from .weekly_result_service import import_robot_components_csv
+        from rest_framework import serializers
+
+        class ImportCSVSerializer(serializers.Serializer):
+            folder_path = serializers.CharField(required=False, allow_blank=True)
+            project = serializers.CharField(required=False, default='reuse')
+            file_path = serializers.CharField(required=False, allow_blank=True)
+
+        serializer = ImportCSVSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({
+                'success': False,
+                'error': 'Invalid request data',
+                'details': serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            data = serializer.validated_data
+            result = import_robot_components_csv(
+                file_path=data.get('file_path'),
+                folder_path=data.get('folder_path') or None,
+                project=data.get('project') or None,
+            )
+            return Response(result)
+        except FileNotFoundError as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class RiskEventViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
@@ -556,256 +586,10 @@ class GripperCheckViewSet(viewsets.GenericViewSet):
         })
 
 
-class WeeklyResultViewSet(
-    mixins.ListModelMixin,
-    mixins.RetrieveModelMixin,
-    viewsets.GenericViewSet,
-):
-    """周结果数据 ViewSet"""
-    queryset = WeeklyResult.objects.all()
-    serializer_class = WeeklyResultSerializer
-    pagination_class = StandardResultsSetPagination
-
-    def get_serializer_class(self):
-        """根据操作返回不同的序列化器"""
-        # 使用 full 参数控制是否返回完整字段
-        # 如果请求参数 full=1，则返回完整字段
-        if self.action == 'list' and self.request.query_params.get('full') != '1':
-            return WeeklyResultListSerializer
-        return super().get_serializer_class()
-
-    def get_queryset(self):
-        qs = super().get_queryset()
-
-        # 按车间筛选
-        shop = self.request.query_params.get('shop')
-        if shop:
-            qs = qs.filter(shop__icontains=shop)
-
-        # 按等级筛选
-        level = self.request.query_params.get('level')
-        if level:
-            qs = qs.filter(level=level)
-
-        # 按高风险筛选
-        high_risk = self.request.query_params.get('highRisk')
-        if high_risk in ['1', 'true', 'True']:
-            qs = qs.filter(level='H')
-
-        # 搜索关键词
-        keyword = (self.request.query_params.get('keyword') or '').strip()
-        if keyword:
-            qs = qs.filter(
-                Q(robot__icontains=keyword)
-                | Q(type__icontains=keyword)
-                | Q(tech__icontains=keyword)
-                | Q(remark__icontains=keyword)
-            )
-
-        # 按周范围筛选
-        week_start = self.request.query_params.get('week_start')
-        week_end = self.request.query_params.get('week_end')
-        if week_start:
-            qs = qs.filter(week_start__gte=week_start)
-        if week_end:
-            qs = qs.filter(week_end__lte=week_end)
-
-        return qs
-
-    @action(detail=False, methods=['get'])
-    def stats(self, request):
-        """
-        获取统计数据
-
-        返回各车间、各等级的统计信息
-        """
-        qs = self.get_queryset()
-
-        # 按车间统计
-        shop_stats = qs.values('shop').annotate(
-            total=Count('id'),
-            high_risk=Count('id', filter=Q(level='H')),
-        )
-
-        # 按等级统计
-        level_stats = qs.values('level').annotate(
-            count=Count('id')
-        ).order_by('level')
-
-        return Response({
-            'total': qs.count(),
-            'high_risk': qs.filter(level='H').count(),
-            'by_shop': list(shop_stats),
-            'by_level': list(level_stats),
-        })
-
-    @action(detail=False, methods=['post'])
-    def import_csv(self, request):
-        """
-        导入 weeklyresult.csv 文件到数据库
-
-        请求体:
-        {
-            "folder_path": "P:/error rate trend/",  // 可选
-            "project": "reuse",  // 可选，默认为 reuse
-            "file_path": "/path/to/specific/file.csv"  // 可选，直接指定文件
-        }
-
-        返回:
-        {
-            "success": true,
-            "file": "文件路径",
-            "source_file": "文件名",
-            "records_imported": 100,
-            "records_updated": 10,
-            "total_records": 110,
-            "week_start": "2025-04-10",
-            "week_end": "2025-05-16"
-        }
-        """
-        from .weekly_result_service import import_weeklyresult_csv
-
-        serializer = WeeklyResultImportSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response({
-                'success': False,
-                'error': 'Invalid request data',
-                'details': serializer.errors
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            data = serializer.validated_data
-            result = import_weeklyresult_csv(
-                file_path=data.get('file_path'),
-                folder_path=data.get('folder_path') or None,
-                project=data.get('project') or None,
-            )
-            return Response(result)
-        except FileNotFoundError as e:
-            return Response({
-                'success': False,
-                'error': str(e)
-            }, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            return Response({
-                'success': False,
-                'error': str(e)
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    @action(detail=False, methods=['get'])
-    def files(self, request):
-        """
-        获取所有可用的 weeklyresult.csv 文件列表
-
-        参数:
-            folder_path: 文件夹路径（可选）
-            project: 项目名称（可选）
-
-        返回:
-        {
-            "results": [
-                {
-                    "path": "完整路径",
-                    "name": "文件名",
-                    "created_time": "创建时间",
-                    "week_start": "周开始日期",
-                    "week_end": "周结束日期"
-                },
-                ...
-            ]
-        }
-        """
-        from .weekly_result_service import get_available_csv_files
-
-        folder_path = request.query_params.get('folder_path')
-        project = request.query_params.get('project')
-
-        try:
-            files = get_available_csv_files(folder_path, project)
-            serializer = WeeklyResultFileSerializer(files, many=True)
-            return Response({'results': serializer.data})
-        except Exception as e:
-            return Response({
-                'error': str(e)
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    @action(detail=False, methods=['post'])
-    def import_robot_components(self, request):
-        """
-        直接导入 weeklyresult.csv 到 RobotComponent 表
-        跳过 WeeklyResult 表，直接更新机器人状态界面数据
-
-        请求体:
-        {
-            "folder_path": "/Users/caihd/Desktop/sg",  // 可选
-            "project": "reuse",  // 可选
-            "file_path": "/path/to/specific/file.csv"  // 可选，直接指定文件
-        }
-
-        返回:
-        {
-            "success": true,
-            "file": "文件路径",
-            "source_file": "文件名",
-            "records_created": 100,
-            "records_updated": 10,
-            "total_records": 110,
-            "shop_stats": {"MRA1 BS": {"created": 50, "updated": 5}}
-        }
-        """
-        from .weekly_result_service import import_robot_components_csv
-
-        serializer = WeeklyResultImportSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response({
-                'success': False,
-                'error': 'Invalid request data',
-                'details': serializer.errors
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            data = serializer.validated_data
-            result = import_robot_components_csv(
-                file_path=data.get('file_path'),
-                folder_path=data.get('folder_path') or None,
-                project=data.get('project') or None,
-            )
-            return Response(result)
-        except FileNotFoundError as e:
-            return Response({
-                'success': False,
-                'error': str(e)
-            }, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            return Response({
-                'success': False,
-                'error': str(e)
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    @action(detail=False, methods=['post'])
-    def sync_robot_status(self, request):
-        """
-        将 WeeklyResult 数据批量同步到 RobotComponent 表
-
-        用于更新机器人状态页面的数据来源
-        同步所有 WeeklyResult 数据到 RobotComponent 表（包含所有详细字段）
-        """
-        from .weekly_result_service import sync_weeklyresult_to_robotcomponent
-
-        try:
-            result = sync_weeklyresult_to_robotcomponent()
-            return Response(result)
-        except Exception as e:
-            return Response({
-                'success': False,
-                'error': str(e)
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-class HighRiskHistoryViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
-    """历史高风险机器人 ViewSet"""
-    queryset = HighRiskHistory.objects.all()
-    serializer_class = HighRiskHistorySerializer
+class RobotHighRiskSnapshotViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
+    """历史高风险机器人 ViewSet - 读取 _robot_high_risk_snapshots 表"""
+    queryset = RobotHighRiskSnapshot.objects.all()
+    serializer_class = RobotHighRiskSnapshotSerializer
     pagination_class = StandardResultsSetPagination
 
     # 排除的车间 key 列表（与前端保持一致）
@@ -816,37 +600,26 @@ class HighRiskHistoryViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         qs = super().get_queryset()
 
         # 过滤排除的车间
-        qs = qs.exclude(group_key__in=self.EXCLUDED_GROUP_KEYS)
+        qs = qs.exclude(group__key__in=self.EXCLUDED_GROUP_KEYS)
 
         # 按车间筛选
         group = self.request.query_params.get('group')
         if group:
-            qs = qs.filter(group_key=group)
+            qs = qs.filter(group__key=group)
 
         # 按等级筛选
         level = self.request.query_params.get('level')
         if level:
             qs = qs.filter(level=level)
 
-        # 搜索关键词
+        # 搜索关键词 - 使用 robot 字段（RobotHighRiskSnapshot 模型的字段）
         keyword = (self.request.query_params.get('keyword') or '').strip()
         if keyword:
             qs = qs.filter(
-                Q(robot_id__icontains=keyword)
-                | Q(part_no__icontains=keyword)
-                | Q(name__icontains=keyword)
+                Q(robot__icontains=keyword)
                 | Q(tech__icontains=keyword)
                 | Q(remark__icontains=keyword)
             )
-
-        # 按轴状态筛选
-        axis_ok = self.request.query_params.get('axisOk')
-        if axis_ok:
-            # 从 checks JSON 字段中筛选
-            if axis_ok == 'ok':
-                qs = qs.filter(checks__axis_ok=True)
-            else:
-                qs = qs.filter(checks__axis_ok=False)
 
         return qs
 
@@ -855,12 +628,38 @@ class HighRiskHistoryViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
 @api_view(['GET'])
 def get_last_sync_time(request):
     """
-    获取最后同步时间
+    获取最后同步时间（从 refresh_logs 表读取最新的记录）
     """
-    from .models import SystemConfig
+    from .models import RefreshLog
 
-    last_sync_time = SystemConfig.get('last_sync_time', None)
+    # 获取最新的成功同步记录
+    latest_log = RefreshLog.objects.filter(
+        status="success"
+    ).order_by('-sync_time').first()
+
+    if latest_log:
+        last_sync_time = latest_log.sync_time.isoformat()
+        source = latest_log.get_source_display()
+        source_file = latest_log.source_file
+        records_created = latest_log.records_created
+        records_updated = latest_log.records_updated
+        records_deleted = latest_log.records_deleted
+        total_records = latest_log.total_records
+    else:
+        last_sync_time = None
+        source = None
+        source_file = None
+        records_created = 0
+        records_updated = 0
+        records_deleted = 0
+        total_records = 0
 
     return Response({
-        'last_sync_time': last_sync_time
+        'last_sync_time': last_sync_time,
+        'source': source,
+        'source_file': source_file,
+        'records_created': records_created,
+        'records_updated': records_updated,
+        'records_deleted': records_deleted,
+        'total_records': total_records,
     })

@@ -128,7 +128,7 @@ export function getErrorTrendChart(robotId, axis, regenerate = false) {
 // 获取周结果列表（用于机器人状态页面）
 export function getWeeklyResults(params) {
   return request({
-    url: '/robots/weekly-results/',
+    url: '/robots/components/',
     method: 'get',
     params
   })
@@ -138,10 +138,11 @@ export function getWeeklyResults(params) {
 // 这是机器人状态页面使用的主要 API
 export function getHighRiskRobots(params) {
   return request({
-    url: '/robots/weekly-results/',
+    url: '/robots/components/',
     method: 'get',
     params: {
       ...params,
+      tab: 'highRisk',
       level: 'H',  // 只获取高风险
       highRisk: '1'
     }
@@ -150,26 +151,18 @@ export function getHighRiskRobots(params) {
 
 // 获取周结果统计数据
 export function getWeeklyResultsStats(params) {
-  return request({
-    url: '/robots/weekly-results/stats/',
-    method: 'get',
-    params
-  })
+  return Promise.reject(new Error('weekly-results stats API removed; no replacement endpoint.'))
 }
 
 // 获取可用的 CSV 文件列表
 export function getWeeklyResultFiles(params) {
-  return request({
-    url: '/robots/weekly-results/files/',
-    method: 'get',
-    params
-  })
+  return Promise.reject(new Error('weekly-results files API removed; no replacement endpoint.'))
 }
 
 // 导入 CSV 文件（需要管理员权限）
 export function importWeeklyResults(data) {
   return request({
-    url: '/robots/weekly-results/import_csv/',
+    url: '/robots/components/import_csv/',
     method: 'post',
     data,
     timeout: 120000  // 2分钟超时
@@ -178,16 +171,13 @@ export function importWeeklyResults(data) {
 
 // 同步机器人状态（从 WeeklyResult 同步到 RobotComponent）
 export function syncRobotStatus() {
-  return request({
-    url: '/robots/weekly-results/sync_robot_status/',
-    method: 'post'
-  })
+  return Promise.reject(new Error('weekly-results sync API removed; use components/import_csv instead.'))
 }
 
 // 直接导入 CSV 到 RobotComponent 表（跳过 WeeklyResult）
 export function importRobotComponents(data) {
   return request({
-    url: '/robots/weekly-results/import_robot_components/',
+    url: '/robots/components/import_csv/',
     method: 'post',
     data,
     timeout: 120000  // 2分钟超时
