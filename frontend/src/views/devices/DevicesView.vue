@@ -177,95 +177,163 @@
         </div>
 
         <!-- Table -->
-        <el-table :data="pagedRows" class="premium-table table-entrance" stripe height="520" v-loading="loading">
+        <el-table :data="pagedRows" class="status-table table-entrance" stripe height="520" v-loading="loading">
           <!-- 基础列（所有标签页通用） -->
-          <el-table-column prop="partNo" label="robot" width="160" class-name="robot-column">
+          <el-table-column prop="partNo" label="robot" width="160" class-name="robot-column" sortable :sort-by="(row) => row.partNo || row.robot || ''">
             <template #default="{ row }">
               <el-button type="primary" link class="mono robot-name-cell" @click="openBI(row)">
                 {{ row.partNo || row.robot }}
               </el-button>
             </template>
           </el-table-column>
-          <el-table-column label="reference" width="150">
+          <el-table-column label="reference" width="150" sortable :sort-by="(row) => row.referenceNo || row.reference || ''">
             <template #default="{ row }">
               <el-button type="primary" link class="mono" @click="openEdit(row, 'referenceNo')">
                 {{ row.referenceNo || row.reference }}
               </el-button>
             </template>
           </el-table-column>
-          <el-table-column prop="number" label="number" width="90" align="center">
+          <el-table-column prop="number" label="number" width="90" align="center" sortable>
             <template #default="{ row }">
               <span class="mono">{{ row.number ?? 0 }}</span>
             </template>
           </el-table-column>
-          <el-table-column prop="typeSpec" label="type" width="120">
+          <el-table-column prop="typeSpec" label="type" width="120" sortable :sort-by="(row) => row.typeSpec || row.type || ''">
             <template #default="{ row }">
               <span>{{ row.typeSpec || row.type }}</span>
             </template>
           </el-table-column>
-          <el-table-column prop="tech" label="tech" width="120" />
+          <el-table-column prop="tech" label="tech" width="120" sortable />
+          <el-table-column label="更新时间" width="180" sortable :sort-by="(row) => getUpdatedAtSortValue(row)">
+            <template #default="{ row }">
+              <span class="mono">{{ getUpdatedAtText(row) }}</span>
+            </template>
+          </el-table-column>
 
           <!-- all 标签页的详细列 -->
           <template v-if="activeTab === 'all'">
-            <el-table-column prop="mark" label="mark" width="80" align="center">
+            <el-table-column prop="mark" label="mark" width="80" align="center" sortable>
               <template #default="{ row }">
                 <span class="mono">{{ row.mark ?? 0 }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="remark" width="150">
+            <el-table-column label="remark" width="150" sortable :sort-by="(row) => row.remark || ''">
               <template #default="{ row }">
                 <span>{{ row.remark || '-' }}</span>
               </template>
             </el-table-column>
-            <el-table-column prop="error1_c1" label="error1_c1" width="100" align="center">
+            <el-table-column prop="error1_c1" label="error1_c1" width="100" align="center" sortable>
               <template #default="{ row }">
                 <span class="mono">{{ formatNumber(row.error1_c1) }}</span>
               </template>
             </el-table-column>
             <!-- 温度列 tem1_m - tem7_m -->
-            <el-table-column v-for="i in 7" :key="`tem${i}_m`" :label="`tem${i}_m`" width="80" align="center">
+            <el-table-column
+              v-for="i in 7"
+              :key="`tem${i}_m`"
+              :prop="`tem${i}_m`"
+              :label="`tem${i}_m`"
+              width="80"
+              align="center"
+              sortable
+            >
               <template #default="{ row }">
                 <span class="mono">{{ formatNumber(row[`tem${i}_m`]) }}</span>
               </template>
             </el-table-column>
             <!-- A1-A7 错误率列 A1_e_rate - A7_e_rate -->
-            <el-table-column v-for="i in 7" :key="`a${i}_e_rate`" :label="`A${i}_e_rate`" width="90" align="center">
+            <el-table-column
+              v-for="i in 7"
+              :key="`a${i}_e_rate`"
+              :prop="`a${i}_e_rate`"
+              :label="`A${i}_e_rate`"
+              width="90"
+              align="center"
+              sortable
+            >
               <template #default="{ row }">
                 <span class="mono">{{ formatNumber(row[`a${i}_e_rate`]) }}</span>
               </template>
             </el-table-column>
             <!-- A1-A7 Rms列 A1_Rms - A7_Rms -->
-            <el-table-column v-for="i in 7" :key="`a${i}_rms`" :label="`A${i}_Rms`" width="85" align="center">
+            <el-table-column
+              v-for="i in 7"
+              :key="`a${i}_rms`"
+              :prop="`a${i}_rms`"
+              :label="`A${i}_Rms`"
+              width="85"
+              align="center"
+              sortable
+            >
               <template #default="{ row }">
                 <span class="mono">{{ formatNumber(row[`a${i}_rms`]) }}</span>
               </template>
             </el-table-column>
             <!-- A1-A7 E列 A1_E - A7_E -->
-            <el-table-column v-for="i in 7" :key="`a${i}_e`" :label="`A${i}_E`" width="75" align="center">
+            <el-table-column
+              v-for="i in 7"
+              :key="`a${i}_e`"
+              :prop="`a${i}_e`"
+              :label="`A${i}_E`"
+              width="75"
+              align="center"
+              sortable
+            >
               <template #default="{ row }">
                 <span class="mono">{{ formatNumber(row[`a${i}_e`]) }}</span>
               </template>
             </el-table-column>
             <!-- Q1-Q7列 -->
-            <el-table-column v-for="i in 7" :key="`q${i}`" :label="`Q${i}`" width="65" align="center">
+            <el-table-column
+              v-for="i in 7"
+              :key="`q${i}`"
+              :prop="`q${i}`"
+              :label="`Q${i}`"
+              width="65"
+              align="center"
+              sortable
+            >
               <template #default="{ row }">
                 <span class="mono">{{ formatNumber(row[`q${i}`]) }}</span>
               </template>
             </el-table-column>
             <!-- Curr_A1_max - Curr_A7_max -->
-            <el-table-column v-for="i in 7" :key="`curr_a${i}_max`" :label="`Curr_A${i}_max`" width="100" align="center">
+            <el-table-column
+              v-for="i in 7"
+              :key="`curr_a${i}_max`"
+              :prop="`curr_a${i}_max`"
+              :label="`Curr_A${i}_max`"
+              width="100"
+              align="center"
+              sortable
+            >
               <template #default="{ row }">
                 <span class="mono">{{ formatNumber(row[`curr_a${i}_max`]) }}</span>
               </template>
             </el-table-column>
             <!-- Curr_A1_min - Curr_A7_min -->
-            <el-table-column v-for="i in 7" :key="`curr_a${i}_min`" :label="`Curr_A${i}_min`" width="100" align="center">
+            <el-table-column
+              v-for="i in 7"
+              :key="`curr_a${i}_min`"
+              :prop="`curr_a${i}_min`"
+              :label="`Curr_A${i}_min`"
+              width="100"
+              align="center"
+              sortable
+            >
               <template #default="{ row }">
                 <span class="mono">{{ formatNumber(row[`curr_a${i}_min`]) }}</span>
               </template>
             </el-table-column>
             <!-- A1-A7列 -->
-            <el-table-column v-for="i in 7" :key="`a${i}`" :label="`A${i}`" width="65" align="center">
+            <el-table-column
+              v-for="i in 7"
+              :key="`a${i}`"
+              :label="`A${i}`"
+              width="65"
+              align="center"
+              :sort-by="(row) => row[`A${i}`] ?? row[`a${i}`] ?? ''"
+            >
               <template #default="{ row }">
                 <el-tooltip
                   :content="`A${i}: ${getAxisStatusText(row, i)}`"
@@ -281,13 +349,13 @@
               </template>
             </el-table-column>
             <!-- P_Change -->
-            <el-table-column prop="p_change" label="P_Change" width="95" align="center">
+            <el-table-column prop="p_change" label="P_Change" width="95" align="center" sortable>
               <template #default="{ row }">
                 <span class="mono">{{ formatNumber(row.p_change) }}</span>
               </template>
             </el-table-column>
             <!-- level -->
-            <el-table-column label="level" width="75" align="center">
+            <el-table-column prop="level" label="level" width="75" align="center" sortable>
               <template #default="{ row }">
                 <el-tag :type="levelTagType(row.level)" effect="light">{{ row.level }}</el-tag>
               </template>
@@ -296,14 +364,14 @@
 
           <!-- highRisk 和 history 标签页的列 -->
           <template v-else>
-            <el-table-column prop="mark" label="mark" width="80" align="center">
+            <el-table-column prop="mark" label="mark" width="80" align="center" sortable>
               <template #default="{ row }">
                 <el-button type="primary" link class="mono" @click="openEdit(row, 'mark')">
                   {{ row.mark ?? 0 }}
                 </el-button>
               </template>
             </el-table-column>
-            <el-table-column label="remark" width="200">
+            <el-table-column label="remark" width="200" sortable :sort-by="(row) => row.remark || ''">
               <template #default="{ row }">
                 <el-button type="primary" link class="remark-link" @click="openEdit(row, 'remark')">
                   {{ row.remark || '-' }}
@@ -311,7 +379,14 @@
               </template>
             </el-table-column>
 
-            <el-table-column v-for="key in CHECK_KEYS" :key="key" :label="key" width="60" align="center">
+            <el-table-column
+              v-for="key in CHECK_KEYS"
+              :key="key"
+              :label="key"
+              width="60"
+              align="center"
+              :sort-by="(row) => row[key] ?? row[key.toLowerCase()] ?? ''"
+            >
               <template #default="{ row }">
                 <el-tooltip
                   :content="getAxisTooltipText(row, key)"
@@ -327,7 +402,7 @@
               </template>
             </el-table-column>
 
-            <el-table-column label="level" width="80" align="center">
+            <el-table-column prop="level" label="level" width="80" align="center" sortable>
               <template #default="{ row }">
                 <el-button type="primary" link @click="openEdit(row, 'level')">
                   <el-tag :type="levelTagType(row.level)" effect="light">{{ row.level }}</el-tag>
@@ -796,6 +871,16 @@ const formatNumber = (val) => {
 const formatDateTime = (dateString) => {
   if (!dateString) return '-'
   return new Date(dateString).toLocaleString('zh-CN')
+}
+
+const getUpdatedAtText = (row) => {
+  const value = row?.updated_at || row?.updatedAt
+  return formatDateTime(value)
+}
+
+const getUpdatedAtSortValue = (row) => {
+  const value = row?.updated_at || row?.updatedAt
+  return value ? new Date(value).getTime() : 0
 }
 
 const latestRiskTime = (robot) => {
@@ -1945,6 +2030,7 @@ onUnmounted(() => {
   letter-spacing: 0.5px;
   font-weight: 600;
   white-space: nowrap;
+  user-select: none;
 }
 
 .data-table-section :deep(.el-table__header th .cell) {
@@ -1954,18 +2040,94 @@ onUnmounted(() => {
   text-overflow: clip !important;
 }
 
+/* 排序列表头保持统一颜色，不显示“可选”蓝色 */
+.data-table-section :deep(.el-table__header th.is-sortable),
+.data-table-section :deep(.el-table__header th.is-sortable .cell) {
+  color: #8da0b7 !important;
+  cursor: pointer !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+
 /* 永久禁用表头排序激活色 - 统一为浅蓝灰色 */
 .data-table-section :deep(.el-table__header th:hover .cell),
+.data-table-section :deep(.el-table__header th.is-sortable:hover),
+.data-table-section :deep(.el-table__header th.is-sortable:hover .cell),
+.data-table-section :deep(.el-table__header th.ascending),
 .data-table-section :deep(.el-table__header th.ascending .cell),
+.data-table-section :deep(.el-table__header th.descending),
 .data-table-section :deep(.el-table__header th.descending .cell),
 .data-table-section :deep(.el-table__header th.is-sortable .cell:hover) {
   color: #8da0b7 !important;
+  background: rgba(255, 255, 255, 0.04) !important;
 }
 
 /* 排序图标颜色 */
 .data-table-section :deep(.el-table__header th .caret-wrapper .sort-caret.ascending),
 .data-table-section :deep(.el-table__header th .caret-wrapper .sort-caret.descending) {
   color: #8da0b7 !important;
+  border-top-color: #8da0b7 !important;
+  border-bottom-color: #8da0b7 !important;
+  opacity: 0.6;
+}
+
+.data-table-section :deep(.el-table__header th .caret-wrapper),
+.data-table-section :deep(.el-table__header th .caret-wrapper .sort-caret) {
+  cursor: pointer !important;
+}
+
+/* 简约菱形排序按钮：上下三角组合 */
+.data-table-section :deep(.el-table__header th .caret-wrapper) {
+  width: 10px;
+  height: 12px;
+  margin-left: 6px;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.data-table-section :deep(.el-table__header th .caret-wrapper::before),
+.data-table-section :deep(.el-table__header th .caret-wrapper::after) {
+  content: '';
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  opacity: 0.35;
+  transition: opacity 0.15s ease, border-color 0.15s ease;
+}
+
+.data-table-section :deep(.el-table__header th .caret-wrapper::before) {
+  border-bottom: 5px solid #8da0b7;
+}
+
+.data-table-section :deep(.el-table__header th .caret-wrapper::after) {
+  border-top: 5px solid #8da0b7;
+}
+
+.data-table-section :deep(.el-table__header th.ascending .caret-wrapper::before) {
+  opacity: 0.9;
+  border-bottom-color: #cbd5e1;
+}
+
+.data-table-section :deep(.el-table__header th.ascending .caret-wrapper::after) {
+  opacity: 0.2;
+  border-top-color: #8da0b7;
+}
+
+.data-table-section :deep(.el-table__header th.descending .caret-wrapper::after) {
+  opacity: 0.9;
+  border-top-color: #cbd5e1;
+}
+
+.data-table-section :deep(.el-table__header th.descending .caret-wrapper::before) {
+  opacity: 0.2;
+  border-bottom-color: #8da0b7;
+}
+
+.data-table-section :deep(.el-table__header th .caret-wrapper .sort-caret) {
+  display: none;
 }
 
 /* robot 列表头右移，内容不变 */
