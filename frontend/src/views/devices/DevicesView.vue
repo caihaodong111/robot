@@ -170,12 +170,6 @@
           </el-row>
         </div>
 
-        <!-- Table Legend -->
-        <div class="table-legend">
-          <span class="legend-item"><span class="dot dot-ok"></span>正常/符合要求</span>
-          <span class="legend-item"><span class="dot dot-bad"></span>该项异常/待处理</span>
-        </div>
-
         <!-- Table -->
         <el-table :data="pagedRows" class="status-table table-entrance" stripe height="520" v-loading="loading">
           <!-- 基础列（所有标签页通用） -->
@@ -195,7 +189,9 @@
           </el-table-column>
           <el-table-column prop="number" label="number" width="90" align="center" sortable>
             <template #default="{ row }">
-              <span class="mono">{{ row.number ?? 0 }}</span>
+              <el-button type="primary" link class="mono" @click="openEdit(row, 'number')">
+                {{ row.number ?? 0 }}
+              </el-button>
             </template>
           </el-table-column>
           <el-table-column prop="typeSpec" label="type" width="120" sortable :sort-by="(row) => row.typeSpec || row.type || ''">
@@ -214,12 +210,16 @@
           <template v-if="activeTab === 'all'">
             <el-table-column prop="mark" label="mark" width="80" align="center" sortable>
               <template #default="{ row }">
-                <span class="mono">{{ row.mark ?? 0 }}</span>
+                <el-button type="primary" link class="mono" @click="openEdit(row, 'mark')">
+                  {{ row.mark ?? 0 }}
+                </el-button>
               </template>
             </el-table-column>
             <el-table-column label="remark" width="150" sortable :sort-by="(row) => row.remark || ''">
               <template #default="{ row }">
-                <span>{{ row.remark || '-' }}</span>
+                <el-button type="primary" link class="remark-link" @click="openEdit(row, 'remark')">
+                  {{ row.remark || '-' }}
+                </el-button>
               </template>
             </el-table-column>
             <el-table-column prop="error1_c1" label="error1_c1" width="100" align="center" sortable>
@@ -482,7 +482,7 @@
       <div v-if="detailRobot" class="detail">
         <el-descriptions :column="2" border>
           <el-descriptions-item label="robot"><span class="mono">{{ detailRobot.partNo }}</span></el-descriptions-item>
-          <el-descriptions-item label="reference"><span class="mono">{{ detailRobot.referenceNo }}</span></el-descriptions-item>
+          <el-descriptions-item label="reference"><span class="mono">{{ detailRobot.referenceNo || detailRobot.reference || '-' }}</span></el-descriptions-item>
           <el-descriptions-item label="number"><span class="mono">{{ detailRobot.number ?? 0 }}</span></el-descriptions-item>
           <el-descriptions-item label="type">{{ detailRobot.typeSpec }}</el-descriptions-item>
           <el-descriptions-item label="tech">{{ detailRobot.tech }}</el-descriptions-item>
@@ -517,19 +517,38 @@
     <el-dialog v-model="editVisible" title="Edit" width="560px" class="dark-dialog">
       <el-form v-if="editTarget" :model="editForm" label-position="top" class="edit-form">
         <el-row :gutter="14">
-          <el-col :span="16">
+          <el-col :span="18">
             <el-form-item>
               <template #label>
                 <span class="form-label">
-                  <span class="form-label-title">reference</span>
+                  <span class="form-label-row">
+                    <span class="form-label-title">reference</span>
+                    <el-button
+                      class="reference-refresh-button"
+                      type="primary"
+                      link
+                      :icon="Refresh"
+                      :loading="referenceRefreshing"
+                      @click="refreshReferenceOptions"
+                    />
+                  </span>
                 </span>
               </template>
-              <el-select v-model="editForm.referenceNo" placeholder="Select reference" style="width: 100%" @change="handleReferenceChange">
-                <el-option v-for="item in REFERENCE_OPTIONS" :key="item" :label="item" :value="item" />
-              </el-select>
+              <div class="reference-select-row">
+                <el-select
+                  v-model="editForm.referenceNo"
+                  class="reference-select"
+                  placeholder="Select reference"
+                  :loading="referenceLoading"
+                  :disabled="referenceRefreshing"
+                  @change="handleReferenceChange"
+                >
+                  <el-option v-for="item in referenceOptions" :key="item" :label="item" :value="item" />
+                </el-select>
+              </div>
             </el-form-item>
           </el-col>
-          <el-col :span="8">
+          <el-col :span="6">
             <el-form-item>
               <template #label>
                 <span class="form-label">
@@ -614,24 +633,16 @@ import { computed, ref, watch, nextTick, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { Refresh, Search, Close, Monitor, ArrowRight, ArrowLeft, Picture, Clock } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { getRobotComponents, getRobotGroups, updateRobotComponent, getErrorTrendChart, importRobotComponents, getHighRiskHistories } from '@/api/robots'
+import { getRobotComponents, getRobotGroups, updateRobotComponent, getErrorTrendChart, importRobotComponents, getHighRiskHistories, getReferenceDict, refreshReferenceDict, resolveReferenceNumber } from '@/api/robots'
 import request from '@/utils/request'
 
 const router = useRouter()
 const route = useRoute()
 
 const CHECK_KEYS = ['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7']
-const REFERENCE_OPTIONS = [
-  '20230626-20230724',
-  '20230626-20230811',
-  '20231020-20231208',
-  '2025-07-01_2025-08-14',
-  '2025-07-30_2025-09-03',
-  '240216-240322',
-  '240412-240621',
-  '241101-241220',
-  '250410-250516'
-]
+const referenceOptions = ref([])
+const referenceLoading = ref(false)
+const referenceRefreshing = ref(false)
 
 const drawerVisible = ref(false)
 
@@ -662,7 +673,7 @@ const getInitialGroup = () => {
 const selectedGroup = ref(getInitialGroup())
 const activeTab = ref('highRisk')
 const keyword = ref('')
-const levelFilter = ref('')
+const levelFilter = ref('H')
 const axisKeysFilter = ref([])
 const axisStateFilter = ref('')
 const markMode = ref('')
@@ -682,6 +693,41 @@ const editForm = ref({
   remark: '',
   level: 'L'
 })
+
+const loadReferenceOptions = async (robot) => {
+  if (!robot) {
+    referenceOptions.value = []
+    return
+  }
+  referenceLoading.value = true
+  try {
+    const response = await getReferenceDict({ robot })
+    const results = response?.results || response || []
+    referenceOptions.value = results.map((item) => item.reference).filter(Boolean)
+  } catch (error) {
+    console.error('加载reference字典失败:', error)
+    referenceOptions.value = []
+  } finally {
+    referenceLoading.value = false
+  }
+}
+
+const refreshReferenceOptions = async () => {
+  if (!editTarget.value?.robot) {
+    ElMessage.warning('未找到机器人编号，无法刷新')
+    return
+  }
+  referenceRefreshing.value = true
+  try {
+    await refreshReferenceDict()
+    await loadReferenceOptions(editTarget.value.robot)
+    ElMessage.success('reference字典已刷新')
+  } catch (error) {
+    ElMessage.error(error?.response?.data?.error || error?.message || '刷新失败')
+  } finally {
+    referenceRefreshing.value = false
+  }
+}
 
 // 错误率趋势图弹窗相关状态
 const chartDialogVisible = ref(false)
@@ -894,12 +940,13 @@ const matchesKeyword = (robot) => {
   const key = keyword.value.trim().toLowerCase()
   if (!key) return true
   return (
+    (robot.robot || '').toLowerCase().includes(key) ||
     (robot.robot_id || robot.id || '').toString().toLowerCase().includes(key) ||
     (robot.name || '').toLowerCase().includes(key) ||
     (robot.model || '').toLowerCase().includes(key) ||
     (robot.partNo || '').toLowerCase().includes(key) ||
-    (robot.referenceNo || '').toLowerCase().includes(key) ||
-    (robot.typeSpec || '').toLowerCase().includes(key) ||
+    (robot.referenceNo || robot.reference || '').toLowerCase().includes(key) ||
+    (robot.type || robot.typeSpec || '').toLowerCase().includes(key) ||
     (robot.tech || '').toLowerCase().includes(key) ||
     (robot.remark || '').toLowerCase().includes(key)
   )
@@ -927,6 +974,13 @@ const matchesFilters = (robot) => {
 const filteredRows = computed(() => {
   const list = robots.value
 
+  console.log('filteredRows computing:', {
+    listLength: list.length,
+    activeTab: activeTab.value,
+    keyword: keyword.value,
+    firstRobot: list[0]
+  })
+
   // 根据当前标签页筛选数据
   let filtered = list
   if (activeTab.value === 'highRisk') {
@@ -936,9 +990,13 @@ const filteredRows = computed(() => {
     filtered = list
   }
 
+  console.log('After tab filter:', { filteredLength: filtered.length })
+
   // 应用所有过滤器（包括关键词搜索）
   // 前端始终进行过滤，确保搜索功能在所有模式下都能正常工作
-  return filtered.filter(matchesFilters)
+  const result = filtered.filter(matchesFilters)
+  console.log('After all filters:', { resultLength: result.length })
+  return result
 })
 
 const pagedRows = computed(() => {
@@ -958,10 +1016,27 @@ const resetFilters = () => {
 
 // 搜索处理函数
 const handleSearch = () => {
+  console.log('handleSearch called, keyword:', keyword.value)
   currentPage.value = 1
   // 搜索时请求所有数据，由前端进行过滤
   loadRows(true)
 }
+
+// 监听关键词变化，自动触发搜索（debounce 延迟）
+let keywordTimer = null
+watch(keyword, (newKeyword) => {
+  console.log('keyword changed:', newKeyword)
+  if (keywordTimer) {
+    clearTimeout(keywordTimer)
+  }
+  keywordTimer = setTimeout(() => {
+    if (newKeyword.trim() !== '') {
+      console.log('Auto-triggering search for:', newKeyword)
+      currentPage.value = 1
+      loadRows(true)
+    }
+  }, 500)
+})
 
 const handleRefresh = () => {
   if (syncing.value) {
@@ -1020,7 +1095,7 @@ const normalizeRow = (row) => {
   if (!row) return null
   return {
     id: row.id,
-    referenceNo: row.referenceNo ?? row.reference_no ?? '',
+    referenceNo: row.referenceNo ?? row.reference_no ?? row.reference ?? '',
     number: row.number ?? 0,
     mark: row.mark ?? 0,
     remark: row.remark ?? '',
@@ -1028,7 +1103,7 @@ const normalizeRow = (row) => {
   }
 }
 
-const openEdit = (row, focusField) => {
+const openEdit = async (row, focusField) => {
   // 同步期间禁止编辑
   if (syncing.value) {
     ElMessage.warning('数据同步中，暂时无法编辑')
@@ -1040,34 +1115,51 @@ const openEdit = (row, focusField) => {
   editTarget.value = row
   editForm.value = { ...next }
   editVisible.value = true
+  await loadReferenceOptions(row.robot)
 }
 
 const applyEditToRow = (row, patch) => {
   if (!row) return
   if ('referenceNo' in patch) row.referenceNo = patch.referenceNo
+  if ('reference' in patch) {
+    row.reference = patch.reference
+    row.referenceNo = patch.reference
+  }
   if ('number' in patch) row.number = patch.number
   if ('mark' in patch) row.mark = patch.mark
   if ('remark' in patch) row.remark = patch.remark
   if ('level' in patch) row.level = patch.level
 }
 
-const randomNumber = () => Math.floor(100 + Math.random() * 9000)
-
-const handleReferenceChange = () => {
-  editForm.value.number = randomNumber()
+const handleReferenceChange = async () => {
+  const robot = editTarget.value?.robot
+  const reference = (editForm.value.referenceNo || '').trim()
+  if (!robot || !reference) {
+    editForm.value.number = 0
+    return
+  }
+  try {
+    const result = await resolveReferenceNumber({ robot, reference })
+    editForm.value.number = Number(result?.number ?? 0)
+  } catch (error) {
+    editForm.value.number = 0
+    if (error?.response?.status !== 404) {
+      ElMessage.error(error?.response?.data?.error || error?.message || '匹配number失败')
+    }
+  }
 }
 
 const saveEdit = async () => {
   if (!editTarget.value) return
   const payload = {
-    referenceNo: (editForm.value.referenceNo || '').trim(),
+    reference: (editForm.value.referenceNo || '').trim(),
     number: Number(editForm.value.number ?? 0),
     mark: Number(editForm.value.mark ?? 0),
     remark: (editForm.value.remark || '').trim(),
     level: editForm.value.level
   }
 
-  if (!payload.referenceNo) {
+  if (!payload.reference) {
     ElMessage.warning('参考编号(reference)不能为空')
     return
   }
@@ -1229,6 +1321,8 @@ const loadRows = async (fetchAll = false) => {
     // 搜索时获取所有数据用于前端过滤
     const actualPageSize = fetchAll ? 10000 : pageSize.value
 
+    console.log('loadRows called:', { activeTab: activeTab.value, fetchAll, keyword: keyword.value, actualPageSize })
+
     // 根据标签页选择不同的 API
     let data
     if (activeTab.value === 'history') {
@@ -1241,6 +1335,7 @@ const loadRows = async (fetchAll = false) => {
         page: fetchAll ? 1 : currentPage.value,
         page_size: actualPageSize
       }
+      console.log('Calling getHighRiskHistories with params:', historyParams)
       data = await getHighRiskHistories(historyParams)
     } else {
       // highRisk 和 all 标签页都使用 RobotComponent API
@@ -1255,10 +1350,16 @@ const loadRows = async (fetchAll = false) => {
         page: fetchAll ? 1 : currentPage.value,
         page_size: actualPageSize
       }
+      console.log('Calling getRobotComponents with params:', params)
       data = await getRobotComponents(params)
     }
 
     console.log('Loaded data:', { count: data.count, resultsLength: data.results?.length })
+    // 打印第一条数据，检查字段名
+    if (data.results && data.results.length > 0) {
+      console.log('First row data:', data.results[0])
+      console.log('First row fields:', Object.keys(data.results[0]))
+    }
     serverRows.value = data.results || data
     serverTotal.value = data.count ?? serverRows.value.length
   } catch (error) {
@@ -1369,10 +1470,14 @@ watch(currentPage, (newPage) => {
 })
 
 // 监听其他过滤器变化
+let suppressFilterLoad = false
 watch([selectedGroup, activeTab], () => {
   console.log('selectedGroup or activeTab changed, resetting page to 1')
+  suppressFilterLoad = true
+  levelFilter.value = activeTab.value === 'highRisk' ? 'H' : ''
   currentPage.value = 1
   loadRows()
+  suppressFilterLoad = false
 })
 
 watch(pageSize, () => {
@@ -1382,6 +1487,7 @@ watch(pageSize, () => {
 
 // 过滤器变化时自动触发（关键词需要按回车）
 watch([levelFilter, axisKeysFilter, axisStateFilter, markMode], () => {
+  if (suppressFilterLoad) return
   console.log('Filters changed, resetting page to 1. Filters:', {
     level: levelFilter.value,
     axisKeys: axisKeysFilter.value,
@@ -2449,6 +2555,12 @@ onUnmounted(() => {
   gap: 3px;
 }
 
+.form-label-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .form-label-title {
   font-weight: 800;
   color: #fff;
@@ -2458,6 +2570,28 @@ onUnmounted(() => {
   color: #8899aa;
   font-size: 12px;
   font-weight: 600;
+}
+
+.reference-select-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.reference-select-row :deep(.el-select),
+.reference-select {
+  flex: 1;
+  width: 100%;
+}
+
+.reference-select-row :deep(.el-select__wrapper) {
+  width: 100%;
+}
+
+.reference-refresh-button {
+  padding: 0;
+  height: 18px;
 }
 
 /* === Dark Dialog === */

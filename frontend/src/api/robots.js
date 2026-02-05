@@ -194,3 +194,28 @@ export function getHighRiskHistories(params) {
     params
   })
 }
+
+// ==================== reference 字典 API ====================
+
+export function getReferenceDict(params) {
+  return request({
+    url: '/robots/reference-dict/',
+    method: 'get',
+    params
+  })
+}
+
+export function refreshReferenceDict() {
+  return request({
+    url: '/robots/reference-dict/refresh/',
+    method: 'post'
+  })
+}
+
+export function resolveReferenceNumber(params) {
+  return request({
+    url: '/robots/reference-dict/resolve/',
+    method: 'get',
+    params
+  })
+}

@@ -416,6 +416,28 @@ class RobotHighRiskSnapshot(models.Model):
         return self.level == "H"
 
 
+class RobotReferenceDict(models.Model):
+    """Reference dictionary for robot -> reference -> number mapping."""
+
+    robot = models.CharField(max_length=64, db_index=True, verbose_name="robot")
+    reference = models.CharField(max_length=128, db_index=True, verbose_name="reference")
+    number = models.FloatField(null=True, blank=True, verbose_name="number")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        db_table = "robot_reference_dict"
+        verbose_name = "机器人参考字典"
+        verbose_name_plural = "机器人参考字典"
+        unique_together = ("robot", "reference")
+        indexes = [
+            models.Index(fields=["robot", "reference"]),
+        ]
+
+    def __str__(self):
+        return f"{self.robot} - {self.reference}"
+
+
 class RefreshLog(models.Model):
     """
     数据刷新日志表
@@ -507,5 +529,4 @@ class SystemConfig(models.Model):
                 config.description = description
             config.save()
         return config
-
 

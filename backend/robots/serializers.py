@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import RobotGroup, RobotComponent, RiskEvent, RobotHighRiskSnapshot, RefreshLog
+from .models import RobotGroup, RobotComponent, RiskEvent, RobotHighRiskSnapshot, RefreshLog, RobotReferenceDict
 
 
 class RobotGroupSerializer(serializers.ModelSerializer):
@@ -24,6 +24,7 @@ class RobotComponentSerializer(serializers.ModelSerializer):
     """机器人组件序列化器 - 严格按照 CSV 字段设计"""
     group = serializers.CharField(source="group.key", read_only=True)
     isHighRisk = serializers.BooleanField(source="is_high_risk", read_only=True)
+    referenceNo = serializers.CharField(source="reference", required=False, allow_blank=True)
 
     class Meta:
         model = RobotComponent
@@ -33,6 +34,7 @@ class RobotComponentSerializer(serializers.ModelSerializer):
             "robot",
             "shop",
             "reference",
+            "referenceNo",
             "number",
             "type",
             "tech",
@@ -111,6 +113,12 @@ class RobotComponentSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         )
+
+
+class RobotReferenceDictSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = RobotReferenceDict
+        fields = ("id", "robot", "reference", "number", "created_at", "updated_at")
 
 
 class RefreshLogSerializer(serializers.ModelSerializer):
@@ -326,4 +334,3 @@ class RefreshLogSerializer(serializers.ModelSerializer):
             "error_message",
             "sync_time",
         )
-

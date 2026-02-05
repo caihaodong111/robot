@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import logging
 from django.shortcuts import render
 from django.db.models import Count, Q
 from django.views.decorators.clickjacking import xframe_options_exempt
@@ -7,7 +8,7 @@ from rest_framework.decorators import action, api_view
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
-from .models import RiskEvent, RobotComponent, RobotGroup, RobotHighRiskSnapshot
+from .models import RiskEvent, RobotComponent, RobotGroup, RobotHighRiskSnapshot, RobotReferenceDict
 from .serializers import (
     RiskEventSerializer,
     RobotComponentSerializer,
@@ -15,9 +16,12 @@ from .serializers import (
     BIRobotSerializer,
     GripperCheckSerializer,
     RobotHighRiskSnapshotSerializer,
+    RobotReferenceDictSerializer,
 )
 from .gripper_service import check_gripper_from_config
 from .error_trend_chart import generate_trend_chart, chart_exists, CHART_OUTPUT_PATH
+
+logger = logging.getLogger(__name__)
 
 
 class StandardResultsSetPagination(PageNumberPagination):
@@ -152,6 +156,26 @@ class RobotComponentViewSet(
                 qs = qs.filter(axis_q)
 
         return qs
+
+    def perform_update(self, serializer):
+        instance = self.get_object()
+        reference = serializer.validated_data.get("reference")
+        number_provided = "number" in serializer.validated_data
+        number = serializer.validated_data.get("number")
+
+        if reference:
+            mapped_number = RobotReferenceDict.objects.filter(
+                robot=instance.robot,
+                reference=reference,
+            ).values_list("number", flat=True).first()
+            if mapped_number is not None:
+                serializer.save(number=mapped_number)
+                return
+
+        if number_provided:
+            serializer.save(number=number)
+        else:
+            serializer.save()
 
     @action(detail=False, methods=["get"])
     def bi_robots(self, request):
@@ -622,6 +646,200 @@ class RobotHighRiskSnapshotViewSet(mixins.ListModelMixin, viewsets.GenericViewSe
             )
 
         return qs
+
+
+class RobotReferenceDictViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
+    """机器人 reference 字典 - 从本地 CSV 刷新"""
+    queryset = RobotReferenceDict.objects.all()
+    serializer_class = RobotReferenceDictSerializer
+    pagination_class = None
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        robot = (self.request.query_params.get("robot") or "").strip()
+        if robot:
+            qs = qs.filter(robot=robot)
+        return qs.order_by("reference")
+
+    @action(detail=False, methods=["post"])
+    def refresh(self, request):
+        from django.conf import settings
+        from django.utils import timezone
+        from django.db import transaction
+        import csv
+        from pathlib import Path
+        from .models import RefreshLog
+
+        csv_path = Path(settings.BASE_DIR).parent / "dic information .csv"
+        logger.info("Reference dict refresh started: file=%s", csv_path)
+        if not csv_path.exists():
+            logger.warning("Reference dict refresh failed: missing file=%s", csv_path)
+            RefreshLog.objects.create(
+                source="manual",
+                status="failed",
+                source_file=str(csv_path),
+                error_message=f"CSV文件不存在: {csv_path}",
+                total_records=0,
+            )
+            return Response(
+                {"success": False, "error": f"CSV文件不存在: {csv_path}"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        try:
+            rows = []
+            skipped = 0
+            now = timezone.now()
+            with csv_path.open("r", encoding="utf-8-sig", newline="") as file_obj:
+                reader = csv.reader(file_obj)
+                for row in reader:
+                    if not row or len(row) < 3:
+                        skipped += 1
+                        continue
+                    robot = row[0].strip()
+                    reference = row[1].strip()
+                    number_raw = row[2].strip()
+                    if not robot or not reference:
+                        skipped += 1
+                        continue
+                    try:
+                        number = float(number_raw) if number_raw != "" else None
+                    except ValueError:
+                        skipped += 1
+                        continue
+                    rows.append((robot, reference, number))
+
+            if not rows:
+                logger.info(
+                    "Reference dict refresh finished: empty file=%s skipped=%s",
+                    csv_path,
+                    skipped,
+                )
+                RefreshLog.objects.create(
+                    source="manual",
+                    status="success",
+                    source_file=str(csv_path),
+                    total_records=0,
+                    error_message=f"skipped_rows={skipped}",
+                )
+                return Response(
+                    {
+                        "success": True,
+                        "file": str(csv_path),
+                        "records_created": 0,
+                        "records_updated": 0,
+                        "records_skipped": skipped,
+                    }
+                )
+
+            # 使用批量操作避免锁超时
+            # 1. 获取所有现有的 (robot, reference) 组合
+            existing_keys = set(
+                RobotReferenceDict.objects.values_list("robot", "reference")
+            )
+
+            # 2. 分离新建和更新记录
+            to_create = []
+            to_update = []
+            for robot, reference, number in rows:
+                if (robot, reference) in existing_keys:
+                    to_update.append((robot, reference, number))
+                else:
+                    to_create.append((robot, reference, number))
+
+            created = 0
+            updated = 0
+
+            # 3. 批量创建新记录
+            if to_create:
+                create_objs = [
+                    RobotReferenceDict(
+                        robot=robot,
+                        reference=reference,
+                        number=number,
+                        updated_at=now,
+                    )
+                    for robot, reference, number in to_create
+                ]
+                created = len(RobotReferenceDict.objects.bulk_create(create_objs, ignore_conflicts=True))
+
+            # 4. 批量更新现有记录（分批处理，每批500条）
+            BATCH_SIZE = 500
+            for i in range(0, len(to_update), BATCH_SIZE):
+                batch = to_update[i:i + BATCH_SIZE]
+                with transaction.atomic():
+                    for robot, reference, number in batch:
+                        RobotReferenceDict.objects.filter(
+                            robot=robot,
+                            reference=reference,
+                        ).update(number=number, updated_at=now)
+                updated += len(batch)
+
+            RefreshLog.objects.create(
+                source="manual",
+                status="success",
+                source_file=str(csv_path),
+                records_created=created,
+                records_updated=updated,
+                records_deleted=0,
+                total_records=len(rows),
+                error_message=f"skipped_rows={skipped}",
+            )
+            logger.info(
+                "Reference dict refresh finished: file=%s total=%s created=%s updated=%s skipped=%s",
+                csv_path,
+                len(rows),
+                created,
+                updated,
+                skipped,
+            )
+
+            return Response(
+                {
+                    "success": True,
+                    "file": str(csv_path),
+                    "records_created": created,
+                    "records_updated": updated,
+                    "records_skipped": skipped,
+                }
+            )
+        except Exception as exc:
+            logger.exception("Reference dict refresh failed: file=%s", csv_path)
+            RefreshLog.objects.create(
+                source="manual",
+                status="failed",
+                source_file=str(csv_path),
+                error_message=str(exc),
+                total_records=0,
+            )
+            return Response(
+                {"success": False, "error": str(exc)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(detail=False, methods=["get"])
+    def resolve(self, request):
+        robot = (request.query_params.get("robot") or "").strip()
+        reference = (request.query_params.get("reference") or "").strip()
+
+        if not robot or not reference:
+            return Response(
+                {"error": "缺少参数 robot/reference"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        number = RobotReferenceDict.objects.filter(
+            robot=robot,
+            reference=reference,
+        ).values_list("number", flat=True).first()
+
+        if number is None:
+            return Response(
+                {"error": "未找到匹配的 number"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        return Response({"robot": robot, "reference": reference, "number": number})
 
 
 # API 端点：获取最后同步时间

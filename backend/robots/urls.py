@@ -11,6 +11,7 @@ from .views import (
     RobotGroupViewSet,
     GripperCheckViewSet,
     RobotHighRiskSnapshotViewSet,
+    RobotReferenceDictViewSet,
     bi_view,
     get_last_sync_time,
 )
@@ -37,6 +38,7 @@ router.register(r"components", RobotComponentViewSet, basename="robot-component"
 router.register(r"risk-events", RiskEventViewSet, basename="risk-event")
 router.register(r"gripper-check", GripperCheckViewSet, basename="gripper-check")
 router.register(r"high-risk-histories", RobotHighRiskSnapshotViewSet, basename="high-risk-history")
+router.register(r"reference-dict", RobotReferenceDictViewSet, basename="robot-reference-dict")
 
 urlpatterns = [
     path("bi/", bi_view, name="robot-bi"),
