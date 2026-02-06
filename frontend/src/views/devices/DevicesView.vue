@@ -182,14 +182,20 @@
           </el-table-column>
           <el-table-column label="reference" width="200" sortable :sort-by="(row) => row.referenceNo || row.reference || ''">
             <template #default="{ row }">
-              <el-button type="primary" link class="mono" @click="openEdit(row, 'referenceNo')">
+              <template v-if="activeTab === 'history'">
+                <span class="mono">{{ row.referenceNo || row.reference }}</span>
+              </template>
+              <el-button v-else type="primary" link class="mono" @click="openEdit(row, 'referenceNo')">
                 {{ row.referenceNo || row.reference }}
               </el-button>
             </template>
           </el-table-column>
           <el-table-column prop="number" label="number" width="90" align="center" sortable>
             <template #default="{ row }">
-              <el-button type="primary" link class="mono" @click="openEdit(row, 'number')">
+              <template v-if="activeTab === 'history'">
+                <span class="mono">{{ row.number ?? 0 }}</span>
+              </template>
+              <el-button v-else type="primary" link class="mono" @click="openEdit(row, 'number')">
                 {{ row.number ?? 0 }}
               </el-button>
             </template>
@@ -367,14 +373,20 @@
           <template v-else>
             <el-table-column prop="mark" label="mark" width="80" align="center" sortable>
               <template #default="{ row }">
-                <el-button type="primary" link class="mono" @click="openEdit(row, 'mark')">
+                <template v-if="activeTab === 'history'">
+                  <span class="mono">{{ row.mark ?? 0 }}</span>
+                </template>
+                <el-button v-else type="primary" link class="mono" @click="openEdit(row, 'mark')">
                   {{ row.mark ?? 0 }}
                 </el-button>
               </template>
             </el-table-column>
             <el-table-column label="remark" width="200" sortable :sort-by="(row) => row.remark || ''">
               <template #default="{ row }">
-                <el-button type="primary" link class="remark-link" @click="openEdit(row, 'remark')">
+                <template v-if="activeTab === 'history'">
+                  <span class="remark-link">{{ row.remark || '-' }}</span>
+                </template>
+                <el-button v-else type="primary" link class="remark-link" @click="openEdit(row, 'remark')">
                   {{ row.remark || '-' }}
                 </el-button>
               </template>
@@ -1395,7 +1407,7 @@ const getAxisStatusText = (row, axisNum) => {
 }
 
 const openBI = async (robot) => {
-  const partNo = robot?.partNo || ''
+  const partNo = robot?.partNo || robot?.part_no || robot?.robot || ''
   const groupKey = robot?.group || selectedGroup.value || ''
 
   if (!partNo) {

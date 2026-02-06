@@ -25,16 +25,16 @@
               <span>机器人状态</span>
             </router-link>
 
+            <router-link to="/alerts" class="nav-item" :class="{ active: route.path === '/alerts' }">
+              <div class="active-indicator"></div>
+              <el-icon><Bell /></el-icon>
+              <span>程序周期同步视窗</span>
+            </router-link>
+
             <router-link to="/monitoring" class="nav-item" :class="{ active: route.path === '/monitoring' }">
               <div class="active-indicator"></div>
               <el-icon><TrendCharts /></el-icon>
               <span>关键轨迹检查</span>
-            </router-link>
-
-            <router-link to="/alerts" class="nav-item" :class="{ active: route.path === '/alerts' }">
-              <div class="active-indicator"></div>
-              <el-icon><Bell /></el-icon>
-              <span>可视化BI</span>
             </router-link>
           </nav>
 

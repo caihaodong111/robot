@@ -11,7 +11,7 @@
       <!-- Header Section -->
       <header class="page-header entrance-slide-in">
         <div class="title-area">
-          <h1 class="metallic-title">可视化BI <span>VISUAL ANALYTICS</span></h1>
+          <h1 class="metallic-title">程序周期同步视窗 <span>PROGRAM CYCLE SYNC</span></h1>
         </div>
       </header>
 
@@ -139,7 +139,7 @@
               ref="biFrame"
               class="bi-frame"
               :src="biUrl"
-              title="BI 可视化"
+              title="程序周期同步视窗"
               @load="handleFrameLoad"
             ></iframe>
           </div>
@@ -768,6 +768,7 @@ onMounted(async () => {
   gap: 16px;
   min-height: 720px;
   padding: 40px;
+  border-radius: 0;
 }
 
 .empty-icon {

@@ -325,7 +325,7 @@ class RobotComponentViewSet(
 
         # 生成图表（每次都重新生成，因为不保存到磁盘了）
         try:
-            chart_base64 = generate_trend_chart(robot.part_no, axis_num)
+            chart_base64 = generate_trend_chart(robot.robot, axis_num)
         except FileNotFoundError as e:
             return Response(
                 {"success": False, "error": f"CSV 数据文件不存在: {str(e)}"},
@@ -575,17 +575,17 @@ class GripperCheckViewSet(viewsets.GenericViewSet):
     @action(detail=False, methods=['get'])
     def robot_tables(self, request):
         """
-        获取可用的机器人表名列表（从RobotComponent获取part_no）
+        获取可用的机器人表名列表（从RobotComponent获取robot）
         支持按车间(group_key)筛选和关键词(keyword)搜索
 
         参数:
             group: 车间key（可选）
-            keyword: 搜索关键词（可选，支持part_no、robot_id、name模糊搜索）
+            keyword: 搜索关键词（可选，支持robot、shop、tech等模糊搜索）
 
         返回:
         {
             "results": [
-                {"value": "as33_020rb_400", "label": "as33_020rb_400", "robot_id": "RB001", "group_key": "plant_a"},
+                {"value": "as33_020rb_400", "label": "as33_020rb_400", "shop": "MRA1BS", "group_key": "MRA1BS"},
                 ...
             ]
         }
@@ -594,8 +594,8 @@ class GripperCheckViewSet(viewsets.GenericViewSet):
         group_key = request.query_params.get('group')
         keyword = request.query_params.get('keyword', '').strip()
 
-        # 构建查询
-        qs = RobotComponent.objects.values('part_no', 'robot_id', 'group__key', 'name').distinct()
+        # 构建查询 - 使用 robot 字段而不是 part_no
+        qs = RobotComponent.objects.values('robot', 'shop', 'group__key', 'tech').distinct()
 
         if group_key:
             qs = qs.filter(group__key=group_key)
@@ -603,19 +603,20 @@ class GripperCheckViewSet(viewsets.GenericViewSet):
         # 支持关键词搜索
         if keyword:
             qs = qs.filter(
-                Q(part_no__icontains=keyword)
-                | Q(robot_id__icontains=keyword)
-                | Q(name__icontains=keyword)
+                Q(robot__icontains=keyword)
+                | Q(shop__icontains=keyword)
+                | Q(tech__icontains=keyword)
             )
 
-        tables = qs.order_by('part_no')
+        tables = qs.order_by('robot')
 
         results = []
         for t in tables:
             results.append({
-                'value': t['part_no'],
-                'label': t['part_no'],
-                'robot_id': t.get('robot_id', ''),
+                'value': t['robot'],
+                'label': t['robot'],
+                'robot_id': t['robot'],  # 兼容前端，使用 robot 作为 robot_id
+                'shop': t.get('shop', ''),
                 'group_key': t.get('group__key', ''),
             })
 
