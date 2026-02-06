@@ -75,7 +75,7 @@ def write_robot_config_csv(data, csv_path=None):
         return False
 
 
-def update_robot_in_csv(robot, updates, csv_path=None, backup=True):
+def update_robot_in_csv(robot, updates, csv_path=None):
     """
     在CSV文件中更新指定机器人的数据
 
@@ -83,7 +83,6 @@ def update_robot_in_csv(robot, updates, csv_path=None, backup=True):
         robot: 机器人名称
         updates: dict - 要更新的字段，如 {'reference': 'new_ref', 'remark': 'new_remark'}
         csv_path: CSV文件路径
-        backup: bool - 是否在更新前备份
 
     返回: bool - 是否更新成功
     """
@@ -95,14 +94,9 @@ def update_robot_in_csv(robot, updates, csv_path=None, backup=True):
         return False
 
     try:
-        # 可选：先备份文件
-        if backup:
-            backup_csv_file(csv_path)
-
         # 读取现有数据
         data = []
         found = False
-        updated_row = None
 
         with csv_path.open("r", encoding="utf-8-sig", newline="") as f:
             reader = csv.DictReader(f)
@@ -113,7 +107,6 @@ def update_robot_in_csv(robot, updates, csv_path=None, backup=True):
                         if value is not None:
                             row[key] = str(value)
                     found = True
-                    updated_row = row.copy()
                 data.append(row)
 
         if not found:
