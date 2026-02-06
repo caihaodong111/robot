@@ -8,6 +8,153 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+def _refresh_reference_dict():
+    from django.conf import settings
+    from django.utils import timezone
+    from django.db import transaction
+    from pathlib import Path
+    import csv
+
+    from .models import RobotReferenceDict, RefreshLog
+
+    csv_path = Path(settings.BASE_DIR).parent / "dic information .csv"
+    logger.info("Reference dict refresh started: file=%s", csv_path)
+
+    if not csv_path.exists():
+        logger.warning("Reference dict refresh failed: missing file=%s", csv_path)
+        RefreshLog.objects.create(
+            source="manual",
+            status="failed",
+            source_file=str(csv_path),
+            error_message=f"CSV文件不存在: {csv_path}",
+            total_records=0,
+        )
+        return {"success": False, "error": f"CSV文件不存在: {csv_path}"}
+
+    try:
+        rows = []
+        skipped = 0
+        now = timezone.now()
+        with csv_path.open("r", encoding="utf-8-sig", newline="") as file_obj:
+            reader = csv.reader(file_obj)
+            for row in reader:
+                if not row or len(row) < 3:
+                    skipped += 1
+                    continue
+                robot = row[0].strip()
+                reference = row[1].strip()
+                number_raw = row[2].strip()
+                if not robot or not reference:
+                    skipped += 1
+                    continue
+                try:
+                    number = float(number_raw) if number_raw != "" else None
+                except ValueError:
+                    skipped += 1
+                    continue
+                rows.append((robot, reference, number))
+
+        if not rows:
+            logger.info(
+                "Reference dict refresh finished: empty file=%s skipped=%s",
+                csv_path,
+                skipped,
+            )
+            RefreshLog.objects.create(
+                source="manual",
+                status="success",
+                source_file=str(csv_path),
+                total_records=0,
+                error_message=f"skipped_rows={skipped}",
+            )
+            return {
+                "success": True,
+                "file": str(csv_path),
+                "records_created": 0,
+                "records_updated": 0,
+                "records_skipped": skipped,
+            }
+
+        existing_keys = set(
+            RobotReferenceDict.objects.values_list("robot", "reference")
+        )
+
+        to_create = []
+        to_update = []
+        for robot, reference, number in rows:
+            if (robot, reference) in existing_keys:
+                to_update.append((robot, reference, number))
+            else:
+                to_create.append((robot, reference, number))
+
+        created = 0
+        updated = 0
+
+        if to_create:
+            create_objs = [
+                RobotReferenceDict(
+                    robot=robot,
+                    reference=reference,
+                    number=number,
+                    updated_at=now,
+                )
+                for robot, reference, number in to_create
+            ]
+            created = len(
+                RobotReferenceDict.objects.bulk_create(
+                    create_objs, ignore_conflicts=True
+                )
+            )
+
+        BATCH_SIZE = 500
+        for i in range(0, len(to_update), BATCH_SIZE):
+            batch = to_update[i:i + BATCH_SIZE]
+            with transaction.atomic():
+                for robot, reference, number in batch:
+                    RobotReferenceDict.objects.filter(
+                        robot=robot,
+                        reference=reference,
+                    ).update(number=number, updated_at=now)
+            updated += len(batch)
+
+        RefreshLog.objects.create(
+            source="manual",
+            status="success",
+            source_file=str(csv_path),
+            records_created=created,
+            records_updated=updated,
+            records_deleted=0,
+            total_records=len(rows),
+            error_message=f"skipped_rows={skipped}",
+        )
+
+        logger.info(
+            "Reference dict refresh finished: file=%s total=%s created=%s updated=%s skipped=%s",
+            csv_path,
+            len(rows),
+            created,
+            updated,
+            skipped,
+        )
+
+        return {
+            "success": True,
+            "file": str(csv_path),
+            "records_created": created,
+            "records_updated": updated,
+            "records_skipped": skipped,
+        }
+    except Exception as exc:
+        logger.exception("Reference dict refresh failed: file=%s", csv_path)
+        RefreshLog.objects.create(
+            source="manual",
+            status="failed",
+            source_file=str(csv_path),
+            error_message=str(exc),
+            total_records=0,
+        )
+        return {"success": False, "error": str(exc)}
+
 
 @shared_task
 def auto_sync_robot_data():
@@ -47,3 +194,8 @@ def auto_sync_robot_data():
             'success': False,
             'error': str(e)
         }
+
+
+@shared_task
+def refresh_reference_dict_task():
+    return _refresh_reference_dict()

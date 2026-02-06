@@ -24,7 +24,25 @@ class RobotComponentSerializer(serializers.ModelSerializer):
     """机器人组件序列化器 - 严格按照 CSV 字段设计"""
     group = serializers.CharField(source="group.key", read_only=True)
     isHighRisk = serializers.BooleanField(source="is_high_risk", read_only=True)
-    referenceNo = serializers.CharField(source="reference", required=False, allow_blank=True)
+    referenceNo = serializers.CharField(source="reference", read_only=True)
+
+    # 显式定义可写字段 - reference 使用 write_only 避免 referenceNo 冲突
+    reference = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    number = serializers.FloatField(required=False, allow_null=True)
+    mark = serializers.IntegerField(required=False)
+    remark = serializers.CharField(required=False, allow_blank=True)
+    # level 字段：使用 CharField + 自定义验证来处理空字符串
+    level = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
+    def validate_level(self, value):
+        """验证 level 字段：空字符串或 None 时跳过，否则必须是有效选项"""
+        if value == '' or value is None:
+            # 空值时抛出 SkipField 异常，从 validated_data 中移除该字段
+            raise serializers.SkipField()
+        valid_choices = [c[0] for c in RobotComponent.LEVEL_CHOICES]
+        if value not in valid_choices:
+            raise serializers.ValidationError(f'"{value}" 不是合法选项。')
+        return value
 
     class Meta:
         model = RobotComponent

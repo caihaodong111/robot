@@ -125,7 +125,7 @@
               </el-input>
             </el-col>
             <el-col :span="3">
-              <el-select v-model="levelFilter" placeholder="等级(level)" clearable class="dark-select">
+              <el-select v-model="levelFilter" placeholder="等级(level)" multiple collapse-tags collapse-tags-tooltip clearable class="dark-select">
                 <el-option label="H" value="H" />
                 <el-option label="M" value="M" />
                 <el-option label="L" value="L" />
@@ -180,7 +180,7 @@
               </el-button>
             </template>
           </el-table-column>
-          <el-table-column label="reference" width="150" sortable :sort-by="(row) => row.referenceNo || row.reference || ''">
+          <el-table-column label="reference" width="200" sortable :sort-by="(row) => row.referenceNo || row.reference || ''">
             <template #default="{ row }">
               <el-button type="primary" link class="mono" @click="openEdit(row, 'referenceNo')">
                 {{ row.referenceNo || row.reference }}
@@ -200,11 +200,6 @@
             </template>
           </el-table-column>
           <el-table-column prop="tech" label="tech" width="120" sortable />
-          <el-table-column label="更新时间" width="180" sortable :sort-by="(row) => getUpdatedAtSortValue(row)">
-            <template #default="{ row }">
-              <span class="mono">{{ getUpdatedAtText(row) }}</span>
-            </template>
-          </el-table-column>
 
           <!-- all 标签页的详细列 -->
           <template v-if="activeTab === 'all'">
@@ -360,6 +355,12 @@
                 <el-tag :type="levelTagType(row.level)" effect="light">{{ row.level }}</el-tag>
               </template>
             </el-table-column>
+            <!-- 更新时间 -->
+            <el-table-column label="更新时间" width="180" sortable :sort-by="(row) => getUpdatedAtSortValue(row)">
+              <template #default="{ row }">
+                <span class="mono">{{ getUpdatedAtText(row) }}</span>
+              </template>
+            </el-table-column>
           </template>
 
           <!-- highRisk 和 history 标签页的列 -->
@@ -409,10 +410,10 @@
                 </el-button>
               </template>
             </el-table-column>
-
-            <el-table-column label="Action" width="85" align="center">
+            <!-- 更新时间 -->
+            <el-table-column label="更新时间" width="180" sortable :sort-by="(row) => getUpdatedAtSortValue(row)">
               <template #default="{ row }">
-                <el-button type="primary" link @click="openDetail(row)">Details</el-button>
+                <span class="mono">{{ getUpdatedAtText(row) }}</span>
               </template>
             </el-table-column>
           </template>
@@ -633,7 +634,7 @@ import { computed, ref, watch, nextTick, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { Refresh, Search, Close, Monitor, ArrowRight, ArrowLeft, Picture, Clock } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { getRobotComponents, getRobotGroups, updateRobotComponent, getErrorTrendChart, importRobotComponents, getHighRiskHistories, getReferenceDict, refreshReferenceDict, resolveReferenceNumber } from '@/api/robots'
+import { getRobotComponents, getRobotGroups, updateRobotComponent, getErrorTrendChart, importRobotComponents, getHighRiskHistories, getReferenceDict, refreshReferenceDict, getReferenceDictRefreshStatus, resolveReferenceNumber } from '@/api/robots'
 import request from '@/utils/request'
 
 const router = useRouter()
@@ -673,7 +674,7 @@ const getInitialGroup = () => {
 const selectedGroup = ref(getInitialGroup())
 const activeTab = ref('highRisk')
 const keyword = ref('')
-const levelFilter = ref('H')
+const levelFilter = ref([])
 const axisKeysFilter = ref([])
 const axisStateFilter = ref('')
 const markMode = ref('')
@@ -712,6 +713,23 @@ const loadReferenceOptions = async (robot) => {
   }
 }
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+const waitForReferenceRefresh = async (taskId) => {
+  const maxAttempts = 30
+  const intervalMs = 2000
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const status = await getReferenceDictRefreshStatus({ task_id: taskId })
+    const state = (status?.status || '').toLowerCase()
+    if (state === 'success') return status.result || {}
+    if (state === 'failed') {
+      throw new Error(status?.error || status?.result?.error || '刷新失败')
+    }
+    await sleep(intervalMs)
+  }
+  throw new Error('刷新超时，请稍后重试')
+}
+
 const refreshReferenceOptions = async () => {
   if (!editTarget.value?.robot) {
     ElMessage.warning('未找到机器人编号，无法刷新')
@@ -719,7 +737,12 @@ const refreshReferenceOptions = async () => {
   }
   referenceRefreshing.value = true
   try {
-    await refreshReferenceDict()
+    const start = await refreshReferenceDict()
+    const taskId = start?.task_id
+    if (!taskId) {
+      throw new Error('未获取任务ID')
+    }
+    await waitForReferenceRefresh(taskId)
     await loadReferenceOptions(editTarget.value.robot)
     ElMessage.success('reference字典已刷新')
   } catch (error) {
@@ -953,7 +976,7 @@ const matchesKeyword = (robot) => {
 }
 
 const matchesFilters = (robot) => {
-  if (levelFilter.value && robot.level !== levelFilter.value) return false
+  if (levelFilter.value.length && !levelFilter.value.includes(robot.level)) return false
   if (markMode.value === 'zero' && (robot.mark ?? 0) !== 0) return false
   if (markMode.value === 'nonzero' && (robot.mark ?? 0) === 0) return false
   if (axisKeysFilter.value.length) {
@@ -1006,7 +1029,7 @@ const pagedRows = computed(() => {
 
 const resetFilters = () => {
   keyword.value = ''
-  levelFilter.value = ''
+  levelFilter.value = []
   axisKeysFilter.value = []
   axisStateFilter.value = ''
   markMode.value = ''
@@ -1330,7 +1353,7 @@ const loadRows = async (fetchAll = false) => {
       const historyParams = {
         group: selectedGroup.value,
         keyword: keyword.value || undefined,
-        level: levelFilter.value || undefined,
+        level: levelFilter.value.length ? levelFilter.value.join(',') : undefined,
         axisOk: axisStateFilter.value || undefined,
         page: fetchAll ? 1 : currentPage.value,
         page_size: actualPageSize
@@ -1343,7 +1366,7 @@ const loadRows = async (fetchAll = false) => {
         group: selectedGroup.value,
         tab: tabMap[activeTab.value] || 'highRisk',
         keyword: keyword.value || undefined,
-        level: levelFilter.value || undefined,
+        level: levelFilter.value.length ? levelFilter.value.join(',') : undefined,
         axisKeys: axisKeysFilter.value.length ? axisKeysFilter.value.join(',') : undefined,
         axisOk: axisStateFilter.value ? axisStateFilter.value === 'ok' : undefined,
         markMode: markMode.value || undefined,
@@ -1474,7 +1497,7 @@ let suppressFilterLoad = false
 watch([selectedGroup, activeTab], () => {
   console.log('selectedGroup or activeTab changed, resetting page to 1')
   suppressFilterLoad = true
-  levelFilter.value = activeTab.value === 'highRisk' ? 'H' : ''
+  levelFilter.value = activeTab.value === 'highRisk' ? ['H'] : []
   currentPage.value = 1
   loadRows()
   suppressFilterLoad = false

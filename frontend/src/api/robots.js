@@ -212,6 +212,14 @@ export function refreshReferenceDict() {
   })
 }
 
+export function getReferenceDictRefreshStatus(params) {
+  return request({
+    url: '/robots/reference-dict/refresh-status/',
+    method: 'get',
+    params
+  })
+}
+
 export function resolveReferenceNumber(params) {
   return request({
     url: '/robots/reference-dict/resolve/',
