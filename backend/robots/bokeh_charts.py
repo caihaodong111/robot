@@ -235,15 +235,19 @@ def create_bi_charts(
     # ============ 创建控件 ============
     from bokeh.models import Div, Spacer
 
+    # 创建标签 Div（与下拉框在同一行）
+    program_label = Div(text="<span style='font-size: 12px; font-weight: bold;'>program_name:</span>")
+    axis_label = Div(text="<span style='font-size: 12px; font-weight: bold;'>Axis select:</span>")
+
     program_select = Select(
-        title="程序:",
+        title="",  # 空标题，标签单独显示
         value=default_program,
         options=programs,
         width=200
     )
 
     axis_select = Select(
-        title="Axis:",
+        title="",  # 空标题，标签单独显示
         value=default_axis,
         options=list(AXIS_CONFIG.keys()),
         width=100
@@ -306,7 +310,7 @@ def create_bi_charts(
     # Hover工具定义 - 使用动态列名显示
     hover = HoverTool(tooltips=[
         ('Timestamp', '@Timestamp'),
-        ('电流', '@curr_value'),
+        ('Current', '@curr_value'),
         ('SNR_C', '@SNR_C'),
         ('P_name', '@P_name')
     ])
@@ -320,28 +324,28 @@ def create_bi_charts(
 
     hover_torque = HoverTool(tooltips=[
         ('Timestamp', '@Timestamp'),
-        ('扭矩', '@torque_value'),
+        ('Torque', '@torque_value'),
         ('SNR_C', '@SNR_C'),
         ('P_name', '@P_name')
     ])
 
     hover_fol = HoverTool(tooltips=[
         ('Timestamp', '@Timestamp'),
-        ('跟随误差', '@fol_value'),
+        ('Following Error', '@fol_value'),
         ('SNR_C', '@SNR_C'),
         ('P_name', '@P_name')
     ])
 
     hover_speed = HoverTool(tooltips=[
         ('Timestamp', '@Timestamp'),
-        ('速度', '@speed_value'),
+        ('Speed', '@speed_value'),
         ('SNR_C', '@SNR_C'),
         ('P_name', '@P_name')
     ])
 
     hover_axisp = HoverTool(tooltips=[
         ('Timestamp', '@Timestamp'),
-        ('位置', '@axisp_value'),
+        ('Position', '@axisp_value'),
         ('SNR_C', '@SNR_C'),
         ('P_name', '@P_name')
     ])
@@ -351,12 +355,12 @@ def create_bi_charts(
     #shared_y_range = Range1d(start=0, end=100, bounds='auto')
 
     p_curr = figure(
-        title=f'{default_axis} - 电流分析',
+        title=f'{default_axis} - Current Analysis',
         sizing_mode="stretch_width",
         width=2100,
         height=220,
-        x_axis_label='运动时间',
-        y_axis_label='电流百分比 %',
+        x_axis_label='Motion Time',
+        y_axis_label='Current %',
        #y_range=shared_y_range,
         tools=[hover, 'pan', 'wheel_zoom', 'box_zoom', 'reset', 'save'],
         min_border_left=40,
@@ -365,9 +369,9 @@ def create_bi_charts(
         min_border_bottom=10,
         margin=(5, 10, 5, 10)
     )
-    p_curr.step(x='sort', y='min_curr_value', source=proxy_source, line_width=2, mode="center", color='red', legend_label='最小电流')
-    p_curr.step(x='sort', y='max_curr_value', source=proxy_source, line_width=2, mode="center", color='red', legend_label='最大电流')
-    p_curr.scatter(x='sort', y='curr_value', source=proxy_source, size=2, alpha=0.6, color='navy', legend_label='实时电流')
+    p_curr.step(x='sort', y='min_curr_value', source=proxy_source, line_width=2, mode="center", color='red', legend_label='Min Current')
+    p_curr.step(x='sort', y='max_curr_value', source=proxy_source, line_width=2, mode="center", color='red', legend_label='Max Current')
+    p_curr.scatter(x='sort', y='curr_value', source=proxy_source, size=2, alpha=0.6, color='navy', legend_label='Real-time Current')
     p_curr.legend.location = 'top_right'
     p_curr.legend.click_policy = "hide"
     p_curr.xaxis.visible = False
@@ -378,8 +382,8 @@ def create_bi_charts(
         sizing_mode="stretch_width",
         width=2100,
         height=180,
-        x_axis_label='运动时间',
-        y_axis_label='温度 (°C)',
+        x_axis_label='Motion Time',
+        y_axis_label='Temperature (°C)',
         tools=[hover_temp, 'pan', 'wheel_zoom', 'box_zoom', 'reset', 'save'],
         min_border_left=40,
         min_border_right=10,
@@ -387,7 +391,7 @@ def create_bi_charts(
         min_border_bottom=10,
         margin=(5, 10, 5, 10)
     )
-    p_temp.scatter(x='sort', y='Tem_1', source=proxy_source, size=2, color='orange', legend_label='温度')
+    p_temp.scatter(x='sort', y='Tem_1', source=proxy_source, size=2, color='orange', legend_label='Temperature')
     p_temp.legend.location = 'top_right'
     p_temp.legend.click_policy = "hide"
     p_temp.xaxis.visible = False
@@ -397,8 +401,8 @@ def create_bi_charts(
         sizing_mode="stretch_width",
         width=2100,
         height=180,
-        x_axis_label='运动时间',
-        y_axis_label='轴位置',
+        x_axis_label='Motion Time',
+        y_axis_label='Axis Position',
         tools=[hover_axisp, 'pan', 'wheel_zoom', 'box_zoom', 'reset', 'save'],
         min_border_left=40,
         min_border_right=10,
@@ -406,7 +410,7 @@ def create_bi_charts(
         min_border_bottom=10,
         margin=(5, 10, 5, 10)
     )
-    p_pos.scatter(x='sort', y='axisp_value', source=proxy_source, size=2, color='green', legend_label='位置')
+    p_pos.scatter(x='sort', y='axisp_value', source=proxy_source, size=2, color='green', legend_label='Position')
     p_pos.legend.location = 'top_right'
     p_pos.legend.click_policy = "hide"
     p_pos.xaxis.visible = False
@@ -416,8 +420,8 @@ def create_bi_charts(
         sizing_mode="stretch_width",
         width=2100,
         height=180,
-        x_axis_label='运动时间',
-        y_axis_label='电机速度',
+        x_axis_label='Motion Time',
+        y_axis_label='Motor Speed',
         tools=[hover_speed, 'pan', 'wheel_zoom', 'box_zoom', 'reset', 'save'],
         min_border_left=40,
         min_border_right=10,
@@ -425,7 +429,7 @@ def create_bi_charts(
         min_border_bottom=10,
         margin=(5, 10, 5, 10)
     )
-    p_speed.scatter(x='sort', y='speed_value', source=proxy_source, size=2, color='blue', legend_label='速度')
+    p_speed.scatter(x='sort', y='speed_value', source=proxy_source, size=2, color='blue', legend_label='Speed')
     p_speed.legend.location = 'top_right'
     p_speed.legend.click_policy = "hide"
     p_speed.xaxis.visible = False
@@ -435,8 +439,8 @@ def create_bi_charts(
         sizing_mode="stretch_width",
         width=2100,
         height=180,
-        x_axis_label='运动时间',
-        y_axis_label='跟随误差',
+        x_axis_label='Motion Time',
+        y_axis_label='Following Error',
         tools=[hover_fol, 'pan', 'wheel_zoom', 'box_zoom', 'reset', 'save'],
         min_border_left=40,
         min_border_right=10,
@@ -444,7 +448,7 @@ def create_bi_charts(
         min_border_bottom=10,
         margin=(5, 10, 5, 10)
     )
-    p_fol.scatter(x='sort', y='fol_value', source=proxy_source, size=2, color='lime', legend_label='跟随误差')
+    p_fol.scatter(x='sort', y='fol_value', source=proxy_source, size=2, color='lime', legend_label='Following Error')
     p_fol.legend.location = 'top_right'
     p_fol.legend.click_policy = "hide"
     p_fol.xaxis.visible = False
@@ -454,8 +458,8 @@ def create_bi_charts(
         sizing_mode="stretch_width",
         width=2100,
         height=180,
-        x_axis_label='运动时间',
-        y_axis_label='扭矩',
+        x_axis_label='Motion Time',
+        y_axis_label='Torque',
         tools=[hover_torque, 'pan', 'wheel_zoom', 'box_zoom', 'reset', 'save'],
         min_border_left=40,
         min_border_right=10,
@@ -463,7 +467,7 @@ def create_bi_charts(
         min_border_bottom=10,
         margin=(5, 10, 5, 10)
     )
-    p_torque.scatter(x='sort', y='torque_value', source=proxy_source, size=2, color='sienna', legend_label='扭矩')
+    p_torque.scatter(x='sort', y='torque_value', source=proxy_source, size=2, color='sienna', legend_label='Torque')
     p_torque.legend.location = 'top_right'
     p_torque.legend.click_policy = "hide"
     p_torque.xaxis.visible = False
@@ -471,7 +475,7 @@ def create_bi_charts(
     # 聚合分析图 - 使用代理数据源和固定列名
     # 使用与电流分析图共享的y_range，实现纵轴联动
     line_plot = figure(
-        title=f"聚合分析 - {default_program}",
+        title=f"Aggregate Analysis - {default_program}",
         sizing_mode="stretch_width",
         width=2100,
         height=280,
@@ -489,16 +493,16 @@ def create_bi_charts(
         tooltips=[
             ("SNR_C", "@SNR_C"),
             ("P_name", "@P_name"),
-            ("1%分位", "@lq_value"),
-            ("99%分位", "@hq_value"),
+            ("1% Quantile", "@lq_value"),
+            ("99% Quantile", "@hq_value"),
         ]
     )
     line_plot.add_tools(hover_line)
 
     line_plot.line(x="SNR_C", y="lq_value", source=proxy_agg_source, line_color="blue",
-                    line_width=2, legend_label="1%分位", alpha=1)
+                    line_width=2, legend_label="1% Quantile", alpha=1)
     line_plot.line(x="SNR_C", y="hq_value", source=proxy_agg_source, line_color="orange",
-                    line_width=2, legend_label="99%分位", alpha=1)
+                    line_width=2, legend_label="99% Quantile", alpha=1)
     l1 = Band(base="SNR_C", lower="min_curr_value", upper="max_curr_value", source=proxy_agg_source,
               fill_alpha=0.3, fill_color="green", line_color="red")
     line_plot.add_layout(l1)
@@ -524,12 +528,12 @@ def create_bi_charts(
     if not energy_full.empty:
         EnergyP = figure(
             x_axis_type="datetime",
-            title='能耗分析',
+            title='Energy Analysis',
             sizing_mode="stretch_width",
             width=280,
             height=300,
-            x_axis_label='时间',
-            y_axis_label='能量',
+            x_axis_label='Time',
+            y_axis_label='Energy',
             tools=['pan', 'wheel_zoom', 'box_zoom', 'reset', 'save'],
             min_border_left=40,
             min_border_right=10,
@@ -537,9 +541,9 @@ def create_bi_charts(
             min_border_bottom=40
         )
         EnergyP.line(x="TimeStamp2", y="ENERGY", source=energy_source,
-                     line_color="orange", line_width=2, legend_label="能耗", alpha=1)
+                     line_color="orange", line_width=2, legend_label="Energy Consumption", alpha=1)
         EnergyP.line(x="TimeStamp2", y="LOSTENERGY", source=energy_source,
-                     line_color="yellow", line_width=2, legend_label="损耗能耗", alpha=1)
+                     line_color="yellow", line_width=2, legend_label="Lost Energy", alpha=1)
         EnergyP.legend.location = 'top_left'
         EnergyP.legend.background_fill_alpha = 0.7
 
@@ -580,8 +584,8 @@ def create_bi_charts(
     const axispCol = config.axisp;
 
     // 更新图表标题
-    curr_plot.title.text = axis + " - 电流分析";
-    line_plot.title.text = "聚合分析 - " + program;
+    curr_plot.title.text = axis + " - Current Analysis";
+    line_plot.title.text = "Aggregate Analysis - " + program;
 
     // 更新聚合分析图的 x_range
     line_plot.x_range.factors = xTex;
@@ -654,18 +658,22 @@ def create_bi_charts(
 
     # 能耗按钮改为模板中的浮动按钮，这里不再创建Bokeh按钮
 
-    # 顶部控件栏 - 使用弹性 Spacer 实现自适应居中
+    # 顶部控件栏 - 标签与下拉框在同一行
     controls_center = row(
-        Spacer(sizing_mode="stretch_width"),
+        Spacer(width=50, height=1),
+        program_label,
+        Spacer(width=5, height=1),
         program_select,
-        Spacer(width=16, height=1),
+        Spacer(width=30, height=1),
+        axis_label,
+        Spacer(width=5, height=1),
         axis_select,
         Spacer(sizing_mode="stretch_width"),
         sizing_mode="stretch_width",
         css_classes=["bi-controls"]
     )
 
-    top_controls = controls_center
+    top_controls = column(Spacer(height=20), controls_center, sizing_mode="stretch_width")
 
     # 图表区域 - 只拉伸宽度，保持各自高度
     charts_column = column(

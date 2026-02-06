@@ -132,7 +132,7 @@
 
         .energy-fab {
             position: absolute;
-            top: 12px;
+            top: 25px;
             right: 20px;
             padding: 8px 18px;
             border: none;
@@ -215,7 +215,7 @@
         <div class="bi-chart-wrap">
             {{ bokeh_div|safe }}
             {% if energy_modal_html %}
-            <button class="energy-fab" id="energyModalTrigger">能耗分析</button>
+            <button class="energy-fab" id="energyModalTrigger">Energy</button>
             {% endif %}
         </div>
         {{ energy_modal_html|safe }}

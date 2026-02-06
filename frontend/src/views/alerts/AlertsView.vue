@@ -792,13 +792,14 @@ onMounted(async () => {
 .bi-card {
   padding: 0;
   overflow: hidden;
+  border-radius: 0;
 }
 
 .bi-frame-wrapper {
   position: relative;
   width: 100%;
   height: 900px;
-  border-radius: 24px;
+  border-radius: 0;
   overflow: hidden;
   background: #000;
 }
