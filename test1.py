@@ -225,7 +225,7 @@ def drow_pic(n,data,robot):
         ax6.set_ylabel('T6')
         ax6.xaxis.set_visible(False)
 
-        ax7.scatter(data['Timestamp'], data['error1_c1'], c='tab:red', s=5, alpha=1)
+        ax7.scatter(data['Timestamp'], data['error1_c1'], c='tab:red', s=5, alpha=na ge1)
         ax7.set_xlabel('Timestamp')  # 仅在最后一个子图上显示x轴标签
         ax7.set_ylabel('error')
 

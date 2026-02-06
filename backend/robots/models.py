@@ -530,3 +530,138 @@ class SystemConfig(models.Model):
             config.save()
         return config
 
+
+class EditAuthUser(models.Model):
+    """
+    编辑认证用户模型
+    用于存储机器人组件编辑功能的认证账号密码
+    """
+    username = models.CharField(max_length=64, unique=True, verbose_name="用户名")
+    # 使用 Django 的 make_password 生成的哈希密码存储
+    password_hash = models.CharField(max_length=128, verbose_name="密码哈希")
+    is_active = models.BooleanField(default=True, verbose_name="是否启用")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+    last_login_at = models.DateTimeField(null=True, blank=True, verbose_name="最后登录时间")
+
+    class Meta:
+        db_table = "edit_auth_users"
+        verbose_name = "编辑认证用户"
+        verbose_name_plural = "编辑认证用户"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.username
+
+    def set_password(self, raw_password):
+        """设置密码（哈希存储）"""
+        from django.contrib.auth.hashers import make_password
+        self.password_hash = make_password(raw_password)
+
+    def check_password(self, raw_password):
+        """验证密码"""
+        from django.contrib.auth.hashers import check_password
+        return check_password(raw_password, self.password_hash)
+
+    @classmethod
+    def get_active_user(cls, username):
+        """获取活跃用户"""
+        try:
+            return cls.objects.get(username=username, is_active=True)
+        except cls.DoesNotExist:
+            return None
+
+    @classmethod
+    def verify_credentials(cls, username, password):
+        """验证凭据"""
+        user = cls.get_active_user(username)
+        if user and user.check_password(password):
+            # 更新最后登录时间
+            from django.utils import timezone
+            user.last_login_at = timezone.now()
+            user.save(update_fields=['last_login_at'])
+            return user
+        return None
+
+
+class EditSessionVersion(models.Model):
+    """
+    编辑会话版本控制
+
+    用于管理编辑登录会话的有效性，定时任务刷新时增加版本号，
+    使所有已登录的会话失效，需要重新登录
+    """
+    version = models.BigIntegerField(default=1, verbose_name="版本号")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+    updated_by = models.CharField(max_length=64, blank=True, default="", verbose_name="更新来源")
+
+    class Meta:
+        db_table = "edit_session_version"
+        verbose_name = "编辑会话版本"
+        verbose_name_plural = "编辑会话版本"
+
+    def __str__(self):
+        return f"Version {self.version} (updated: {self.updated_at.strftime('%Y-%m-%d %H:%M:%S')})"
+
+    @classmethod
+    def get_current_version(cls):
+        """获取当前会话版本"""
+        obj, created = cls.objects.get_or_create(
+            id=1,
+            defaults={'version': 1, 'updated_by': 'system'}
+        )
+        return obj.version
+
+    @classmethod
+    def increment_version(cls, updated_by="system"):
+        """增加版本号（使所有现有会话失效）"""
+        obj, created = cls.objects.get_or_create(
+            id=1,
+            defaults={'version': 1, 'updated_by': updated_by}
+        )
+        obj.version += 1
+        obj.updated_by = updated_by
+        obj.save()
+        return obj.version
+
+    @classmethod
+    def check_version(cls, client_version):
+        """检查客户端版本是否有效"""
+        if client_version is None:
+            return False
+        current = cls.get_current_version()
+        return int(client_version) == current
+
+
+class RobotInfo(models.Model):
+    """
+    机器人基本信息表
+
+    用于存储机器人的基础信息，方便管理和查询
+    """
+    robot = models.CharField(max_length=64, db_index=True, verbose_name="机器人")
+    shop = models.CharField(max_length=64, null=True, blank=True, verbose_name="车间")
+    reference = models.CharField(max_length=128, null=True, blank=True, verbose_name="参考编号")
+    number = models.FloatField(null=True, blank=True, verbose_name="编号")
+    type = models.CharField(max_length=128, null=True, blank=True, verbose_name="类型")
+    tech = models.CharField(max_length=128, null=True, blank=True, verbose_name="工艺")
+    mark = models.IntegerField(default=0, verbose_name="标记")
+    remark = models.TextField(blank=True, default="", verbose_name="备注")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        db_table = "robot_info"
+        verbose_name = "机器人基本信息"
+        verbose_name_plural = "机器人基本信息"
+        ordering = ["robot"]
+        indexes = [
+            models.Index(fields=["robot"]),
+            models.Index(fields=["shop"]),
+            models.Index(fields=["reference"]),
+            models.Index(fields=["robot", "reference"]),
+        ]
+
+    def __str__(self):
+        return f"{self.robot} - {self.reference or 'N/A'}"
+

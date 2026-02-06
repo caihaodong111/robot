@@ -227,3 +227,21 @@ export function resolveReferenceNumber(params) {
     params
   })
 }
+
+// ==================== 编辑认证 API ====================
+
+export function verifyEditCredentials(data) {
+  return request({
+    url: '/robots/auth/verify/',
+    method: 'post',
+    data
+  })
+}
+
+export function getEditAuthStatus(params) {
+  return request({
+    url: '/robots/auth/status/',
+    method: 'get',
+    params
+  })
+}

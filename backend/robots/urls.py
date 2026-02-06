@@ -15,6 +15,14 @@ from .views import (
     bi_view,
     get_last_sync_time,
 )
+from .auth_views import (
+    verify_edit_credentials,
+    get_edit_auth_status,
+    list_edit_users,
+    change_edit_password,
+    create_edit_user,
+    increment_edit_session_version,
+)
 from .error_trend_chart import CHART_OUTPUT_PATH
 
 
@@ -44,5 +52,12 @@ urlpatterns = [
     path("bi/", bi_view, name="robot-bi"),
     path("charts/<path:filename>", serve_chart, name="robot-chart"),
     path("last_sync_time/", get_last_sync_time, name="last-sync-time"),
+    # 编辑认证相关接口
+    path("auth/verify/", verify_edit_credentials, name="verify-edit-credentials"),
+    path("auth/status/", get_edit_auth_status, name="edit-auth-status"),
+    path("auth/increment-version/", increment_edit_session_version, name="increment-edit-session-version"),
+    path("auth/users/", list_edit_users, name="list-edit-users"),
+    path("auth/change-password/", change_edit_password, name="change-edit-password"),
+    path("auth/create-user/", create_edit_user, name="create-edit-user"),
     path("", include(router.urls)),
 ]

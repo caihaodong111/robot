@@ -168,6 +168,7 @@ def auto_sync_robot_data():
     """
     try:
         from .weekly_result_service import import_robot_components_csv, archive_high_risk_robots
+        from .models import EditSessionVersion
 
         logger.info("开始自动同步机器人数据...")
 
@@ -184,6 +185,9 @@ def auto_sync_robot_data():
                 f"自动同步成功！新增 {result.get('records_created', 0)} 条，"
                 f"更新 {result.get('records_updated', 0)} 条"
             )
+            # 步骤3：增加会话版本号，使所有编辑会话失效
+            new_version = EditSessionVersion.increment_version(updated_by="scheduled_sync")
+            logger.info(f"会话版本已更新至 {new_version}，所有编辑会话需要重新登录")
         else:
             logger.error(f"自动同步失败: {result.get('error', '未知错误')}")
 

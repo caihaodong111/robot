@@ -189,6 +189,18 @@ class RobotComponentViewSet(
         try:
             response = super().update(request, *args, **kwargs)
             logger.info(f"PATCH success for id {kwargs.get('pk')}")
+
+            # 同步更新到CSV配置文件
+            try:
+                instance = self.get_object()
+                from .robot_config_sync import sync_robot_component_to_csv
+                sync_success = sync_robot_component_to_csv(instance)
+                if sync_success:
+                    logger.info(f"CSV同步成功: robot={instance.robot}")
+            except Exception as csv_error:
+                logger.error(f"CSV同步失败: {csv_error}")
+                # CSV同步失败不影响主流程，只记录日志
+
             return response
         except Exception as e:
             logger.error(f"PATCH error for id {kwargs.get('pk')}: {type(e).__name__}: {e}")

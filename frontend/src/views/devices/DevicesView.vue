@@ -605,6 +605,25 @@
       </template>
     </el-dialog>
 
+    <!-- Edit Authentication Login Dialog -->
+    <el-dialog v-model="loginVisible" title="编辑验证" width="420px" class="dark-dialog" :close-on-click-modal="false">
+      <div class="login-dialog-content">
+        <p class="login-hint">要编辑机器人数据，请先登录验证</p>
+        <el-form :model="loginForm" label-position="top" class="login-form">
+          <el-form-item label="用户名">
+            <el-input v-model="loginForm.username" placeholder="请输入用户名" @keyup.enter="handleLogin" />
+          </el-form-item>
+          <el-form-item label="密码">
+            <el-input v-model="loginForm.password" type="password" placeholder="请输入密码" show-password @keyup.enter="handleLogin" />
+          </el-form-item>
+        </el-form>
+      </div>
+      <template #footer>
+        <el-button @click="cancelLogin">取消</el-button>
+        <el-button type="primary" :loading="loggingIn" @click="handleLogin">登录</el-button>
+      </template>
+    </el-dialog>
+
     <!-- Error Trend Chart Dialog -->
     <el-dialog
       v-model="chartDialogVisible"
@@ -630,11 +649,11 @@
 </template>
 
 <script setup>
-import { computed, ref, watch, nextTick, onUnmounted } from 'vue'
+import { computed, ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { Refresh, Search, Close, Monitor, ArrowRight, ArrowLeft, Picture, Clock } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { getRobotComponents, getRobotGroups, updateRobotComponent, getErrorTrendChart, importRobotComponents, getHighRiskHistories, getReferenceDict, refreshReferenceDict, getReferenceDictRefreshStatus, resolveReferenceNumber } from '@/api/robots'
+import { getRobotComponents, getRobotGroups, updateRobotComponent, getErrorTrendChart, importRobotComponents, getHighRiskHistories, getReferenceDict, refreshReferenceDict, getReferenceDictRefreshStatus, resolveReferenceNumber, verifyEditCredentials, getEditAuthStatus } from '@/api/robots'
 import request from '@/utils/request'
 
 const router = useRouter()
@@ -694,6 +713,80 @@ const editForm = ref({
   remark: '',
   level: 'L'
 })
+
+// 编辑认证相关状态
+const isEditAuthenticated = ref(false)
+const editSessionVersion = ref(null) // 存储会话版本号
+const loginVisible = ref(false)
+const loggingIn = ref(false)
+const loginForm = ref({
+  username: '',
+  password: ''
+})
+const pendingEditData = ref(null) // 存储待处理的编辑操作
+
+// localStorage key
+const EDIT_AUTH_KEY = 'edit_auth_version'
+
+// 从 localStorage 恢复登录状态
+const restoreAuthState = () => {
+  try {
+    const stored = localStorage.getItem(EDIT_AUTH_KEY)
+    if (stored) {
+      const data = JSON.parse(stored)
+      editSessionVersion.value = data.version
+      // 检查会话是否仍然有效
+      checkEditAuthStatus()
+    }
+  } catch (e) {
+    console.error('Failed to restore auth state:', e)
+  }
+}
+
+// 保存登录状态到 localStorage
+const saveAuthState = (version) => {
+  try {
+    localStorage.setItem(EDIT_AUTH_KEY, JSON.stringify({
+      version: version,
+      timestamp: new Date().toISOString()
+    }))
+    editSessionVersion.value = version
+  } catch (e) {
+    console.error('Failed to save auth state:', e)
+  }
+}
+
+// 清除登录状态
+const clearAuthState = () => {
+  try {
+    localStorage.removeItem(EDIT_AUTH_KEY)
+    editSessionVersion.value = null
+    isEditAuthenticated.value = false
+  } catch (e) {
+    console.error('Failed to clear auth state:', e)
+  }
+}
+
+// 检查编辑认证状态（版本是否有效）
+const checkEditAuthStatus = async () => {
+  if (!editSessionVersion.value) {
+    isEditAuthenticated.value = false
+    return
+  }
+
+  try {
+    const result = await getEditAuthStatus({ version: editSessionVersion.value })
+    if (result.valid) {
+      isEditAuthenticated.value = true
+    } else {
+      // 会话失效，清除本地状态
+      clearAuthState()
+    }
+  } catch (e) {
+    console.error('Failed to check auth status:', e)
+    // 请求失败时不做处理，保持当前状态
+  }
+}
 
 const loadReferenceOptions = async (robot) => {
   if (!robot) {
@@ -1126,10 +1219,60 @@ const normalizeRow = (row) => {
   }
 }
 
+// 登录处理函数
+const handleLogin = async () => {
+  const { username, password } = loginForm.value
+  if (!username || !password) {
+    ElMessage.warning('请输入用户名和密码')
+    return
+  }
+
+  loggingIn.value = true
+  try {
+    const result = await verifyEditCredentials({ username, password })
+    if (result.success) {
+      isEditAuthenticated.value = true
+      // 保存会话版本到 localStorage
+      saveAuthState(result.sessionVersion)
+      loginVisible.value = false
+      loginForm.value = { username: '', password: '' }
+      ElMessage.success('登录成功，可以编辑了')
+
+      // 如果有待处理的编辑操作，执行它
+      if (pendingEditData.value) {
+        const { row, focusField } = pendingEditData.value
+        pendingEditData.value = null
+        // 延迟执行，确保对话框关闭动画完成
+        nextTick(() => {
+          openEdit(row, focusField)
+        })
+      }
+    }
+  } catch (error) {
+    ElMessage.error(error?.response?.data?.error || '登录失败，请检查用户名和密码')
+  } finally {
+    loggingIn.value = false
+  }
+}
+
+const cancelLogin = () => {
+  loginVisible.value = false
+  loginForm.value = { username: '', password: '' }
+  pendingEditData.value = null
+}
+
 const openEdit = async (row, focusField) => {
   // 同步期间禁止编辑
   if (syncing.value) {
     ElMessage.warning('数据同步中，暂时无法编辑')
+    return
+  }
+
+  // 检查编辑认证
+  if (!isEditAuthenticated.value) {
+    // 保存待编辑的数据，登录后继续
+    pendingEditData.value = { row, focusField }
+    loginVisible.value = true
     return
   }
 
@@ -1530,6 +1673,11 @@ watch(axisKeysFilter, (newVal) => {
 
 // 初始化数据
 initData()
+
+// 组件挂载时恢复登录状态
+onMounted(() => {
+  restoreAuthState()
+})
 
 // 组件卸载时清理定时器
 onUnmounted(() => {
@@ -2896,6 +3044,30 @@ onUnmounted(() => {
 .chart-placeholder p {
   margin: 0;
   font-size: 13px;
+}
+
+/* === Login Dialog Styles === */
+.login-dialog-content {
+  padding: 10px 0;
+}
+
+.login-hint {
+  margin: 0 0 20px 0;
+  padding: 12px 16px;
+  background: rgba(255, 170, 0, 0.08);
+  border-left: 3px solid #ffaa00;
+  border-radius: 6px;
+  color: #ffd700;
+  font-size: 14px;
+}
+
+.login-form :deep(.el-form-item) {
+  margin-bottom: 18px;
+}
+
+.login-form :deep(.el-form-item__label) {
+  color: #fff;
+  font-weight: 600;
 }
 </style>
 
