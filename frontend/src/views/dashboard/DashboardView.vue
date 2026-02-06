@@ -11,7 +11,7 @@
     <div class="layout-wrapper">
       <header class="page-header entrance-slide-in">
         <div class="title-group">
-          <h1 class="ios-title">机器人概览 <small>ROBOT MONITORING</small></h1>
+          <h1 class="ios-title">ROBOT OVERVIEW<span class="subtitle">机器人概览</span></h1>
           <div class="status-tag status-tag-entrance">
             <span class="dot pulse"></span> 最近更新时间：{{ lastUpdateTime }}
           </div>
@@ -75,13 +75,13 @@
 
                 <div class="workshop-data-col">
                   <div class="mini-stat-row">
-                    <label>高风险</label>
+                    <label>High Risk</label>
                     <span class="value" :class="{ 'has-risk': group.stats?.highRisk > 0 }">
                       {{ group.stats?.highRisk || 0 }}
                     </span>
                   </div>
                   <div class="mini-stat-row">
-                    <label>总数</label>
+                    <label>Total</label>
                     <span class="value normal">{{ group.stats?.total || 0 }}</span>
                   </div>
                 </div>
@@ -318,6 +318,7 @@ const renderMainPieChart = () => {
     .sort((a, b) => (b.stats?.highRisk || 0) - (a.stats?.highRisk || 0))
 
   const totalHighRisk = rows.reduce((sum, row) => sum + (row.stats?.highRisk || 0), 0)
+  const totalRobots = groupRows.value.reduce((sum, row) => sum + (row.stats?.total || 0), 0)
 
   const colorSchemes = [
     { grad: ['#00f2ff', '#0066ff'], glow: 'rgba(0, 242, 255, 0.6)' },
@@ -364,10 +365,10 @@ const renderMainPieChart = () => {
         label: {
           show: true,
           position: 'center',
-          formatter: () => [`{v|${totalHighRisk}}`, `{l|高风险}`].join('\n'),
+          formatter: () => [`{v|${totalHighRisk} / ${totalRobots}}`, `{l|High Risk / Total}`].join('\n'),
           rich: {
-            v: { fontSize: 36, fontWeight: 900, color: '#ffcc00', textShadow: '0 0 20px rgba(255, 204, 0, 0.8)' },
-            l: { fontSize: 12, color: '#8899aa', paddingTop: 4 }
+            v: { fontSize: 28, fontWeight: 900, color: '#ffcc00', textShadow: '0 0 20px rgba(255, 204, 0, 0.8)' },
+            l: { fontSize: 11, color: '#8899aa', paddingTop: 4 }
           }
         },
         data: [{ value: 1, itemStyle: { color: 'transparent' } }]
@@ -738,6 +739,7 @@ watch(groupRows, () => {
 
 /* === 标题与按钮样式 === */
 .ios-title { font-size: 32px; letter-spacing: -0.5px; background: linear-gradient(180deg, #fff 40%, rgba(255,255,255,0.6)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin: 0; }
+.ios-title .subtitle { font-size: 14px; color: #ffaa00; margin-left: 10px; font-weight: 300; letter-spacing: 2px; display: block; margin-top: 4px; }
 .ios-title small { font-size: 14px; color: #ffaa00; margin-left: 10px; font-weight: 300; letter-spacing: 2px; }
 .status-tag { background: rgba(255, 255, 255, 0.05); padding: 4px 12px; border-radius: 100px; display: inline-flex; align-items: center; gap: 8px; font-size: 11px; color: #a0aec0; }
 .dot { width: 6px; height: 6px; border-radius: 50%; background: #00ffcc; box-shadow: 0 0 10px rgba(0, 255, 204, 0.8); }

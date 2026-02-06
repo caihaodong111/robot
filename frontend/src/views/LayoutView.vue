@@ -16,25 +16,25 @@
             <router-link to="/" class="nav-item" :class="{ active: route.path === '/' }">
               <div class="active-indicator"></div>
               <el-icon><Odometer /></el-icon>
-              <span>机器人概览</span>
+              <span>Robot Overview</span>
             </router-link>
 
             <router-link to="/devices" class="nav-item" :class="{ active: route.path === '/devices' }">
               <div class="active-indicator"></div>
               <el-icon><Cpu /></el-icon>
-              <span>机器人状态</span>
+              <span>Robot Status</span>
             </router-link>
 
             <router-link to="/alerts" class="nav-item" :class="{ active: route.path === '/alerts' }">
               <div class="active-indicator"></div>
-              <el-icon><Bell /></el-icon>
-              <span>程序周期同步视窗</span>
+              <el-icon><View /></el-icon>
+              <span>Program Cycle Sync</span>
             </router-link>
 
             <router-link to="/monitoring" class="nav-item" :class="{ active: route.path === '/monitoring' }">
               <div class="active-indicator"></div>
               <el-icon><TrendCharts /></el-icon>
-              <span>关键轨迹检查</span>
+              <span>Trajectory Check</span>
             </router-link>
           </nav>
 
@@ -55,7 +55,7 @@
 import { ref } from 'vue'
 import { useRoute, RouterView } from 'vue-router'
 import {
-  Odometer, Cpu, TrendCharts, Bell
+  Odometer, Cpu, TrendCharts, Bell, View
 } from '@element-plus/icons-vue'
 
 const route = useRoute()

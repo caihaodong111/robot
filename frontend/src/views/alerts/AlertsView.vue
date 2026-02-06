@@ -11,7 +11,7 @@
       <!-- Header Section -->
       <header class="page-header entrance-slide-in">
         <div class="title-area">
-          <h1 class="metallic-title">程序周期同步视窗 <span>PROGRAM CYCLE SYNC</span></h1>
+          <h1 class="ios-title">PROGRAM CYCLE SYNC<span class="subtitle">程序周期同步视窗</span></h1>
         </div>
       </header>
 
@@ -555,39 +555,23 @@ onMounted(async () => {
   flex-direction: column;
 }
 
-.metallic-title {
-  font-size: 36px;
-  font-weight: 900;
-  letter-spacing: 5px;
-  background: linear-gradient(180deg, #ffffff 30%, #a0a0a0 100%);
+.ios-title {
+  font-size: 32px;
+  letter-spacing: -0.5px;
+  background: linear-gradient(180deg, #fff 40%, rgba(255,255,255,0.6));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  text-shadow: 0 0 40px rgba(0, 195, 255, 0.5);
-  margin: 0 0 8px 0;
-  position: relative;
-  animation: titleGlow 2s ease-out forwards;
+  margin: 0;
 }
 
-@keyframes titleGlow {
-  0% {
-    text-shadow: 0 0 20px rgba(255, 170, 0, 0), 0 0 40px rgba(255, 170, 0, 0), 0 0 40px rgba(0, 195, 255, 0.5);
-    filter: brightness(0.8);
-  }
-  50% {
-    text-shadow: 0 0 20px rgba(255, 170, 0, 0.4), 0 0 40px rgba(255, 170, 0, 0.2), 0 0 40px rgba(0, 195, 255, 0.5);
-    filter: brightness(1.2);
-  }
-  100% {
-    text-shadow: 0 0 20px rgba(255, 170, 0, 0), 0 0 40px rgba(255, 170, 0, 0), 0 0 40px rgba(0, 195, 255, 0.5);
-    filter: brightness(1);
-  }
-}
-
-.metallic-title span {
+.ios-title .subtitle {
   font-size: 14px;
-  color: #636e72;
-  margin-left: 15px;
+  color: #ffaa00;
+  margin-left: 0;
+  font-weight: 300;
   letter-spacing: 2px;
+  display: block;
+  margin-top: 4px;
 }
 
 .action-btn {

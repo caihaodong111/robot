@@ -2,12 +2,12 @@ const ROBOT_GROUPS = [
   { key: 'PT', name: 'PT', total: 88 },
   { key: 'EATS', name: 'EATS', total: 965 },
   { key: 'EB5', name: 'EB5', total: 128 },
-  { key: 'MRA2BS', name: 'MRA2BS', total: 143 },
-  { key: 'Hop', name: 'Hop', total: 655 },
+  { key: 'MRA2', name: 'MRA2', total: 143 },
+  { key: 'HOP', name: 'HOP', total: 655 },
   { key: '540', name: '540', total: 89 },
-  { key: '214reuse', name: '214reuse', total: 331 },
-  { key: 'MMABS', name: 'MMABS', total: 198 },
-  { key: 'shunyiBS', name: 'shunyiBS', total: 245 },
+  { key: '214Reuse', name: '214Reuse', total: 331 },
+  { key: 'MMA', name: 'MMA', total: 198 },
+  { key: 'Shunyi', name: 'Shunyi', total: 245 },
   { key: 'AS1', name: 'AS1', total: 176 },
   { key: 'AS2', name: 'AS2', total: 212 }
 ]

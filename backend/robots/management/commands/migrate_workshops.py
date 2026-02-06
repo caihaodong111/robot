@@ -4,9 +4,9 @@ Migrate workshop names and add new workshops with mock data.
 Changes:
 - 254/214 -> EATS (keep existing data)
 - engine -> PT (keep existing data)
-- hop -> Hop (keep existing data)
-- reuse -> 214reuse (keep existing data)
-- Add new workshops: EB5, MRA1BS, MRA2BS, 540, MMABS, shunyiBS, AS1, AS2
+- hop -> HOP (keep existing data)
+- reuse -> 214Reuse (keep existing data)
+- Add new workshops: EB5, MRA1, MRA2, 540, MMA, Shunyi, AS1, AS2
 """
 import math
 from datetime import timedelta
@@ -21,19 +21,19 @@ from robots.models import RiskEvent, RobotComponent, RobotGroup
 WORKSHOP_RENAME_MAP = {
     "254/214": "EATS",
     "engine": "PT",
-    "hop": "Hop",
-    "reuse": "214reuse",
+    "hop": "HOP",
+    "reuse": "214Reuse",
     "SA1": "AS1",
 }
 
 # New workshops to add with their expected totals
 NEW_WORKSHOPS = [
     {"key": "EB5", "name": "EB5", "total": 128},
-    {"key": "MRA1BS", "name": "MRA1BS", "total": 156},
-    {"key": "MRA2BS", "name": "MRA2BS", "total": 143},
+    {"key": "MRA1", "name": "MRA1", "total": 156},
+    {"key": "MRA2", "name": "MRA2", "total": 143},
     {"key": "540", "name": "540", "total": 89},
-    {"key": "MMABS", "name": "MMABS", "total": 198},
-    {"key": "shunyiBS", "name": "shunyiBS", "total": 245},
+    {"key": "MMA", "name": "MMA", "total": 198},
+    {"key": "Shunyi", "name": "Shunyi", "total": 245},
     {"key": "AS1", "name": "AS1", "total": 176},
     {"key": "AS2", "name": "AS2", "total": 212},
 ]

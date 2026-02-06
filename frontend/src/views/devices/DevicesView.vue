@@ -13,7 +13,7 @@
       <!-- Header Section -->
       <header class="page-header entrance-slide-in">
         <div class="title-area">
-          <h1 class="ios-title">机器人状态 <small>ROBOT STATUS</small></h1>
+          <h1 class="ios-title">ROBOT STATUS<span class="subtitle">机器人状态</span></h1>
         </div>
         <div class="header-actions">
           <el-button
@@ -683,7 +683,7 @@ const syncing = ref(false)
 const lastSyncTime = ref(null)
 
 // 排除的车间 key 列表（与后端保持一致）
-const EXCLUDED_GROUP_KEYS = ['', '(空)', 'MRA1 BS', '未分配']
+const EXCLUDED_GROUP_KEYS = ['', '(空)', '未分配']
 
 const normalizeGroupName = (group) => {
   if (!group) return group
@@ -1924,6 +1924,16 @@ onUnmounted(() => {
   margin: 0 0 8px 0;
   position: relative;
   animation: titleGlow 2s ease-out forwards;
+}
+
+.ios-title .subtitle {
+  font-size: 14px;
+  color: #ffaa00;
+  margin-left: 0;
+  font-weight: 300;
+  letter-spacing: 2px;
+  display: block;
+  margin-top: 4px;
 }
 
 @keyframes titleGlow {

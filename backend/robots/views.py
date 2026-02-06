@@ -36,7 +36,7 @@ class RobotGroupViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     serializer_class = RobotGroupSerializer
 
     # 排除的车间 key 列表
-    EXCLUDED_GROUP_KEYS = ['', '(空)', 'MRA1 BS', '未分配']
+    EXCLUDED_GROUP_KEYS = ['', '(空)', '未分配']
 
     def get_queryset(self):
         """过滤掉排除的车间"""
@@ -365,7 +365,7 @@ class RobotComponentViewSet(
             "records_created": 100,
             "records_updated": 10,
             "total_records": 110,
-            "shop_stats": {"MRA1 BS": {"created": 50, "updated": 5}}
+            "shop_stats": {"MRA1": {"created": 50, "updated": 5}}
         }
         """
         from .weekly_result_service import import_robot_components_csv
@@ -585,7 +585,7 @@ class GripperCheckViewSet(viewsets.GenericViewSet):
         返回:
         {
             "results": [
-                {"value": "as33_020rb_400", "label": "as33_020rb_400", "shop": "MRA1BS", "group_key": "MRA1BS"},
+                {"value": "as33_020rb_400", "label": "as33_020rb_400", "shop": "MRA1", "group_key": "MRA1"},
                 ...
             ]
         }
@@ -647,7 +647,7 @@ class RobotHighRiskSnapshotViewSet(mixins.ListModelMixin, viewsets.GenericViewSe
     pagination_class = StandardResultsSetPagination
 
     # 排除的车间 key 列表（与前端保持一致）
-    EXCLUDED_GROUP_KEYS = ['', '(空)', 'MRA1 BS', '未分配']
+    EXCLUDED_GROUP_KEYS = ['', '(空)', '未分配']
 
     def get_queryset(self):
         """获取查询集，支持过滤"""
