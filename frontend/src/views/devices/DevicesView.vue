@@ -98,6 +98,18 @@
         <div class="table-header">
           <span class="accent-bar"></span>
           <span>{{ activeGroupName }} - 实时状态列表</span>
+          <div class="header-actions">
+            <el-button
+              :icon="Download"
+              @click="handleExport"
+              :loading="exporting"
+              :disabled="loading || !pagedRows.length"
+              class="export-btn"
+              size="small"
+            >
+              {{ exporting ? '导出中...' : '导出数据' }}
+            </el-button>
+          </div>
         </div>
 
         <!-- Tabs -->
@@ -663,7 +675,7 @@
 <script setup>
 import { computed, ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Refresh, Search, Close, Monitor, ArrowRight, ArrowLeft, Picture, Clock } from '@element-plus/icons-vue'
+import { Refresh, Search, Close, Monitor, ArrowRight, ArrowLeft, Picture, Clock, Download } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { getRobotComponents, getRobotGroups, updateRobotComponent, getErrorTrendChart, importRobotComponents, getHighRiskHistories, getReferenceDict, refreshReferenceDict, getReferenceDictRefreshStatus, resolveReferenceNumber, verifyEditCredentials, getEditAuthStatus } from '@/api/robots'
 import request from '@/utils/request'
@@ -868,6 +880,7 @@ const chartDialogData = ref({
 })
 
 const loading = ref(false)
+const exporting = ref(false)
 const groupsData = ref([])
 const serverRows = ref([])
 const serverTotal = ref(0)
@@ -1472,6 +1485,137 @@ const openErrorTrendChart = async (robot, axisKey) => {
     chartDialogVisible.value = false
   } finally {
     chartDialogLoading.value = false
+  }
+}
+
+// 导出机器人数据
+const handleExport = async () => {
+  if (!pagedRows.value.length) {
+    ElMessage.warning('暂无数据可导出')
+    return
+  }
+
+  exporting.value = true
+  try {
+    // 导出当前页面的所有数据（不仅是当前页）
+    // 获取所有符合当前筛选条件的数据
+    const tabMap = { highRisk: 'highRisk', all: 'all', history: 'history' }
+    let data
+    if (activeTab.value === 'history') {
+      const historyParams = {
+        group: selectedGroup.value,
+        keyword: keyword.value || undefined,
+        level: levelFilter.value.length ? levelFilter.value.join(',') : undefined,
+        axisOk: axisStateFilter.value || undefined,
+        page: 1,
+        page_size: 10000
+      }
+      data = await getHighRiskHistories(historyParams)
+    } else {
+      const params = {
+        group: selectedGroup.value,
+        tab: tabMap[activeTab.value] || 'highRisk',
+        keyword: keyword.value || undefined,
+        level: levelFilter.value.length ? levelFilter.value.join(',') : undefined,
+        axisKeys: axisKeysFilter.value.length ? axisKeysFilter.value.join(',') : undefined,
+        axisOk: axisStateFilter.value ? axisStateFilter.value === 'ok' : undefined,
+        markMode: markMode.value || undefined,
+        page: 1,
+        page_size: 10000
+      }
+      data = await getRobotComponents(params)
+    }
+
+    const rows = data.results || data || []
+
+    if (!rows.length) {
+      ElMessage.warning('暂无数据可导出')
+      return
+    }
+
+    // 确定导出的列头
+    let headers = []
+    if (activeTab.value === 'all') {
+      headers = [
+        'robot', 'reference', 'number', 'type', 'tech', 'mark', 'remark',
+        'error1_c1', 'tem1_m', 'tem2_m', 'tem3_m', 'tem4_m', 'tem5_m', 'tem6_m', 'tem7_m',
+        'A1_e_rate', 'A2_e_rate', 'A3_e_rate', 'A4_e_rate', 'A5_e_rate', 'A6_e_rate', 'A7_e_rate',
+        'A1_Rms', 'A2_Rms', 'A3_Rms', 'A4_Rms', 'A5_Rms', 'A6_Rms', 'A7_Rms',
+        'A1_E', 'A2_E', 'A3_E', 'A4_E', 'A5_E', 'A6_E', 'A7_E',
+        'Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'Q6', 'Q7',
+        'Curr_A1_max', 'Curr_A2_max', 'Curr_A3_max', 'Curr_A4_max', 'Curr_A5_max', 'Curr_A6_max', 'Curr_A7_max',
+        'Curr_A1_min', 'Curr_A2_min', 'Curr_A3_min', 'Curr_A4_min', 'Curr_A5_min', 'Curr_A6_min', 'Curr_A7_min',
+        'A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7',
+        'P_Change', 'level', 'updated_at'
+      ]
+    } else {
+      headers = [
+        'robot', 'reference', 'number', 'type', 'tech', 'mark', 'remark',
+        'A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7',
+        'level', 'updated_at'
+      ]
+    }
+
+    // 生成 CSV 内容
+    const csvRows = []
+
+    // 添加表头
+    csvRows.push(headers.map(h => `"${h}"`).join(','))
+
+    // 添加数据行
+    for (const row of rows) {
+      const values = headers.map(header => {
+        let value = ''
+        switch (header) {
+          case 'robot':
+            value = row.partNo || row.robot || ''
+            break
+          case 'reference':
+            value = row.referenceNo || row.reference || ''
+            break
+          case 'type':
+            value = row.typeSpec || row.type || ''
+            break
+          case 'updated_at':
+            value = getUpdatedAtText(row)
+            break
+          case 'P_Change':
+            value = formatNumber(row.p_change)
+            break
+          default:
+            // 尝试获取驼峰命名和下划线命名的字段
+            value = row[header] !== undefined ? row[header] : row[header.toLowerCase()]
+            if (typeof value === 'number') {
+              value = formatNumber(value)
+            } else if (value === null || value === undefined) {
+              value = ''
+            }
+        }
+        // 转义 CSV 中的特殊字符
+        return `"${String(value).replace(/"/g, '""')}"`
+      })
+      csvRows.push(values.join(','))
+    }
+
+    // 添加 BOM 以支持 Excel 正确识别 UTF-8
+    const csv = '\ufeff' + csvRows.join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+
+    // 生成文件名
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5)
+    const tabName = activeTab.value === 'highRisk' ? '高风险' : activeTab.value === 'history' ? '历史' : '全部'
+    link.download = `${activeGroupName.value}_${tabName}_机器人数据_${timestamp}.csv`
+    link.click()
+    URL.revokeObjectURL(link.href)
+
+    ElMessage.success(`导出成功！共 ${rows.length} 条数据`)
+  } catch (error) {
+    console.error('导出失败:', error)
+    ElMessage.error(`导出失败：${error?.message || '未知错误'}`)
+  } finally {
+    exporting.value = false
   }
 }
 
@@ -2181,7 +2325,33 @@ onUnmounted(() => {
   border-bottom: 1px solid rgba(255,255,255,0.05);
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
+}
+
+.table-header .header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.export-btn {
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+  border: none;
+  box-shadow: 0 4px 14px rgba(34, 197, 94, 0.3);
+  color: #fff;
+  font-weight: 600;
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.export-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(34, 197, 94, 0.5);
+}
+
+.export-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* === Tabs Dark === */

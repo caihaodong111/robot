@@ -30,6 +30,47 @@
             <div ref="chartRef" class="main-chart-box entrance-chart-fade"></div>
           </div>
 
+          <div class="data-cell ios-glass connection-panel entrance-scale-up-delay-1">
+            <div class="border-glow purple-tint entrance-border-glow"></div>
+            <div class="cell-header">
+              <span class="accent-bar purple"></span>
+              机器人连接状态
+            </div>
+            <div class="connection-stats entrance-content-fade" v-loading="connectionLoading">
+              <div class="connection-total">
+                <div class="stat-icon total">
+                  <el-icon><Monitor /></el-icon>
+                </div>
+                <div class="stat-info">
+                  <span class="stat-label">机器人总数</span>
+                  <span class="stat-value">{{ connectionStats.total }}</span>
+                </div>
+              </div>
+              <div class="connection-details">
+                <div class="connection-item connected">
+                  <div class="connection-indicator">
+                    <span class="dot dot-connected"></span>
+                    <span class="connection-label">已连接</span>
+                  </div>
+                  <span class="connection-count">{{ connectionStats.connected }}</span>
+                </div>
+                <div class="connection-item disconnected">
+                  <div class="connection-indicator">
+                    <span class="dot dot-disconnected"></span>
+                    <span class="connection-label">未连接</span>
+                  </div>
+                  <span class="connection-count">{{ connectionStats.disconnected }}</span>
+                </div>
+              </div>
+              <div class="connection-progress">
+                <div class="progress-track">
+                  <div class="progress-fill connected" :style="{ width: getConnectionPercentage() + '%' }"></div>
+                </div>
+                <span class="progress-text">{{ getConnectionPercentage() }}%</span>
+              </div>
+            </div>
+          </div>
+
           <div class="data-cell ios-glass feed-panel entrance-scale-up-delay-2">
             <div class="border-glow blue-tint entrance-border-glow"></div>
             <div class="cell-header">
@@ -149,6 +190,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import * as echarts from 'echarts'
 import { ElMessage } from 'element-plus'
+import { Monitor } from '@element-plus/icons-vue'
 import { DEMO_MODE } from '@/config/appConfig'
 import { getRobotComponents, getRobotGroups, getRiskEventStatistics } from '@/api/robots'
 import { createRiskEvents, getGroupStats, getRobotsByGroup, robotGroups as mockGroups } from '@/mock/robots'
@@ -158,6 +200,12 @@ const router = useRouter()
 
 const loading = ref(false)
 const alertLoading = ref(false)
+const connectionLoading = ref(false)
+const connectionStats = ref({
+  total: 0,
+  connected: 0,
+  disconnected: 0
+})
 const groupsData = ref([])
 const recentAlerts = ref([])
 const lastSyncTime = ref(null)
@@ -487,14 +535,62 @@ const fetchLastSyncTime = async () => {
   }
 }
 
+// 加载机器人连接状态统计
+const loadConnectionStats = async () => {
+  connectionLoading.value = true
+  try {
+    if (DEMO_MODE) {
+      // 模拟数据
+      connectionStats.value = {
+        total: 156,
+        connected: 142,
+        disconnected: 14
+      }
+    } else {
+      // 获取所有机器人数据（tab: 'all'）
+      const data = await getRobotComponents({
+        tab: 'all',
+        page: 1,
+        page_size: 10000  // 获取所有数据以统计连接状态
+      })
+      const robots = data.results || []
+
+      const total = robots.length
+      const connected = robots.filter(r => r.tem1_m !== null && r.tem1_m !== undefined && r.tem1_m !== '').length
+      const disconnected = total - connected
+
+      connectionStats.value = {
+        total,
+        connected,
+        disconnected
+      }
+    }
+  } catch (error) {
+    console.error('加载连接状态失败:', error)
+    connectionStats.value = {
+      total: 0,
+      connected: 0,
+      disconnected: 0
+    }
+  } finally {
+    connectionLoading.value = false
+  }
+}
+
+// 计算连接率百分比
+const getConnectionPercentage = () => {
+  if (!connectionStats.value.total || connectionStats.value.total === 0) return '0.0'
+  return ((connectionStats.value.connected / connectionStats.value.total) * 100).toFixed(1)
+}
+
 const handleRefresh = async () => {
-  await Promise.all([loadGroupsData(), loadAlerts(), fetchLastSyncTime()])
+  await Promise.all([loadGroupsData(), loadAlerts(), fetchLastSyncTime(), loadConnectionStats()])
   renderMainPieChart()
   renderWorkshopCharts()
 }
 
 onMounted(async () => {
-  await Promise.all([loadGroupsData(), loadAlerts(), fetchLastSyncTime()])
+  await Promise.all([loadGroupsData(), loadAlerts(), fetchLastSyncTime(), loadConnectionStats()])
 
   nextTick(() => {
     renderMainPieChart()
@@ -541,11 +637,12 @@ watch(groupRows, () => {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
+  overflow: hidden;
 }
 
 .main-chart-card {
-  flex: 0 0 45%; /* 占高度的 45% */
+  flex: 0 0 240px;
   display: flex;
   flex-direction: column;
 }
@@ -556,11 +653,163 @@ watch(groupRows, () => {
   min-height: 0;
 }
 
-.feed-panel {
-  flex: 1; /* 占剩余高度 */
+/* 连接状态面板 */
+.connection-panel {
+  flex: 0 0 180px;
   display: flex;
   flex-direction: column;
+  min-height: 180px;
+}
+
+.connection-stats {
+  flex: 1;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
   min-height: 0;
+}
+
+.connection-total {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px;
+  background: rgba(0, 102, 255, 0.08);
+  border-radius: 10px;
+  border: 1px solid rgba(0, 102, 255, 0.15);
+}
+
+.stat-icon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  font-size: 20px;
+}
+
+.stat-icon.total {
+  background: linear-gradient(135deg, #00c3ff, #0066ff);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(0, 195, 255, 0.3);
+}
+
+.stat-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stat-label {
+  font-size: 11px;
+  color: #8899aa;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.stat-value {
+  font-size: 26px;
+  font-weight: 800;
+  font-family: 'SF Mono', 'Monaco', monospace;
+  color: #fff;
+  text-shadow: 0 0 15px rgba(0, 195, 255, 0.5);
+}
+
+.connection-details {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.connection-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.connection-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.connection-label {
+  font-size: 13px;
+  color: #8899aa;
+}
+
+.connection-count {
+  font-size: 18px;
+  font-weight: 700;
+  font-family: 'SF Mono', 'Monaco', monospace;
+}
+
+.connection-item.connected .connection-count {
+  color: #22c55e;
+  text-shadow: 0 0 10px rgba(34, 197, 94, 0.4);
+}
+
+.connection-item.disconnected .connection-count {
+  color: #ef4444;
+  text-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+}
+
+.dot-connected {
+  background: #22c55e;
+  box-shadow: 0 0 8px #22c55e;
+}
+
+.dot-disconnected {
+  background: #ef4444;
+  box-shadow: 0 0 8px #ef4444;
+}
+
+.connection-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 4px;
+}
+
+.progress-track {
+  flex: 1;
+  height: 6px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.8s ease-out;
+  position: relative;
+}
+
+.progress-fill.connected {
+  background: linear-gradient(90deg, #22c55e, #16a34a);
+  box-shadow: 0 0 10px rgba(34, 197, 94, 0.5);
+}
+
+.progress-text {
+  font-size: 14px;
+  font-weight: 700;
+  font-family: 'SF Mono', 'Monaco', monospace;
+  color: #22c55e;
+  min-width: 50px;
+  text-align: right;
+}
+
+.feed-panel {
+  flex: 1 1 auto;
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
 }
 
 /* 右侧面板 */
@@ -659,6 +908,7 @@ watch(groupRows, () => {
 .accent-bar.blue { background: #00c3ff; box-shadow: 0 0 10px #00c3ff; }
 .accent-bar.risk { background: #ff4d4f; box-shadow: 0 0 10px #ff4d4f; }
 .accent-bar.safe { background: #00c3ff; box-shadow: 0 0 10px #00c3ff; }
+.accent-bar.purple { background: #a855f7; box-shadow: 0 0 10px #a855f7; }
 
 /* 日志流样式优化 */
 .log-stream {
@@ -735,6 +985,7 @@ watch(groupRows, () => {
 .ios-glass { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(50px) saturate(180%); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 20px; position: relative; overflow: hidden; box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8); }
 .border-glow { position: absolute; inset: 0; border-radius: 20px; padding: 1px; background: linear-gradient(135deg, rgba(255, 170, 0, 0.4), transparent 40%, rgba(255, 170, 0, 0.1)); mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); mask-composite: exclude; animation: borderBreathe 6s infinite ease-in-out; }
 .border-glow.blue-tint { background: linear-gradient(135deg, rgba(0, 195, 255, 0.55), transparent 45%, rgba(0, 195, 255, 0.15)); }
+.border-glow.purple-tint { background: linear-gradient(135deg, rgba(168, 85, 247, 0.55), transparent 45%, rgba(168, 85, 247, 0.15)); }
 @keyframes borderBreathe { 0%, 100% { opacity: 0.3; } 50% { opacity: 0.8; box-shadow: inset 0 0 15px rgba(255, 170, 0, 0.2); } }
 
 /* === 标题与按钮样式 === */
