@@ -11,7 +11,7 @@
     <div class="layout-wrapper">
       <header class="page-header entrance-slide-in">
         <div class="title-group">
-          <h1 class="ios-title">ROBOT OVERVIEW<span class="subtitle">机器人概览</span></h1>
+          <h1 class="ios-title">ROBOT OVERVIEW<span class="subtitle">Robot Overview</span></h1>
           <div class="status-tag status-tag-entrance">
             <span class="dot pulse"></span> 最近更新时间：{{ lastUpdateTime }}
           </div>
@@ -25,7 +25,7 @@
             <div class="border-glow entrance-border-glow"></div>
             <div class="cell-header">
               <span class="accent-bar"></span>
-              高风险分布总览
+              High-Risk Distribution Overview
             </div>
             <div ref="chartRef" class="main-chart-box entrance-chart-fade"></div>
           </div>
@@ -34,7 +34,7 @@
             <div class="border-glow purple-tint entrance-border-glow"></div>
             <div class="cell-header">
               <span class="accent-bar purple"></span>
-              机器人连接状态
+              Robot Connection Status
             </div>
             <div class="connection-stats entrance-content-fade" v-loading="connectionLoading">
               <div class="connection-details">
@@ -60,7 +60,7 @@
             <div class="border-glow blue-tint entrance-border-glow"></div>
             <div class="cell-header">
               <span class="accent-bar blue"></span>
-              持续增大的关键轨迹预警
+              Escalating Key Trajectory Alerts
             </div>
             <div class="log-stream entrance-content-fade">
               <div v-if="alertLoading" class="loading-state">载入中...</div>
@@ -123,7 +123,7 @@
         <div class="dialog-header">
           <div class="dialog-title">
             <span class="dialog-chip"></span>
-            {{ detailTitle || '高风险机器人列表' }}
+            {{ detailTitle || 'High Risk Robot List' }}
           </div>
           <div class="dialog-subtitle">HIGH RISK ROBOT INSIGHTS</div>
         </div>
@@ -132,7 +132,7 @@
         <div class="dialog-summary">
           <div class="summary-row">
             <div class="summary-item">
-              <span class="summary-label">高风险机器人</span>
+              <span class="summary-label">High Risk</span>
               <span class="summary-value primary">{{ detailTotal }}</span>
             </div>
             <div class="summary-progress">
@@ -144,21 +144,21 @@
           </div>
           <div class="summary-row">
             <div class="summary-item">
-              <span class="summary-label">最后更新</span>
+              <span class="summary-label">Last Update</span>
               <span class="summary-value time">{{ lastUpdateTime }}</span>
             </div>
           </div>
         </div>
 
         <el-table :data="detailRows" stripe v-loading="detailLoading" height="420" class="premium-table">
-          <el-table-column prop="name" label="机器人" width="160" />
-          <el-table-column prop="level" label="等级(level)" width="80" align="center">
+          <el-table-column prop="name" label="Robot" width="160" sortable :sort-by="(row) => row.name || ''" />
+          <el-table-column prop="level" label="Level" width="80" align="center" sortable>
             <template #default="{ row }">
                <el-tag :type="levelTagType(row.level)" effect="light">{{ row.level }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="referenceNo" label="参考编号(reference)" width="150" show-overflow-tooltip />
-          <el-table-column prop="remark" label="风险描述" min-width="200" show-overflow-tooltip />
+          <el-table-column prop="referenceNo" label="Reference" width="150" sortable :sort-by="(row) => row.referenceNo || ''" show-overflow-tooltip />
+          <el-table-column prop="remark" label="Risk Notes" min-width="200" sortable :sort-by="(row) => row.remark || ''" show-overflow-tooltip />
         </el-table>
 
         <div v-if="!detailLoading && !detailRows.length" class="dialog-empty">
@@ -302,7 +302,7 @@ const goToWorkshop = (groupKey) => {
 
 const showGroupDetail = async (groupKey, groupName) => {
   detailVisible.value = true
-  detailTitle.value = `${groupName} - 高风险机器人列表`
+  detailTitle.value = `${groupName} - High Risk Robot List`
   detailLoading.value = true
   detailRows.value = []
   detailTotal.value = 0
@@ -326,7 +326,7 @@ const showGroupDetail = async (groupKey, groupName) => {
       currentGroupTotal.value = groupStats?.total || 0
       const data = response?.results || response || []
       detailRows.value = data.map(r => ({
-        name: r.name || r.robot_id,
+        name: r.name || r.robot || r.robot_id,
         level: r.level,
         referenceNo: r.referenceNo,
         remark: r.remark
@@ -1137,12 +1137,12 @@ watch(groupRows, () => {
 
 /* === 表格样式 === */
 .el-table.premium-table {
-  --el-table-bg-color: transparent !important;
-  --el-table-tr-bg-color: rgba(20, 30, 50, 0.4) !important;
-  --el-table-row-hover-bg-color: rgba(0, 204, 255, 0.12) !important;
-  --el-table-header-bg-color: rgba(0, 102, 255, 0.15) !important;
-  --el-table-border-color: rgba(0, 204, 255, 0.1) !important;
-  color: #e0e8f5 !important;
+  --el-table-bg-color: rgba(6, 10, 18, 0.9) !important;
+  --el-table-tr-bg-color: rgba(8, 12, 20, 0.45) !important;
+  --el-table-row-hover-bg-color: rgba(255, 170, 0, 0.08) !important;
+  --el-table-header-bg-color: rgba(255, 255, 255, 0.04) !important;
+  --el-table-border-color: rgba(255, 255, 255, 0.06) !important;
+  color: #dbe6f5 !important;
   background: transparent !important;
 }
 
@@ -1150,38 +1150,131 @@ watch(groupRows, () => {
 .el-table.premium-table .el-table__header-wrapper { background: transparent !important; }
 
 .el-table.premium-table .el-table__header th {
-  background: rgba(0, 102, 255, 0.18) !important;
-  border-color: rgba(0, 204, 255, 0.15) !important;
-  color: #00ccff !important;
-  font-size: 11px;
-  letter-spacing: 1.5px;
-  font-weight: 700;
-  text-transform: uppercase;
-  padding: 14px 0;
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-color: rgba(255, 255, 255, 0.06) !important;
+  color: #8da0b7 !important;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  user-select: none;
 }
 
-.el-table.premium-table .el-table__header th .cell { padding: 0 12px; }
+.el-table.premium-table .el-table__header th .cell {
+  white-space: nowrap;
+  padding: 0 8px;
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
+
+/* 排序列表头保持统一颜色，不显示“可选”蓝色 */
+.el-table.premium-table .el-table__header th.is-sortable,
+.el-table.premium-table .el-table__header th.is-sortable .cell {
+  color: #8da0b7 !important;
+  cursor: pointer !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+
+/* 永久禁用表头排序激活色 - 统一为浅蓝灰色 */
+.el-table.premium-table .el-table__header th:hover .cell,
+.el-table.premium-table .el-table__header th.is-sortable:hover,
+.el-table.premium-table .el-table__header th.is-sortable:hover .cell,
+.el-table.premium-table .el-table__header th.ascending,
+.el-table.premium-table .el-table__header th.ascending .cell,
+.el-table.premium-table .el-table__header th.descending,
+.el-table.premium-table .el-table__header th.descending .cell,
+.el-table.premium-table .el-table__header th.is-sortable .cell:hover {
+  color: #8da0b7 !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+
+/* 排序图标颜色 */
+.el-table.premium-table .el-table__header th .caret-wrapper .sort-caret.ascending,
+.el-table.premium-table .el-table__header th .caret-wrapper .sort-caret.descending {
+  color: #8da0b7 !important;
+  border-top-color: #8da0b7 !important;
+  border-bottom-color: #8da0b7 !important;
+  opacity: 0.6;
+}
+
+.el-table.premium-table .el-table__header th .caret-wrapper,
+.el-table.premium-table .el-table__header th .caret-wrapper .sort-caret {
+  cursor: pointer !important;
+}
+
+/* 简约菱形排序按钮：上下三角组合 */
+.el-table.premium-table .el-table__header th .caret-wrapper {
+  width: 10px;
+  height: 12px;
+  margin-left: 6px;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.el-table.premium-table .el-table__header th .caret-wrapper::before,
+.el-table.premium-table .el-table__header th .caret-wrapper::after {
+  content: '';
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  opacity: 0.35;
+  transition: opacity 0.15s ease, border-color 0.15s ease;
+}
+
+.el-table.premium-table .el-table__header th .caret-wrapper::before {
+  border-bottom: 5px solid #8da0b7;
+}
+
+.el-table.premium-table .el-table__header th .caret-wrapper::after {
+  border-top: 5px solid #8da0b7;
+}
+
+.el-table.premium-table .el-table__header th.ascending .caret-wrapper::before {
+  opacity: 0.9;
+  border-bottom-color: #cbd5e1;
+}
+
+.el-table.premium-table .el-table__header th.ascending .caret-wrapper::after {
+  opacity: 0.2;
+  border-top-color: #8da0b7;
+}
+
+.el-table.premium-table .el-table__header th.descending .caret-wrapper::after {
+  opacity: 0.9;
+  border-top-color: #cbd5e1;
+}
+
+.el-table.premium-table .el-table__header th.descending .caret-wrapper::before {
+  opacity: 0.2;
+  border-bottom-color: #8da0b7;
+}
+
+.el-table.premium-table .el-table__header th .caret-wrapper .sort-caret {
+  display: none;
+}
 .el-table.premium-table .el-table__body-wrapper { background: transparent !important; }
 
 .el-table.premium-table .el-table__body tr {
-  background: rgba(20, 30, 50, 0.35) !important;
-  transition: all 0.25s ease;
+  background: rgba(8, 12, 20, 0.5) !important;
 }
 
 .el-table.premium-table .el-table__body tr.el-table__row--striped {
-  background: rgba(30, 45, 70, 0.4) !important;
+  background: rgba(14, 20, 32, 0.65) !important;
 }
 
 .el-table.premium-table .el-table__body td {
-  border-bottom: 1px solid rgba(0, 204, 255, 0.08) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04) !important;
   background-color: transparent !important;
-  color: #d0d8e8 !important;
-  padding: 12px 0;
+  color: #dbe6f5 !important;
 }
 
-.el-table.premium-table .el-table__body td .cell { padding: 0 12px; }
-.el-table.premium-table .el-table__row:hover td { background: rgba(0, 204, 255, 0.12) !important; color: #fff !important; }
-.el-table.premium-table .el-table__row.current-row td { background: rgba(0, 204, 255, 0.18) !important; }
+.el-table.premium-table .el-table__body td .cell { padding: 0 8px; }
+.el-table.premium-table .el-table__row:hover td { background: rgba(255, 170, 0, 0.08) !important; }
+.el-table.premium-table .el-table__row.current-row td { background: rgba(255, 170, 0, 0.14) !important; }
 .el-table.premium-table .el-table__empty-block { background: transparent !important; }
 .el-table.premium-table .el-table__empty-text { color: #666 !important; }
 .el-table.premium-table .el-loading-mask { background: rgba(15, 20, 35, 0.7) !important; }
