@@ -586,8 +586,9 @@ watch(groupRows, () => {
 <style scoped>
 /* === 核心布局重构 === */
 .layout-wrapper {
-  padding: 24px 32px;
-  max-width: 1600px;
+  padding: 24px clamp(16px, 3vw, 48px);
+  width: 100%;
+  max-width: 100%;
   margin: 0 auto;
   min-height: 100vh;
   box-sizing: border-box;

@@ -17,7 +17,7 @@ services:
     image: sg-frontend:v0.3
     container_name: iot-frontend
     ports:
-      - "80:80"
+      - "8080:80"
     restart: unless-stopped
     depends_on:
       - backend

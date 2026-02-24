@@ -36,7 +36,10 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-z1)n^=!y@*r%!xt5olm+0npraw
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '*').split(',')
+allowed_hosts_env = os.getenv('ALLOWED_HOSTS', '*')
+ALLOWED_HOSTS = [h.strip() for h in allowed_hosts_env.split(',') if h.strip()]
+if '*' not in ALLOWED_HOSTS and '20.212.53.247' not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append('20.212.53.247')
 
 
 # Application definition
