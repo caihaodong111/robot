@@ -18,6 +18,15 @@ export function getRobotComponents(params) {
   })
 }
 
+// 获取机器人统计数据摘要
+export function getRobotStatsSummary(params) {
+  return request({
+    url: '/robots/components/stats_summary/',
+    method: 'get',
+    params
+  })
+}
+
 // 获取单个机器人部件详情
 export function getRobotComponent(id) {
   return request({

@@ -37,36 +37,21 @@
               机器人连接状态
             </div>
             <div class="connection-stats entrance-content-fade" v-loading="connectionLoading">
-              <div class="connection-total">
-                <div class="stat-icon total">
-                  <el-icon><Monitor /></el-icon>
-                </div>
-                <div class="stat-info">
-                  <span class="stat-label">机器人总数</span>
-                  <span class="stat-value">{{ connectionStats.total }}</span>
-                </div>
-              </div>
               <div class="connection-details">
-                <div class="connection-item connected">
+                <div class="connection-item total">
                   <div class="connection-indicator">
-                    <span class="dot dot-connected"></span>
-                    <span class="connection-label">已连接</span>
+                    <span class="dot dot-total"></span>
+                    <span class="connection-label">Total</span>
                   </div>
-                  <span class="connection-count">{{ connectionStats.connected }}</span>
+                  <span class="connection-count">{{ connectionStats.total }}</span>
                 </div>
-                <div class="connection-item disconnected">
+                <div class="connection-item high-risk">
                   <div class="connection-indicator">
-                    <span class="dot dot-disconnected"></span>
-                    <span class="connection-label">未连接</span>
+                    <span class="dot dot-high-risk"></span>
+                    <span class="connection-label">High Risk</span>
                   </div>
-                  <span class="connection-count">{{ connectionStats.disconnected }}</span>
+                  <span class="connection-count">{{ connectionStats.highRisk }}</span>
                 </div>
-              </div>
-              <div class="connection-progress">
-                <div class="progress-track">
-                  <div class="progress-fill connected" :style="{ width: getConnectionPercentage() + '%' }"></div>
-                </div>
-                <span class="progress-text">{{ getConnectionPercentage() }}%</span>
               </div>
             </div>
           </div>
@@ -192,7 +177,7 @@ import * as echarts from 'echarts'
 import { ElMessage } from 'element-plus'
 import { Monitor } from '@element-plus/icons-vue'
 import { DEMO_MODE } from '@/config/appConfig'
-import { getRobotComponents, getRobotGroups, getRiskEventStatistics } from '@/api/robots'
+import { getRobotComponents, getRobotGroups, getRiskEventStatistics, getRobotStatsSummary } from '@/api/robots'
 import { createRiskEvents, getGroupStats, getRobotsByGroup, robotGroups as mockGroups } from '@/mock/robots'
 import request from '@/utils/request'
 
@@ -203,9 +188,9 @@ const alertLoading = ref(false)
 const connectionLoading = ref(false)
 const connectionStats = ref({
   total: 0,
-  connected: 0,
-  disconnected: 0
+  highRisk: 0
 })
+const overallTotal = ref(null)
 const groupsData = ref([])
 const recentAlerts = ref([])
 const lastSyncTime = ref(null)
@@ -361,12 +346,21 @@ const renderMainPieChart = () => {
   const chart = initChart('main', chartRef.value)
   if (!chart) return
 
+  const mainBox = chartRef.value?.getBoundingClientRect()
+  const baseSize = mainBox ? Math.min(mainBox.width, mainBox.height) : 240
+  const ringInner = baseSize < 260 ? 58 : 54
+  const ringOuter = baseSize < 260 ? 80 : 78
+  const labelRadius = Math.max(34, ringInner - 10)
+  const mainFontSize = Math.max(18, Math.round(baseSize * 0.11))
+  const subFontSize = Math.max(9, Math.round(baseSize * 0.045))
+
   const rows = groupRows.value
     .filter(row => (row.stats?.highRisk || 0) > 0)
     .sort((a, b) => (b.stats?.highRisk || 0) - (a.stats?.highRisk || 0))
 
   const totalHighRisk = rows.reduce((sum, row) => sum + (row.stats?.highRisk || 0), 0)
-  const totalRobots = groupRows.value.reduce((sum, row) => sum + (row.stats?.total || 0), 0)
+  const groupTotal = groupRows.value.reduce((sum, row) => sum + (row.stats?.total || 0), 0)
+  const totalRobots = Number.isFinite(overallTotal.value) ? overallTotal.value : groupTotal
 
   const colorSchemes = [
     { grad: ['#00f2ff', '#0066ff'], glow: 'rgba(0, 242, 255, 0.6)' },
@@ -398,7 +392,7 @@ const renderMainPieChart = () => {
     series: [
       {
         type: 'pie',
-        radius: ['50%', '75%'], // 调整半径以适应新容器
+        radius: [`${ringInner}%`, `${ringOuter}%`], // 预留中心空间避免文字与扇区重叠
         center: ['50%', '50%'],
         roseType: 'radius',
         padAngle: 4,
@@ -408,15 +402,15 @@ const renderMainPieChart = () => {
       },
       {
         type: 'pie',
-        radius: [0, '40%'],
+        radius: [0, `${labelRadius}%`],
         silent: true,
         label: {
           show: true,
           position: 'center',
           formatter: () => [`{v|${totalHighRisk} / ${totalRobots}}`, `{l|High Risk / Total}`].join('\n'),
           rich: {
-            v: { fontSize: 28, fontWeight: 900, color: '#ffcc00', textShadow: '0 0 20px rgba(255, 204, 0, 0.8)' },
-            l: { fontSize: 11, color: '#8899aa', paddingTop: 4 }
+            v: { fontSize: mainFontSize, fontWeight: 900, color: '#ffcc00', textShadow: '0 0 20px rgba(255, 204, 0, 0.8)', lineHeight: Math.round(mainFontSize * 1.1) },
+            l: { fontSize: subFontSize, color: '#8899aa', paddingTop: 4, lineHeight: Math.round(subFontSize * 1.2) }
           }
         },
         data: [{ value: 1, itemStyle: { color: 'transparent' } }]
@@ -543,44 +537,27 @@ const loadConnectionStats = async () => {
       // 模拟数据
       connectionStats.value = {
         total: 156,
-        connected: 142,
-        disconnected: 14
+        highRisk: 14
       }
+      overallTotal.value = 156
     } else {
-      // 获取所有机器人数据（tab: 'all'）
-      const data = await getRobotComponents({
-        tab: 'all',
-        page: 1,
-        page_size: 10000  // 获取所有数据以统计连接状态
-      })
-      const robots = data.results || []
-
-      const total = robots.length
-      const connected = robots.filter(r => r.tem1_m !== null && r.tem1_m !== undefined && r.tem1_m !== '').length
-      const disconnected = total - connected
-
+      // 使用专门的统计接口
+      const data = await getRobotStatsSummary()
       connectionStats.value = {
-        total,
-        connected,
-        disconnected
+        total: data.total || 0,
+        highRisk: data.high_risk || 0
       }
+      overallTotal.value = data?.total ?? null
     }
   } catch (error) {
     console.error('加载连接状态失败:', error)
     connectionStats.value = {
       total: 0,
-      connected: 0,
-      disconnected: 0
+      highRisk: 0
     }
   } finally {
     connectionLoading.value = false
   }
-}
-
-// 计算连接率百分比
-const getConnectionPercentage = () => {
-  if (!connectionStats.value.total || connectionStats.value.total === 0) return '0.0'
-  return ((connectionStats.value.connected / connectionStats.value.total) * 100).toFixed(1)
 }
 
 const handleRefresh = async () => {
@@ -612,7 +589,7 @@ watch(groupRows, () => {
   padding: 24px 32px;
   max-width: 1600px;
   margin: 0 auto;
-  height: 100vh;
+  min-height: 100vh;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -663,146 +640,63 @@ watch(groupRows, () => {
 
 .connection-stats {
   flex: 1;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-height: 0;
-}
-
-.connection-total {
-  display: flex;
-  align-items: center;
-  gap: 14px;
   padding: 12px;
-  background: rgba(0, 102, 255, 0.08);
-  border-radius: 10px;
-  border: 1px solid rgba(0, 102, 255, 0.15);
-}
-
-.stat-icon {
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-  font-size: 20px;
-}
-
-.stat-icon.total {
-  background: linear-gradient(135deg, #00c3ff, #0066ff);
-  color: #fff;
-  box-shadow: 0 4px 12px rgba(0, 195, 255, 0.3);
-}
-
-.stat-info {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-}
-
-.stat-label {
-  font-size: 11px;
-  color: #8899aa;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.stat-value {
-  font-size: 26px;
-  font-weight: 800;
-  font-family: 'SF Mono', 'Monaco', monospace;
-  color: #fff;
-  text-shadow: 0 0 15px rgba(0, 195, 255, 0.5);
+  gap: 10px;
+  min-height: 0;
 }
 
 .connection-details {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
 }
 
 .connection-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 14px;
-  border-radius: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
   background: rgba(0, 0, 0, 0.2);
 }
 
 .connection-indicator {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .connection-label {
-  font-size: 13px;
+  font-size: 11px;
   color: #8899aa;
 }
 
 .connection-count {
-  font-size: 18px;
-  font-weight: 700;
-  font-family: 'SF Mono', 'Monaco', monospace;
-}
-
-.connection-item.connected .connection-count {
-  color: #22c55e;
-  text-shadow: 0 0 10px rgba(34, 197, 94, 0.4);
-}
-
-.connection-item.disconnected .connection-count {
-  color: #ef4444;
-  text-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
-}
-
-.dot-connected {
-  background: #22c55e;
-  box-shadow: 0 0 8px #22c55e;
-}
-
-.dot-disconnected {
-  background: #ef4444;
-  box-shadow: 0 0 8px #ef4444;
-}
-
-.connection-progress {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 0 4px;
-}
-
-.progress-track {
-  flex: 1;
-  height: 6px;
-  background: rgba(0, 0, 0, 0.3);
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.progress-fill {
-  height: 100%;
-  border-radius: 3px;
-  transition: width 0.8s ease-out;
-  position: relative;
-}
-
-.progress-fill.connected {
-  background: linear-gradient(90deg, #22c55e, #16a34a);
-  box-shadow: 0 0 10px rgba(34, 197, 94, 0.5);
-}
-
-.progress-text {
   font-size: 14px;
   font-weight: 700;
   font-family: 'SF Mono', 'Monaco', monospace;
-  color: #22c55e;
-  min-width: 50px;
-  text-align: right;
+}
+
+.connection-item.total .connection-count {
+  color: #00c3ff;
+  text-shadow: 0 0 8px rgba(0, 195, 255, 0.4);
+}
+
+.connection-item.high-risk .connection-count {
+  color: #ef4444;
+  text-shadow: 0 0 8px rgba(239, 68, 68, 0.4);
+}
+
+.dot-total {
+  background: #00c3ff;
+  box-shadow: 0 0 6px #00c3ff;
+}
+
+.dot-high-risk {
+  background: #ef4444;
+  box-shadow: 0 0 6px #ef4444;
 }
 
 .feed-panel {
@@ -969,7 +863,7 @@ watch(groupRows, () => {
 }
 
 /* === 背景与环境样式 === */
-.dashboard-viewport { background: #030508; min-height: 100vh; position: relative; overflow: hidden; color: #fff; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+.dashboard-viewport { background: #030508; min-height: 100vh; position: relative; overflow-y: auto; color: #fff; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
 .ambient-background { position: absolute; inset: 0; pointer-events: none; }
 .nebula { position: absolute; width: 80vw; height: 70vh; filter: blur(120px); opacity: 0.28; mix-blend-mode: screen; }
 .nebula.blue { background: radial-gradient(circle, #0066ff, transparent 75%); top: -10%; left: -5%; }
@@ -1002,6 +896,12 @@ watch(groupRows, () => {
 .title-group { display: flex; flex-direction: column; gap: 6px; }
 .cell-header { padding: 12px 15px; font-size: 12px; color: #c0ccda; font-weight: bold; border-bottom: 1px solid rgba(255, 255, 255, 0.06); letter-spacing: 1px; display: flex; align-items: center; gap: 10px; }
 .accent-bar { width: 4px; height: 16px; background: #ffaa00; border-radius: 10px; box-shadow: 0 0 10px #ffaa00; }
+
+/* 覆盖通用 dot 的绿色，确保高风险点为红色 */
+.connection-item.high-risk .dot {
+  background: #ef4444;
+  box-shadow: 0 0 6px #ef4444;
+}
 
 /* 日志流标签样式 */
 .log-tag { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }

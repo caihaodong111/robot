@@ -403,6 +403,28 @@ class RobotComponentViewSet(
                 'error': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    @action(detail=False, methods=["get"])
+    def stats_summary(self, request):
+        """
+        获取机器人统计数据摘要
+
+        返回:
+            {
+                "total": 156,
+                "high_risk": 14
+            }
+        """
+        from django.db.models import Count, Q
+
+        qs = self.get_queryset()
+        total = qs.count()
+        high_risk = qs.filter(level='H').count()
+
+        return Response({
+            'total': total,
+            'high_risk': high_risk
+        })
+
 
 class RiskEventViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
     queryset = RiskEvent.objects.select_related("group").all()
