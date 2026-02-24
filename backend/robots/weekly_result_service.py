@@ -4,10 +4,26 @@
 """
 import os
 import glob
+import logging
 import pandas as pd
 from datetime import datetime
 from django.utils import timezone
 from django.conf import settings
+
+logger = logging.getLogger(__name__)
+
+
+def _resolve_weekly_result_folder(folder_path: str = None) -> str:
+    """优先使用数据库配置的路径，缺失时使用默认值"""
+    if folder_path:
+        return folder_path
+    default_path = getattr(settings, "WEEKLY_RESULT_FOLDER", str(settings.BASE_DIR.parent))
+    try:
+        from .models import PathConfig
+        return PathConfig.get_path("weekly_result_folder", default_path)
+    except Exception:
+        logger.warning("读取 weekly_result_folder 配置失败，使用默认路径: %s", default_path)
+        return default_path
 
 
 def log_print(message: str):
@@ -185,7 +201,7 @@ def get_latest_weeklyresult_csv(folder_path: str = None, project: str = None) ->
     获取最新的 weeklyresult.csv 文件路径
 
     参数:
-        folder_path: 文件夹路径，测试阶段默认为 '/Users/caihd/Desktop/sg'
+        folder_path: 文件夹路径，未提供则使用数据库配置或默认路径
         project: 项目名称（暂未使用，保留参数兼容性）
 
     返回:
@@ -194,9 +210,7 @@ def get_latest_weeklyresult_csv(folder_path: str = None, project: str = None) ->
     抛出:
         FileNotFoundError: 如果未找到文件
     """
-    # 测试阶段使用本地路径
-    if folder_path is None:
-        folder_path = '/Users/caihd/Desktop/sg'
+    folder_path = _resolve_weekly_result_folder(folder_path)
 
     # 直接在指定路径查找所有 weeklyresult.csv 文件
     pattern = os.path.join(folder_path, '*weeklyresult.csv')
@@ -268,7 +282,7 @@ def get_available_csv_files(folder_path: str = None, project: str = None) -> lis
     获取所有可用的 weeklyresult.csv 文件列表
 
     参数:
-        folder_path: 文件夹路径，测试阶段默认为 '/Users/caihd/Desktop/sg'
+        folder_path: 文件夹路径，未提供则使用数据库配置或默认路径
         project: 项目名称（暂未使用，保留参数兼容性）
 
     返回:
@@ -285,8 +299,7 @@ def get_available_csv_files(folder_path: str = None, project: str = None) -> lis
         ]
     """
     # 测试阶段使用本地路径
-    if folder_path is None:
-        folder_path = '/Users/caihd/Desktop/sg'
+    folder_path = _resolve_weekly_result_folder(folder_path)
 
     pattern = os.path.join(folder_path, '*weeklyresult.csv')
     csv_files = glob.glob(pattern)

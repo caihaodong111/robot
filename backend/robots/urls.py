@@ -23,7 +23,7 @@ from .auth_views import (
     create_edit_user,
     increment_edit_session_version,
 )
-from .error_trend_chart import CHART_OUTPUT_PATH
+from .error_trend_chart import get_chart_output_path
 
 
 def serve_chart(request, filename):
@@ -33,7 +33,7 @@ def serve_chart(request, filename):
     Args:
         filename: 图片文件名 (如 as33_020rb_400_1_trend.png)
     """
-    file_path = os.path.join(CHART_OUTPUT_PATH, filename)
+    file_path = os.path.join(get_chart_output_path(), filename)
 
     if not os.path.exists(file_path):
         raise Http404(f"图表文件不存在: {filename}")

@@ -19,7 +19,7 @@ from .serializers import (
     RobotReferenceDictSerializer,
 )
 from .gripper_service import check_gripper_from_config
-from .error_trend_chart import generate_trend_chart, chart_exists, CHART_OUTPUT_PATH
+from .error_trend_chart import generate_trend_chart, chart_exists
 from celery.result import AsyncResult
 
 logger = logging.getLogger(__name__)
@@ -352,7 +352,7 @@ class RobotComponentViewSet(
 
         请求体:
         {
-            "folder_path": "/Users/caihd/Desktop/sg",  // 可选
+            "folder_path": "/Users/caihd/Desktop/sg",  // 可选，未提供则使用数据库配置
             "project": "reuse",  // 可选
             "file_path": "/path/to/specific/file.csv"  // 可选，直接指定文件
         }

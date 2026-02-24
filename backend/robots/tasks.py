@@ -15,9 +15,19 @@ def _refresh_reference_dict():
     from pathlib import Path
     import csv
 
-    from .models import RobotReferenceDict, RefreshLog
+    from .models import RobotReferenceDict, RefreshLog, PathConfig
 
-    csv_path = Path(settings.BASE_DIR).parent / "dic information .csv"
+    default_path = Path(
+        getattr(
+            settings,
+            "REFERENCE_DICT_CSV",
+            str(Path(settings.BASE_DIR).parent / "dic information .csv"),
+        )
+    )
+    try:
+        csv_path = Path(PathConfig.get_path("reference_dict_csv", str(default_path)))
+    except Exception:
+        csv_path = default_path
     logger.info("Reference dict refresh started: file=%s", csv_path)
 
     if not csv_path.exists():

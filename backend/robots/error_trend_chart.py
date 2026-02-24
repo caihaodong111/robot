@@ -12,11 +12,29 @@ import matplotlib.pyplot as plt
 from django.conf import settings
 
 
-# CSV 数据文件存储路径
-ERROR_RATE_PATH = getattr(settings, 'ERROR_RATE_CSV_PATH', 'P:/')
+# CSV 数据文件存储路径（配置缺失时兜底）
+DEFAULT_ERROR_RATE_PATH = getattr(settings, 'ERROR_RATE_CSV_PATH', 'P:/')
 
-# 图表保存路径
-CHART_OUTPUT_PATH = getattr(settings, 'ERROR_RATE_CHART_PATH', 'P:/PIC/')
+# 图表保存路径（配置缺失时兜底）
+DEFAULT_CHART_OUTPUT_PATH = getattr(settings, 'ERROR_RATE_CHART_PATH', 'P:/PIC/')
+
+
+def get_error_rate_csv_path() -> str:
+    """从数据库配置读取错误率 CSV 路径，缺失时使用默认值"""
+    try:
+        from .models import PathConfig
+        return PathConfig.get_path("error_rate_csv", DEFAULT_ERROR_RATE_PATH)
+    except Exception:
+        return DEFAULT_ERROR_RATE_PATH
+
+
+def get_chart_output_path() -> str:
+    """从数据库配置读取图表输出路径，缺失时使用默认值"""
+    try:
+        from .models import PathConfig
+        return PathConfig.get_path("error_rate_chart", DEFAULT_CHART_OUTPUT_PATH)
+    except Exception:
+        return DEFAULT_CHART_OUTPUT_PATH
 
 
 def generate_trend_chart(robot_part_no: str, axis_num: int) -> str:
@@ -39,7 +57,7 @@ def generate_trend_chart(robot_part_no: str, axis_num: int) -> str:
 
     # 构建 CSV 文件路径
     csv_filename = f'{robot_part_no}-error-rate-trend.csv'
-    csv_path = os.path.join(ERROR_RATE_PATH, csv_filename)
+    csv_path = os.path.join(get_error_rate_csv_path(), csv_filename)
 
     if not os.path.exists(csv_path):
         raise FileNotFoundError(f"CSV 文件不存在: {csv_path}")
@@ -195,5 +213,5 @@ def chart_exists(robot_part_no: str, axis_num: int) -> bool:
         bool: 图表是否存在
     """
     filename = f'{robot_part_no}_{axis_num}_trend.png'
-    path = os.path.join(CHART_OUTPUT_PATH, filename)
+    path = os.path.join(get_chart_output_path(), filename)
     return os.path.exists(path)

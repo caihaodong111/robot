@@ -538,6 +538,49 @@ class SystemConfig(models.Model):
         return config
 
 
+class PathConfig(models.Model):
+    """
+    路径配置模型
+    用于存储本地数据文件路径配置（可通过数据库修改）
+    """
+    key = models.CharField(max_length=64, unique=True, verbose_name="配置键")
+    path = models.TextField(verbose_name="路径")
+    description = models.CharField(max_length=255, blank=True, default="", verbose_name="描述")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        db_table = "path_configs"
+        verbose_name = "路径配置"
+        verbose_name_plural = "路径配置"
+        ordering = ["key"]
+
+    def __str__(self):
+        return f"{self.key}: {self.path}"
+
+    @classmethod
+    def get_path(cls, key, default=None):
+        """获取配置路径"""
+        try:
+            config = cls.objects.get(key=key)
+            return config.path
+        except cls.DoesNotExist:
+            return default
+
+    @classmethod
+    def set_path(cls, key, path, description=""):
+        """设置配置路径"""
+        config, created = cls.objects.get_or_create(
+            key=key,
+            defaults={"path": path, "description": description}
+        )
+        if not created:
+            config.path = path
+            if description:
+                config.description = description
+            config.save()
+        return config
+
+
 class EditAuthUser(models.Model):
     """
     编辑认证用户模型

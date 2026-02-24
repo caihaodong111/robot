@@ -269,8 +269,27 @@ import os
 os.makedirs(BASE_DIR / 'logs', exist_ok=True)
 
 
+# ==================== 本地路径配置（可通过 .env 覆盖）====================
+# 周结果 CSV 目录
+WEEKLY_RESULT_FOLDER = os.getenv("WEEKLY_RESULT_FOLDER", str(BASE_DIR.parent))
+# 机器人配置 CSV 文件路径
+ROBOT_CONFIG_CSV = os.getenv(
+    "ROBOT_CONFIG_CSV",
+    str(BASE_DIR.parent / "机器人配置文件.csv"),
+)
+# Reference dict CSV 文件路径
+REFERENCE_DICT_CSV = os.getenv(
+    "REFERENCE_DICT_CSV",
+    str(BASE_DIR.parent / "dic information .csv"),
+)
 # ==================== 机器人错误率趋势图配置 ====================
 # CSV 数据文件存储路径
-ERROR_RATE_CSV_PATH = '/Users/caihd/Desktop/sg'
+ERROR_RATE_CSV_PATH = os.getenv(
+    "ERROR_RATE_CSV_PATH",
+    str(BASE_DIR.parent),
+)
 # 图表生成输出路径
-ERROR_RATE_CHART_PATH = '/Users/caihd/Desktop/sg/charts'
+ERROR_RATE_CHART_PATH = os.getenv(
+    "ERROR_RATE_CHART_PATH",
+    str(BASE_DIR.parent / "charts"),
+)

@@ -8,11 +8,27 @@ import logging
 import os
 from pathlib import Path
 from django.conf import settings
+from .models import PathConfig
 
 logger = logging.getLogger(__name__)
 
-# 默认CSV文件路径
-DEFAULT_CSV_PATH = Path(settings.BASE_DIR).parent / "机器人配置文件.csv"
+# 默认CSV文件路径（配置缺失时兜底）
+DEFAULT_CSV_PATH = Path(
+    getattr(
+        settings,
+        "ROBOT_CONFIG_CSV",
+        str(Path(settings.BASE_DIR).parent / "机器人配置文件.csv"),
+    )
+)
+
+
+def get_default_csv_path() -> Path:
+    """从数据库配置读取路径，未配置时使用默认值"""
+    try:
+        configured = PathConfig.get_path("robot_config_csv", str(DEFAULT_CSV_PATH))
+        return Path(configured)
+    except Exception:
+        return DEFAULT_CSV_PATH
 
 
 def read_robot_config_csv(csv_path=None):
@@ -22,7 +38,7 @@ def read_robot_config_csv(csv_path=None):
     返回: list of dict - 每行数据为一个字典
     """
     if csv_path is None:
-        csv_path = DEFAULT_CSV_PATH
+        csv_path = get_default_csv_path()
 
     if not csv_path.exists():
         logger.warning(f"CSV配置文件不存在: {csv_path}")
@@ -50,7 +66,7 @@ def write_robot_config_csv(data, csv_path=None):
         csv_path: CSV文件路径，默认使用配置文件路径
     """
     if csv_path is None:
-        csv_path = DEFAULT_CSV_PATH
+        csv_path = get_default_csv_path()
 
     if not data:
         logger.warning("没有数据需要写入CSV")
@@ -87,7 +103,7 @@ def update_robot_in_csv(robot, updates, csv_path=None):
     返回: bool - 是否更新成功
     """
     if csv_path is None:
-        csv_path = DEFAULT_CSV_PATH
+        csv_path = get_default_csv_path()
 
     if not csv_path.exists():
         logger.warning(f"CSV配置文件不存在: {csv_path}")
@@ -155,7 +171,7 @@ def get_csv_backup_path(csv_path=None):
     获取CSV备份文件路径
     """
     if csv_path is None:
-        csv_path = DEFAULT_CSV_PATH
+        csv_path = get_default_csv_path()
 
     timestamp = csv_path.stem.replace('机器人配置文件', '') or ''
     backup_name = f"机器人配置文件_backup_{timestamp}"
@@ -172,7 +188,7 @@ def backup_csv_file(csv_path=None):
     返回: bool - 是否备份成功
     """
     if csv_path is None:
-        csv_path = DEFAULT_CSV_PATH
+        csv_path = get_default_csv_path()
 
     if not csv_path.exists():
         logger.warning(f"CSV文件不存在，无需备份: {csv_path}")
