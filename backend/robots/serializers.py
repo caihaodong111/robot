@@ -142,6 +142,7 @@ class RobotReferenceDictSerializer(serializers.ModelSerializer):
 class RefreshLogSerializer(serializers.ModelSerializer):
     """刷新日志序列化器"""
     source_display = serializers.CharField(source="get_source_display", read_only=True)
+    trigger_display = serializers.CharField(source="get_trigger_display", read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
 
     class Meta:
@@ -150,6 +151,8 @@ class RefreshLogSerializer(serializers.ModelSerializer):
             "id",
             "source",
             "source_display",
+            "trigger",
+            "trigger_display",
             "status",
             "status_display",
             "source_file",
@@ -333,6 +336,7 @@ class RobotHighRiskSnapshotSerializer(serializers.ModelSerializer):
 class RefreshLogSerializer(serializers.ModelSerializer):
     """刷新日志序列化器"""
     source_display = serializers.CharField(source="get_source_display", read_only=True)
+    trigger_display = serializers.CharField(source="get_trigger_display", read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
 
     class Meta:
@@ -341,6 +345,8 @@ class RefreshLogSerializer(serializers.ModelSerializer):
             "id",
             "source",
             "source_display",
+            "trigger",
+            "trigger_display",
             "status",
             "status_display",
             "source_file",

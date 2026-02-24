@@ -5,6 +5,7 @@ from . import views
 app_name = 'devices'
 
 router = DefaultRouter()
+router.include_format_suffixes = False
 router.register(r'devices', views.DeviceViewSet, basename='device')
 
 urlpatterns = [

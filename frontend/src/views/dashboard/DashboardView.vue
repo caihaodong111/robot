@@ -11,7 +11,7 @@
     <div class="layout-wrapper">
       <header class="page-header entrance-slide-in">
         <div class="title-group">
-          <h1 class="ios-title">ROBOT OVERVIEW<span class="subtitle">Robot Overview</span></h1>
+          <h1 class="ios-title">ROBOT OVERVIEW<span class="subtitle">机器人总览</span></h1>
           <div class="status-tag status-tag-entrance">
             <span class="dot pulse"></span> 最近更新时间：{{ lastUpdateTime }}
           </div>

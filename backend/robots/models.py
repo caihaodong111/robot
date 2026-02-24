@@ -448,6 +448,11 @@ class RefreshLog(models.Model):
         ("auto", "自动同步"),
     ]
 
+    TRIGGER_CHOICES = [
+        ("manual", "手动更新"),
+        ("scheduled", "定时更新"),
+    ]
+
     STATUS_CHOICES = [
         ("success", "成功"),
         ("failed", "失败"),
@@ -455,6 +460,7 @@ class RefreshLog(models.Model):
 
     # 数据来源
     source = models.CharField(max_length=16, choices=SOURCE_CHOICES, default="manual", verbose_name="数据来源")
+    trigger = models.CharField(max_length=16, choices=TRIGGER_CHOICES, default="manual", verbose_name="触发方式")
     status = models.CharField(max_length=16, choices=STATUS_CHOICES, default="success", verbose_name="状态")
 
     # 文件信息
@@ -481,6 +487,7 @@ class RefreshLog(models.Model):
         indexes = [
             models.Index(fields=["-sync_time"]),
             models.Index(fields=["source"]),
+            models.Index(fields=["trigger"]),
             models.Index(fields=["status"]),
         ]
 
@@ -664,4 +671,3 @@ class RobotInfo(models.Model):
 
     def __str__(self):
         return f"{self.robot} - {self.reference or 'N/A'}"
-

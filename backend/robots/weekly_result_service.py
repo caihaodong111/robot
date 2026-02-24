@@ -631,6 +631,7 @@ def import_robot_components_csv(
     # 写入刷新日志
     RefreshLog.objects.create(
         source=source,
+        trigger="scheduled" if source == "auto" else "manual",
         status="success",
         source_file=source_file,
         file_date=week_start,

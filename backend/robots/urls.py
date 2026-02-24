@@ -41,6 +41,7 @@ def serve_chart(request, filename):
     return FileResponse(open(file_path, 'rb'), content_type='image/png')
 
 router = DefaultRouter()
+router.include_format_suffixes = False
 router.register(r"groups", RobotGroupViewSet, basename="robot-group")
 router.register(r"components", RobotComponentViewSet, basename="robot-component")
 router.register(r"risk-events", RiskEventViewSet, basename="risk-event")

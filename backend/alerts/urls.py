@@ -5,6 +5,7 @@ from . import views
 app_name = 'alerts'
 
 router = DefaultRouter()
+router.include_format_suffixes = False
 router.register(r'rules', views.AlertRuleViewSet, basename='alertrule')
 router.register(r'records', views.AlertRecordViewSet, basename='alertrecord')
 

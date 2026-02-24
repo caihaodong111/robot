@@ -630,21 +630,20 @@
     </el-dialog>
 
     <!-- Edit Authentication Login Dialog -->
-    <el-dialog v-model="loginVisible" title="编辑验证" width="420px" class="dark-dialog" :close-on-click-modal="false">
+    <el-dialog v-model="loginVisible" title="Edit Verification" width="420px" class="dark-dialog" :close-on-click-modal="false">
       <div class="login-dialog-content">
-        <p class="login-hint">要编辑机器人数据，请先登录验证</p>
         <el-form :model="loginForm" label-position="top" class="login-form">
-          <el-form-item label="用户名">
-            <el-input v-model="loginForm.username" placeholder="请输入用户名" @keyup.enter="handleLogin" />
+          <el-form-item label="Username">
+            <el-input v-model="loginForm.username" placeholder="Enter username" @keyup.enter="handleLogin" />
           </el-form-item>
-          <el-form-item label="密码">
-            <el-input v-model="loginForm.password" type="password" placeholder="请输入密码" show-password @keyup.enter="handleLogin" />
+          <el-form-item label="Password">
+            <el-input v-model="loginForm.password" type="password" placeholder="Enter password" show-password @keyup.enter="handleLogin" />
           </el-form-item>
         </el-form>
       </div>
       <template #footer>
-        <el-button @click="cancelLogin">取消</el-button>
-        <el-button type="primary" :loading="loggingIn" @click="handleLogin">登录</el-button>
+        <el-button @click="cancelLogin">Cancel</el-button>
+        <el-button type="primary" :loading="loggingIn" @click="handleLogin">Sign In</el-button>
       </template>
     </el-dialog>
 
@@ -751,6 +750,14 @@ const pendingEditData = ref(null) // 存储待处理的编辑操作
 
 // localStorage key
 const EDIT_AUTH_KEY = 'edit_auth_version'
+const EDIT_AUTH_TTL_MS = 6 * 60 * 60 * 1000
+
+const isAuthExpired = (timestamp) => {
+  if (!timestamp) return true
+  const ts = new Date(timestamp).getTime()
+  if (Number.isNaN(ts)) return true
+  return Date.now() - ts > EDIT_AUTH_TTL_MS
+}
 
 // 从 localStorage 恢复登录状态
 const restoreAuthState = () => {
@@ -758,6 +765,10 @@ const restoreAuthState = () => {
     const stored = localStorage.getItem(EDIT_AUTH_KEY)
     if (stored) {
       const data = JSON.parse(stored)
+      if (isAuthExpired(data.timestamp)) {
+        clearAuthState()
+        return
+      }
       editSessionVersion.value = data.version
       // 检查会话是否仍然有效
       checkEditAuthStatus()
@@ -799,6 +810,14 @@ const checkEditAuthStatus = async () => {
   }
 
   try {
+    const stored = localStorage.getItem(EDIT_AUTH_KEY)
+    if (stored) {
+      const data = JSON.parse(stored)
+      if (isAuthExpired(data.timestamp)) {
+        clearAuthState()
+        return
+      }
+    }
     const result = await getEditAuthStatus({ version: editSessionVersion.value })
     if (result.valid) {
       isEditAuthenticated.value = true
@@ -1201,6 +1220,9 @@ const handleRefresh = () => {
     // 清除 sessionStorage 中的同步状态
     sessionStorage.removeItem('robot_sync_state')
 
+    // 数据更新后强制重新登录编辑
+    clearAuthState()
+
     // 显示成功消息
     ElMessage.success(`同步成功！新增 ${result.records_created || 0} 条，更新 ${result.records_updated || 0} 条`)
 
@@ -1291,6 +1313,21 @@ const openEdit = async (row, focusField) => {
   if (syncing.value) {
     ElMessage.warning('数据同步中，暂时无法编辑')
     return
+  }
+
+  // 校验登录有效期（6小时）
+  try {
+    const stored = localStorage.getItem(EDIT_AUTH_KEY)
+    if (stored) {
+      const data = JSON.parse(stored)
+      if (isAuthExpired(data.timestamp)) {
+        clearAuthState()
+      } else if (!isEditAuthenticated.value) {
+        await checkEditAuthStatus()
+      }
+    }
+  } catch (e) {
+    console.error('Failed to validate auth state:', e)
   }
 
   // 检查编辑认证
@@ -1768,6 +1805,9 @@ const pollSyncStatus = async () => {
           sessionStorage.removeItem('robot_sync_state')
           clearInterval(syncPollTimer)
           syncPollTimer = null
+
+          // 数据更新后强制重新登录编辑
+          clearAuthState()
 
           // 显示成功消息
           ElMessage.success('数据同步已成功完成')

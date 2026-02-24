@@ -5,6 +5,7 @@ from . import views
 app_name = 'monitoring'
 
 router = DefaultRouter()
+router.include_format_suffixes = False
 router.register(r'data', views.SensorDataViewSet, basename='sensordata')
 
 urlpatterns = [

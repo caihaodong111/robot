@@ -24,6 +24,7 @@ def _refresh_reference_dict():
         logger.warning("Reference dict refresh failed: missing file=%s", csv_path)
         RefreshLog.objects.create(
             source="manual",
+            trigger="manual",
             status="failed",
             source_file=str(csv_path),
             error_message=f"CSV文件不存在: {csv_path}",
@@ -62,6 +63,7 @@ def _refresh_reference_dict():
             )
             RefreshLog.objects.create(
                 source="manual",
+                trigger="manual",
                 status="success",
                 source_file=str(csv_path),
                 total_records=0,
@@ -119,6 +121,7 @@ def _refresh_reference_dict():
 
         RefreshLog.objects.create(
             source="manual",
+            trigger="manual",
             status="success",
             source_file=str(csv_path),
             records_created=created,
@@ -148,6 +151,7 @@ def _refresh_reference_dict():
         logger.exception("Reference dict refresh failed: file=%s", csv_path)
         RefreshLog.objects.create(
             source="manual",
+            trigger="manual",
             status="failed",
             source_file=str(csv_path),
             error_message=str(exc),
