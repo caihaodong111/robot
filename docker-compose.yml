@@ -9,6 +9,10 @@ services:
     container_name: iot-backend
     ports:
       - "8000:8000"
+    volumes:
+      - /home/azure:/home/azure
+    environment:
+      - ERROR_RATE_CSV_PATH=/data
     restart: unless-stopped
     networks:
       - iot-network
