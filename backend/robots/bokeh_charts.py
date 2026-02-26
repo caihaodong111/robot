@@ -32,15 +32,31 @@ AXIS_CONFIG = {
 
 
 def get_db_engine():
-    """从Django配置获取数据库连接"""
-    from django.conf import settings
-    db_config = settings.DATABASES.get('default', {})
+    """获取PROGRAM CYCLE SYNC数据库连接（仅使用SG_DB_*）"""
+    import os
+
+    sg_name = os.getenv('SG_DB_NAME')
+    sg_user = os.getenv('SG_DB_USER')
+    sg_password = os.getenv('SG_DB_PASSWORD')
+    sg_host = os.getenv('SG_DB_HOST')
+    sg_port = os.getenv('SG_DB_PORT')
+
+    missing = [key for key, value in [
+        ("SG_DB_NAME", sg_name),
+        ("SG_DB_USER", sg_user),
+        ("SG_DB_PASSWORD", sg_password),
+        ("SG_DB_HOST", sg_host),
+        ("SG_DB_PORT", sg_port),
+    ] if not value]
+    if missing:
+        raise ValueError(f"Missing PROGRAM CYCLE SYNC DB env vars: {', '.join(missing)}")
+
     return {
-        'user': db_config.get('USER'),
-        'password': db_config.get('PASSWORD'),
-        'host': db_config.get('HOST'),
-        'port': db_config.get('PORT') or '3306',
-        'database': db_config.get('NAME'),
+        'user': sg_user,
+        'password': sg_password,
+        'host': sg_host,
+        'port': sg_port or '3306',
+        'database': sg_name,
     }
 
 

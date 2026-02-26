@@ -315,6 +315,7 @@ const handleRobotChange = (value) => {
     activeName.value = value
     currentRobotLabel.value = robot.label
     shouldLoad.value = false  // 重置加载状态，等待手动点击"加载分析"
+    fetchTimeRange(value)
   }
 }
 
@@ -343,6 +344,19 @@ const handleTimeRangeChange = () => {
   // 不再自动加载，时间范围变化后需要手动点击"加载分析"按钮
 }
 
+const fetchTimeRange = async (robotValue) => {
+  try {
+    const response = await request.get('/robots/components/time_range/', {
+      params: { robot: robotValue }
+    })
+    const { start_date, end_date } = response || {}
+    if (start_date && end_date) {
+      timeRange.value = [new Date(start_date), new Date(end_date)]
+    }
+  } catch (error) {
+    console.error('获取数据库时间范围失败:', error)
+  }
+}
 
 // 初始化：检查URL参数
 const initFromQuery = async () => {
@@ -372,6 +386,7 @@ const initFromQuery = async () => {
         startLoading()
       } else {
         shouldLoad.value = false  // 没有时间范围，需要手动点击"加载分析"
+        await fetchTimeRange(robot.value)
       }
     }
 
