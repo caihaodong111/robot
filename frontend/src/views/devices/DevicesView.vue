@@ -185,14 +185,14 @@
         <!-- Table -->
         <el-table :data="pagedRows" class="status-table table-entrance" stripe height="520" v-loading="loading">
           <!-- 基础列（所有标签页通用） -->
-          <el-table-column prop="partNo" label="robot" width="160" class-name="robot-column" sortable :sort-by="(row) => row.partNo || row.robot || ''">
+          <el-table-column prop="partNo" label="robot" width="160" fixed="left" class-name="robot-column" sortable :sort-by="(row) => row.partNo || row.robot || ''">
             <template #default="{ row }">
               <el-button type="primary" link class="mono robot-name-cell" @click="openBI(row)">
                 {{ row.partNo || row.robot }}
               </el-button>
             </template>
           </el-table-column>
-          <el-table-column label="reference" width="200" sortable :sort-by="(row) => row.referenceNo || row.reference || ''">
+          <el-table-column label="reference" width="200" fixed="left" sortable :sort-by="(row) => row.referenceNo || row.reference || ''">
             <template #default="{ row }">
               <template v-if="activeTab === 'history'">
                 <span class="mono">{{ row.referenceNo || row.reference }}</span>
@@ -202,7 +202,7 @@
               </el-button>
             </template>
           </el-table-column>
-          <el-table-column prop="number" label="number" width="90" align="center" sortable>
+          <el-table-column prop="number" label="number" width="90" fixed="left" align="center" sortable>
             <template #default="{ row }">
               <template v-if="activeTab === 'history'">
                 <span class="mono">{{ row.number ?? 0 }}</span>
@@ -212,23 +212,23 @@
               </el-button>
             </template>
           </el-table-column>
-          <el-table-column prop="typeSpec" label="type" width="120" sortable :sort-by="(row) => row.typeSpec || row.type || ''">
+          <el-table-column prop="typeSpec" label="type" width="120" fixed="left" sortable :sort-by="(row) => row.typeSpec || row.type || ''">
             <template #default="{ row }">
               <span>{{ row.typeSpec || row.type }}</span>
             </template>
           </el-table-column>
-          <el-table-column prop="tech" label="tech" width="120" sortable />
+          <el-table-column prop="tech" label="tech" width="120" fixed="left" sortable />
 
           <!-- all 标签页的详细列 -->
           <template v-if="activeTab === 'all'">
-            <el-table-column prop="mark" label="mark" width="80" align="center" sortable>
+            <el-table-column prop="mark" label="mark" width="80" fixed="left" align="center" sortable>
               <template #default="{ row }">
                 <el-button type="primary" link class="mono" @click="openEdit(row, 'mark')">
                   {{ row.mark ?? 0 }}
                 </el-button>
               </template>
             </el-table-column>
-            <el-table-column label="remark" width="150" sortable :sort-by="(row) => row.remark || ''">
+            <el-table-column label="remark" width="150" fixed="left" class-name="fixed-remark-col" sortable :sort-by="(row) => row.remark || ''">
               <template #default="{ row }">
                 <el-button type="primary" link class="remark-link" @click="openEdit(row, 'remark')">
                   {{ row.remark || '-' }}
@@ -383,7 +383,7 @@
 
           <!-- highRisk 和 history 标签页的列 -->
           <template v-else>
-            <el-table-column prop="mark" label="mark" width="80" align="center" sortable>
+            <el-table-column prop="mark" label="mark" width="80" fixed="left" align="center" sortable>
               <template #default="{ row }">
                 <template v-if="activeTab === 'history'">
                   <span class="mono">{{ row.mark ?? 0 }}</span>
@@ -393,7 +393,7 @@
                 </el-button>
               </template>
             </el-table-column>
-            <el-table-column label="remark" width="200" sortable :sort-by="(row) => row.remark || ''">
+            <el-table-column label="remark" width="200" fixed="left" class-name="fixed-remark-col" sortable :sort-by="(row) => row.remark || ''">
               <template #default="{ row }">
                 <template v-if="activeTab === 'history'">
                   <span class="remark-link">{{ row.remark || '-' }}</span>
@@ -2532,7 +2532,7 @@ onUnmounted(() => {
 }
 
 .data-table-section :deep(.el-table__header th) {
-  background: rgba(255, 255, 255, 0.04) !important;
+  background: #060a12 !important;
   border-color: rgba(255, 255, 255, 0.06) !important;
   color: #8da0b7 !important;
   font-size: 12px;
@@ -2554,7 +2554,7 @@ onUnmounted(() => {
 .data-table-section :deep(.el-table__header th.is-sortable .cell) {
   color: #8da0b7 !important;
   cursor: pointer !important;
-  background: rgba(255, 255, 255, 0.04) !important;
+  background: #060a12 !important;
 }
 
 /* 永久禁用表头排序激活色 - 统一为浅蓝灰色 */
@@ -2567,7 +2567,7 @@ onUnmounted(() => {
 .data-table-section :deep(.el-table__header th.descending .cell),
 .data-table-section :deep(.el-table__header th.is-sortable .cell:hover) {
   color: #8da0b7 !important;
-  background: rgba(255, 255, 255, 0.04) !important;
+  background: #060a12 !important;
 }
 
 /* 排序图标颜色 */
@@ -2654,16 +2654,61 @@ onUnmounted(() => {
 
 .data-table-section :deep(.el-table__body td) {
   border-bottom: 1px solid rgba(255, 255, 255, 0.04) !important;
-  background-color: transparent !important;
+  background-color: rgba(8, 12, 20, 0.96) !important;
   color: #dbe6f5 !important;
 }
 
 .data-table-section :deep(.el-table__row:hover td) {
-  background: rgba(255, 170, 0, 0.08) !important;
+  background: #0b121f !important;
 }
 
 .data-table-section :deep(.el-table__row.current-row td) {
-  background: rgba(255, 170, 0, 0.14) !important;
+  background: #0d1524 !important;
+}
+
+/* 固定列：不透明遮罩，防止滑动时透字 */
+.data-table-section :deep(.el-table__fixed),
+.data-table-section :deep(.el-table__fixed-left) {
+  background: #060a12 !important;
+  z-index: 6;
+}
+
+.data-table-section :deep(.el-table__fixed::after),
+.data-table-section :deep(.el-table__fixed-left::after) {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: -1px;
+  width: 20px;
+  height: 100%;
+  background: linear-gradient(90deg, #060a12 0%, #0b121f 70%, #0f172a 100%);
+  pointer-events: none;
+}
+
+.data-table-section :deep(.el-table__fixed .el-table__header-wrapper),
+.data-table-section :deep(.el-table__fixed .el-table__body-wrapper),
+.data-table-section :deep(.el-table__fixed .el-table__body),
+.data-table-section :deep(.el-table__fixed .el-table__body table),
+.data-table-section :deep(.el-table__fixed .el-table__body tbody) {
+  background: #060a12 !important;
+}
+
+.data-table-section :deep(.el-table__fixed .el-table__body tr),
+.data-table-section :deep(.el-table__fixed .el-table__body tr.el-table__row--striped),
+.data-table-section :deep(.el-table__fixed .el-table__body td),
+.data-table-section :deep(.el-table__fixed .el-table__body .el-table__cell),
+.data-table-section :deep(.el-table__fixed .el-table__body .cell) {
+  background-color: #060a12 !important;
+}
+
+.data-table-section :deep(.el-table__fixed .el-table__header-wrapper th),
+.data-table-section :deep(.el-table__fixed .el-table__header-wrapper .cell) {
+  background-color: #060a12 !important;
+}
+
+.data-table-section :deep(.el-table__fixed .el-table__row:hover td),
+.data-table-section :deep(.el-table__fixed .el-table__row.current-row td) {
+  background-color: #0a111d !important;
 }
 
 /* 固定列样式 */
@@ -2709,6 +2754,7 @@ onUnmounted(() => {
   text-align: left;
   white-space: nowrap;
   line-height: 1.2;
+  padding-right: 22px;
 }
 
 /* === Custom Pagination === */
