@@ -2706,8 +2706,7 @@ onUnmounted(() => {
 }
 
 /* 固定列边界渐变：挂在最后一个固定列的伪元素上 */
-.data-table-section :deep(.el-table.is-scrolling-middle .el-table-fixed-column--left.is-last-column::before),
-.data-table-section :deep(.el-table.is-scrolling-right .el-table-fixed-column--left.is-last-column::before) {
+.data-table-section :deep(.el-table:is(.is-scrolling-middle, .is-scrolling-right) .el-table-fixed-column--left.is-last-column::before) {
   box-shadow: none;
   background: linear-gradient(90deg, rgba(255, 255, 255, 0.35) 0%, rgba(255, 255, 255, 0.18) 55%, rgba(255, 255, 255, 0) 100%);
   width: 22px;
