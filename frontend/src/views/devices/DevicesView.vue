@@ -185,14 +185,14 @@
         <!-- Table -->
         <el-table :data="pagedRows" class="status-table table-entrance" stripe height="520" v-loading="loading">
           <!-- 基础列（所有标签页通用） -->
-          <el-table-column prop="partNo" label="robot" width="160" fixed="left" class-name="robot-column" sortable :sort-by="(row) => row.partNo || row.robot || ''">
+          <el-table-column prop="partNo" label="robot" width="140" fixed="left" class-name="robot-column" sortable :sort-by="(row) => row.partNo || row.robot || ''">
             <template #default="{ row }">
               <el-button type="primary" link class="mono robot-name-cell" @click="openBI(row)">
                 {{ row.partNo || row.robot }}
               </el-button>
             </template>
           </el-table-column>
-          <el-table-column label="reference" width="200" fixed="left" sortable :sort-by="(row) => row.referenceNo || row.reference || ''">
+          <el-table-column label="reference" width="170" fixed="left" sortable :sort-by="(row) => row.referenceNo || row.reference || ''">
             <template #default="{ row }">
               <template v-if="activeTab === 'history'">
                 <span class="mono">{{ row.referenceNo || row.reference }}</span>
@@ -202,7 +202,7 @@
               </el-button>
             </template>
           </el-table-column>
-          <el-table-column prop="number" label="number" width="90" fixed="left" align="center" sortable>
+          <el-table-column prop="number" label="number" width="80" fixed="left" align="center" sortable>
             <template #default="{ row }">
               <template v-if="activeTab === 'history'">
                 <span class="mono">{{ row.number ?? 0 }}</span>
@@ -212,23 +212,23 @@
               </el-button>
             </template>
           </el-table-column>
-          <el-table-column prop="typeSpec" label="type" width="120" fixed="left" sortable :sort-by="(row) => row.typeSpec || row.type || ''">
+          <el-table-column prop="typeSpec" label="type" width="105" fixed="left" sortable :sort-by="(row) => row.typeSpec || row.type || ''">
             <template #default="{ row }">
               <span>{{ row.typeSpec || row.type }}</span>
             </template>
           </el-table-column>
-          <el-table-column prop="tech" label="tech" width="120" fixed="left" sortable />
+          <el-table-column prop="tech" label="tech" width="90" fixed="left" sortable />
 
           <!-- all 标签页的详细列 -->
           <template v-if="activeTab === 'all'">
-            <el-table-column prop="mark" label="mark" width="80" fixed="left" align="center" sortable>
+            <el-table-column prop="mark" label="mark" width="55" fixed="left" align="center" sortable>
               <template #default="{ row }">
                 <el-button type="primary" link class="mono" @click="openEdit(row, 'mark')">
                   {{ row.mark ?? 0 }}
                 </el-button>
               </template>
             </el-table-column>
-            <el-table-column label="remark" width="150" fixed="left" class-name="fixed-remark-col" sortable :sort-by="(row) => row.remark || ''">
+            <el-table-column label="remark" width="130" fixed="left" class-name="fixed-remark-col" sortable :sort-by="(row) => row.remark || ''">
               <template #default="{ row }">
                 <el-button type="primary" link class="remark-link" @click="openEdit(row, 'remark')">
                   {{ row.remark || '-' }}
@@ -383,7 +383,7 @@
 
           <!-- highRisk 和 history 标签页的列 -->
           <template v-else>
-            <el-table-column prop="mark" label="mark" width="80" fixed="left" align="center" sortable>
+            <el-table-column prop="mark" label="mark" width="55" fixed="left" align="center" sortable>
               <template #default="{ row }">
                 <template v-if="activeTab === 'history'">
                   <span class="mono">{{ row.mark ?? 0 }}</span>
@@ -393,7 +393,7 @@
                 </el-button>
               </template>
             </el-table-column>
-            <el-table-column label="remark" width="200" fixed="left" class-name="fixed-remark-col" sortable :sort-by="(row) => row.remark || ''">
+            <el-table-column label="remark" width="170" fixed="left" class-name="fixed-remark-col" sortable :sort-by="(row) => row.remark || ''">
               <template #default="{ row }">
                 <template v-if="activeTab === 'history'">
                   <span class="remark-link">{{ row.remark || '-' }}</span>
@@ -2358,8 +2358,8 @@ onUnmounted(() => {
 }
 
 .table-header {
-  padding: 15px 25px;
-  font-size: 12px;
+  padding: 10px 20px;
+  font-size: 11px;
   color: #c0ccda;
   letter-spacing: 1px;
   border-bottom: 1px solid rgba(255,255,255,0.05);
@@ -2406,6 +2406,8 @@ onUnmounted(() => {
 
 :deep(.status-tabs-dark .el-tabs__item) {
   color: #8899aa;
+  font-size: 12px;
+  padding: 0 14px;
 }
 
 :deep(.status-tabs-dark .el-tabs__item.is-active) {
@@ -2417,12 +2419,12 @@ onUnmounted(() => {
 }
 
 :deep(.status-tabs-dark .el-tabs__nav-wrap) {
-  padding-left: 25px;
+  padding-left: 20px;
 }
 
 /* === Filters === */
 .filters {
-  padding: 15px 25px;
+  padding: 10px 20px;
   border-bottom: 1px solid rgba(255,255,255,0.05);
 }
 
@@ -2529,13 +2531,14 @@ onUnmounted(() => {
   --el-table-header-bg-color: rgba(255, 255, 255, 0.04);
   --el-table-border-color: rgba(255, 255, 255, 0.06);
   color: #dbe6f5;
+  font-size: 12px;
 }
 
 .data-table-section :deep(.el-table__header th) {
   background: #060a12 !important;
   border-color: rgba(255, 255, 255, 0.06) !important;
   color: #8da0b7 !important;
-  font-size: 12px;
+  font-size: 11px;
   letter-spacing: 0.5px;
   font-weight: 600;
   white-space: nowrap;
@@ -2544,9 +2547,16 @@ onUnmounted(() => {
 
 .data-table-section :deep(.el-table__header th .cell) {
   white-space: nowrap;
-  padding: 0 8px;
+  padding: 0 6px;
   overflow: visible !important;
   text-overflow: clip !important;
+}
+
+.data-table-section :deep(.el-table__body td .cell) {
+  padding: 6px 6px;
+  line-height: 1.2;
+  white-space: normal;
+  word-break: break-word;
 }
 
 /* 排序列表头保持统一颜色，不显示“可选”蓝色 */
@@ -2679,7 +2689,7 @@ onUnmounted(() => {
   position: absolute;
   top: 0;
   right: -1px;
-  width: 20px;
+  width: 12px;
   height: 100%;
   background: linear-gradient(90deg, #060a12 0%, #0b121f 70%, #0f172a 100%);
   pointer-events: none;
@@ -2752,9 +2762,9 @@ onUnmounted(() => {
   display: inline-flex;
   justify-content: flex-start;
   text-align: left;
-  white-space: nowrap;
+  white-space: normal;
   line-height: 1.2;
-  padding-right: 22px;
+  padding-right: 14px;
 }
 
 /* === Custom Pagination === */
@@ -2763,7 +2773,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 20px 24px;
+  padding: 16px 20px;
   border-top: 1px solid rgba(255, 255, 255, 0.05);
   background: rgba(3, 5, 8, 0.4);
   position: relative;
@@ -2778,7 +2788,7 @@ onUnmounted(() => {
 
 .pagination-total {
   color: #7f93a8;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
 }
 
@@ -2814,8 +2824,8 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 38px;
-  height: 38px;
+  width: 34px;
+  height: 34px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 10px;
@@ -2843,8 +2853,8 @@ onUnmounted(() => {
 }
 
 .pagination-arrow svg {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
 }
 
 .pagination-pages {
@@ -2857,14 +2867,14 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 38px;
-  height: 38px;
+  min-width: 34px;
+  height: 34px;
   padding: 0 12px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 10px;
   color: #8899aa;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
@@ -2908,7 +2918,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   color: #7f93a8;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
 }
 
@@ -2933,7 +2943,7 @@ onUnmounted(() => {
 :deep(.pagination-jump-input .el-input__inner) {
   color: #8899aa;
   text-align: center;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 /* === Detail === */
