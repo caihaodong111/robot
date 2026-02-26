@@ -192,7 +192,7 @@
               </el-button>
             </template>
           </el-table-column>
-          <el-table-column label="reference" width="170" fixed="left" sortable :sort-by="(row) => row.referenceNo || row.reference || ''">
+          <el-table-column label="reference" width="130" fixed="left" class-name="reference-column" sortable :sort-by="(row) => row.referenceNo || row.reference || ''">
             <template #default="{ row }">
               <template v-if="activeTab === 'history'">
                 <span class="mono">{{ row.referenceNo || row.reference }}</span>
@@ -202,7 +202,7 @@
               </el-button>
             </template>
           </el-table-column>
-          <el-table-column prop="number" label="number" width="80" fixed="left" align="center" sortable>
+          <el-table-column prop="number" label="number" width="80" fixed="left" align="center" sortable class-name="number-column">
             <template #default="{ row }">
               <template v-if="activeTab === 'history'">
                 <span class="mono">{{ row.number ?? 0 }}</span>
@@ -212,16 +212,16 @@
               </el-button>
             </template>
           </el-table-column>
-          <el-table-column prop="typeSpec" label="type" width="105" fixed="left" sortable :sort-by="(row) => row.typeSpec || row.type || ''">
+          <el-table-column prop="typeSpec" label="type" width="130" fixed="left" sortable class-name="type-column">
             <template #default="{ row }">
               <span>{{ row.typeSpec || row.type }}</span>
             </template>
           </el-table-column>
-          <el-table-column prop="tech" label="tech" width="90" fixed="left" sortable />
+          <el-table-column prop="tech" label="tech" width="70" fixed="left" sortable />
 
           <!-- all 标签页的详细列 -->
           <template v-if="activeTab === 'all'">
-            <el-table-column prop="mark" label="mark" width="55" fixed="left" align="center" sortable>
+            <el-table-column prop="mark" label="mark" width="45" fixed="left" align="center" sortable>
               <template #default="{ row }">
                 <el-button type="primary" link class="mono" @click="openEdit(row, 'mark')">
                   {{ row.mark ?? 0 }}
@@ -383,7 +383,7 @@
 
           <!-- highRisk 和 history 标签页的列 -->
           <template v-else>
-            <el-table-column prop="mark" label="mark" width="55" fixed="left" align="center" sortable>
+            <el-table-column prop="mark" label="mark" width="50" fixed="left" align="center" sortable>
               <template #default="{ row }">
                 <template v-if="activeTab === 'history'">
                   <span class="mono">{{ row.mark ?? 0 }}</span>
@@ -2559,6 +2559,28 @@ onUnmounted(() => {
   word-break: break-word;
 }
 
+.data-table-section :deep(.el-table__body td.reference-column .cell) {
+  white-space: normal;
+  word-break: break-word;
+}
+
+.data-table-section :deep(.el-table__body td.reference-column .el-button),
+.data-table-section :deep(.el-table__body td.reference-column .mono) {
+  white-space: normal;
+  word-break: break-word;
+  text-align: left;
+}
+
+.data-table-section :deep(.el-table__header th.number-column .cell),
+.data-table-section :deep(.el-table__body td.number-column .cell) {
+  padding-right: 18px;
+}
+
+.data-table-section :deep(.el-table__header th.type-column .cell),
+.data-table-section :deep(.el-table__body td.type-column .cell) {
+  padding-left: 12px;
+}
+
 /* 排序列表头保持统一颜色，不显示“可选”蓝色 */
 .data-table-section :deep(.el-table__header th.is-sortable),
 .data-table-section :deep(.el-table__header th.is-sortable .cell) {
@@ -2683,16 +2705,14 @@ onUnmounted(() => {
   z-index: 6;
 }
 
-.data-table-section :deep(.el-table__fixed::after),
-.data-table-section :deep(.el-table__fixed-left::after) {
-  content: '';
-  position: absolute;
-  top: 0;
-  right: -1px;
-  width: 12px;
-  height: 100%;
-  background: linear-gradient(90deg, #060a12 0%, #0b121f 70%, #0f172a 100%);
-  pointer-events: none;
+/* 固定列边界渐变：挂在最后一个固定列的伪元素上 */
+.data-table-section :deep(.el-table.is-scrolling-middle .el-table-fixed-column--left.is-last-column::before),
+.data-table-section :deep(.el-table.is-scrolling-right .el-table-fixed-column--left.is-last-column::before) {
+  box-shadow: none;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.35) 0%, rgba(255, 255, 255, 0.18) 55%, rgba(255, 255, 255, 0) 100%);
+  width: 22px;
+  right: -22px;
+  z-index: 2;
 }
 
 .data-table-section :deep(.el-table__fixed .el-table__header-wrapper),
