@@ -21,8 +21,8 @@ def verify_edit_credentials(request):
 
     请求体:
     {
-        "username": "admin",
-        "password": "admin123"
+        "username": "Keyuser",
+        "password": "keyuser123"
     }
 
     返回:
@@ -133,7 +133,7 @@ def list_edit_users(request):
     返回:
     [
         {
-            "username": "admin",
+            "username": "Keyuser",
             "is_active": true,
             "created_at": "2026-02-06T10:00:00Z",
             "last_login_at": "2026-02-06T12:30:00Z"
@@ -164,8 +164,8 @@ def change_edit_password(request):
 
     请求体:
     {
-        "username": "admin",
-        "old_password": "admin123",  // 可选，如果不提供则不验证旧密码
+        "username": "Keyuser",
+        "old_password": "keyuser123",  // 可选，如果不提供则不验证旧密码
         "new_password": "newpassword123"
     }
 

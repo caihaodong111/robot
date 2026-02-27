@@ -13,17 +13,30 @@ from django.conf import settings
 logger = logging.getLogger(__name__)
 
 
-def _resolve_weekly_result_folder(folder_path: str = None) -> str:
+def _split_weekly_result_folders(value) -> list:
+    """支持逗号/分号/换行分隔的多路径配置"""
+    if not value:
+        return []
+    if isinstance(value, (list, tuple)):
+        return [str(item).strip() for item in value if str(item).strip()]
+    parts = []
+    for raw in str(value).replace("\n", ";").split(";"):
+        parts.extend(raw.split(","))
+    return [item.strip() for item in parts if item.strip()]
+
+
+def _resolve_weekly_result_folders(folder_path: str = None) -> list:
     """优先使用数据库配置的路径，缺失时使用默认值"""
     if folder_path:
-        return folder_path
+        return _split_weekly_result_folders(folder_path)
     default_path = getattr(settings, "WEEKLY_RESULT_FOLDER", str(settings.BASE_DIR.parent))
     try:
         from .models import PathConfig
-        return PathConfig.get_path("weekly_result_folder", default_path)
+        resolved = PathConfig.get_path("weekly_result_folder", default_path)
     except Exception:
         logger.warning("读取 weekly_result_folder 配置失败，使用默认路径: %s", default_path)
-        return default_path
+        resolved = default_path
+    return _split_weekly_result_folders(resolved)
 
 
 def log_print(message: str):
@@ -210,14 +223,20 @@ def get_latest_weeklyresult_csv(folder_path: str = None, project: str = None) ->
     抛出:
         FileNotFoundError: 如果未找到文件
     """
-    folder_path = _resolve_weekly_result_folder(folder_path)
+    folder_paths = _resolve_weekly_result_folders(folder_path)
+    if not folder_paths:
+        raise FileNotFoundError("未配置 weeklyresult.csv 搜索路径")
 
     # 直接在指定路径查找所有 weeklyresult.csv 文件
-    pattern = os.path.join(folder_path, '*weeklyresult.csv')
-    csv_files = glob.glob(pattern)
+    csv_files = []
+    patterns = []
+    for folder in folder_paths:
+        pattern = os.path.join(folder, '*weeklyresult.csv')
+        patterns.append(pattern)
+        csv_files.extend(glob.glob(pattern))
 
     if not csv_files:
-        raise FileNotFoundError(f"未找到匹配的 weeklyresult.csv 文件: {pattern}")
+        raise FileNotFoundError(f"未找到匹配的 weeklyresult.csv 文件: {', '.join(patterns)}")
 
     # 按修改时间降序排序获取最新文件
     target_files = [(f, os.path.getmtime(f)) for f in csv_files]
@@ -299,10 +318,11 @@ def get_available_csv_files(folder_path: str = None, project: str = None) -> lis
         ]
     """
     # 测试阶段使用本地路径
-    folder_path = _resolve_weekly_result_folder(folder_path)
-
-    pattern = os.path.join(folder_path, '*weeklyresult.csv')
-    csv_files = glob.glob(pattern)
+    folder_paths = _resolve_weekly_result_folders(folder_path)
+    csv_files = []
+    for folder in folder_paths:
+        pattern = os.path.join(folder, '*weeklyresult.csv')
+        csv_files.extend(glob.glob(pattern))
 
     results = []
     for f in csv_files:

@@ -243,7 +243,9 @@ export function verifyEditCredentials(data) {
   return request({
     url: '/robots/auth/verify/',
     method: 'post',
-    data
+    data,
+    silent: true,
+    skipAuthRedirect: true
   })
 }
 

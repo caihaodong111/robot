@@ -30,13 +30,16 @@ request.interceptors.response.use(
   },
   error => {
     const silent = Boolean(error.config?.silent)
+    const skipAuthRedirect = Boolean(error.config?.skipAuthRedirect)
     if (error.response) {
       switch (error.response.status) {
         case 401:
           if (!silent) ElMessage.error('登录已过期，请重新登录')
-          localStorage.removeItem('token')
-          localStorage.removeItem('username')
-          router.push('/login')
+          if (!skipAuthRedirect) {
+            localStorage.removeItem('token')
+            localStorage.removeItem('username')
+            router.push('/login')
+          }
           break
         case 403:
           if (!silent) ElMessage.error('没有权限访问')

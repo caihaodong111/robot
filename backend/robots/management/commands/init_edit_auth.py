@@ -3,7 +3,7 @@
 
 用法:
     python manage.py init_edit_auth
-    python manage.py init_edit_auth --username admin --password admin123
+    python manage.py init_edit_auth --username Keyuser --password keyuser123
 """
 from django.core.management.base import BaseCommand, CommandError
 from robots.models import EditAuthUser
@@ -16,14 +16,14 @@ class Command(BaseCommand):
         parser.add_argument(
             '--username',
             type=str,
-            default='admin',
-            help='管理员用户名（默认: admin）',
+            default='Keyuser',
+            help='管理员用户名（默认: Keyuser）',
         )
         parser.add_argument(
             '--password',
             type=str,
-            default='admin123',
-            help='管理员密码（默认: admin123）',
+            default='keyuser123',
+            help='管理员密码（默认: keyuser123）',
         )
         parser.add_argument(
             '--reset',
