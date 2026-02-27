@@ -8,6 +8,17 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+def _split_reference_dict_paths(value) -> list:
+    if not value:
+        return []
+    if isinstance(value, (list, tuple)):
+        return [str(item).strip() for item in value if str(item).strip()]
+    parts = []
+    for raw in str(value).replace("\n", ";").split(";"):
+        parts.extend(raw.split(","))
+    return [item.strip() for item in parts if item.strip()]
+
+
 def _refresh_reference_dict():
     from django.conf import settings
     from django.utils import timezone
@@ -25,45 +36,47 @@ def _refresh_reference_dict():
         )
     )
     try:
-        csv_path = Path(PathConfig.get_path("reference_dict_csv", str(default_path)))
+        csv_config = PathConfig.get_path("reference_dict_csv", str(default_path))
     except Exception:
-        csv_path = default_path
-    logger.info("Reference dict refresh started: file=%s", csv_path)
+        csv_config = default_path
+    configured_paths = _split_reference_dict_paths(csv_config)
+    if not configured_paths:
+        configured_paths = [str(default_path)]
 
-    if not csv_path.exists():
-        logger.warning("Reference dict refresh failed: missing file=%s", csv_path)
-        RefreshLog.objects.create(
-            source="manual",
-            trigger="manual",
-            status="failed",
-            source_file=str(csv_path),
-            error_message=f"CSV文件不存在: {csv_path}",
-            total_records=0,
-        )
-        return {"success": False, "error": f"CSV文件不存在: {csv_path}"}
+    csv_paths = [Path(path) for path in configured_paths]
+    logger.info("Reference dict refresh started: paths=%s", csv_paths)
 
     try:
         rows = []
         skipped = 0
         now = timezone.now()
-        with csv_path.open("r", encoding="utf-8-sig", newline="") as file_obj:
-            reader = csv.reader(file_obj)
-            for row in reader:
-                if not row or len(row) < 3:
-                    skipped += 1
-                    continue
-                robot = row[0].strip()
-                reference = row[1].strip()
-                number_raw = row[2].strip()
-                if not robot or not reference:
-                    skipped += 1
-                    continue
-                try:
-                    number = float(number_raw) if number_raw != "" else None
-                except ValueError:
-                    skipped += 1
-                    continue
-                rows.append((robot, reference, number))
+        missing_paths = []
+        for folder in csv_paths:
+            csv_path = folder / "dic information .csv"
+            if not csv_path.exists():
+                missing_paths.append(str(csv_path))
+                continue
+            with csv_path.open("r", encoding="utf-8-sig", newline="") as file_obj:
+                reader = csv.reader(file_obj)
+                for row in reader:
+                    if not row or len(row) < 3:
+                        skipped += 1
+                        continue
+                    robot = row[0].strip()
+                    reference = row[1].strip()
+                    number_raw = row[2].strip()
+                    if not robot or not reference:
+                        skipped += 1
+                        continue
+                    try:
+                        number = float(number_raw) if number_raw != "" else None
+                    except ValueError:
+                        skipped += 1
+                        continue
+                    rows.append((robot, reference, number))
+
+        if missing_paths:
+            logger.warning("Reference dict missing files: %s", missing_paths)
 
         if not rows:
             logger.info(
@@ -75,13 +88,13 @@ def _refresh_reference_dict():
                 source="manual",
                 trigger="manual",
                 status="success",
-                source_file=str(csv_path),
+                source_file=";".join([str(p) for p in csv_paths]),
                 total_records=0,
-                error_message=f"skipped_rows={skipped}",
+                error_message=f"skipped_rows={skipped};missing_files={missing_paths}",
             )
             return {
                 "success": True,
-                "file": str(csv_path),
+                "file": [str(p) for p in csv_paths],
                 "records_created": 0,
                 "records_updated": 0,
                 "records_skipped": skipped,
@@ -133,37 +146,38 @@ def _refresh_reference_dict():
             source="manual",
             trigger="manual",
             status="success",
-            source_file=str(csv_path),
+            source_file=";".join([str(p) for p in csv_paths]),
             records_created=created,
             records_updated=updated,
             records_deleted=0,
             total_records=len(rows),
-            error_message=f"skipped_rows={skipped}",
+            error_message=f"skipped_rows={skipped};missing_files={missing_paths}",
         )
 
         logger.info(
-            "Reference dict refresh finished: file=%s total=%s created=%s updated=%s skipped=%s",
-            csv_path,
+            "Reference dict refresh finished: paths=%s total=%s created=%s updated=%s skipped=%s missing=%s",
+            csv_paths,
             len(rows),
             created,
             updated,
             skipped,
+            len(missing_paths),
         )
 
         return {
             "success": True,
-            "file": str(csv_path),
+            "file": [str(p) for p in csv_paths],
             "records_created": created,
             "records_updated": updated,
             "records_skipped": skipped,
         }
     except Exception as exc:
-        logger.exception("Reference dict refresh failed: file=%s", csv_path)
+        logger.exception("Reference dict refresh failed: paths=%s", csv_paths)
         RefreshLog.objects.create(
             source="manual",
             trigger="manual",
             status="failed",
-            source_file=str(csv_path),
+            source_file=";".join([str(p) for p in csv_paths]),
             error_message=str(exc),
             total_records=0,
         )
