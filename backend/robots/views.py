@@ -39,50 +39,63 @@ class RobotGroupViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     EXCLUDED_GROUP_KEYS = ['', '(空)', '未分配']
 
     def get_queryset(self):
-        """过滤掉排除的车间"""
-        return super().get_queryset().exclude(key__in=self.EXCLUDED_GROUP_KEYS)
+        """过滤掉排除的车间，避免加载所有组件"""
+        return super().get_queryset().exclude(
+            key__in=self.EXCLUDED_GROUP_KEYS
+        )
 
     def list(self, request, *args, **kwargs):
-        groups = list(self.get_queryset())
-
         # 获取时间范围参数（用于统计特定时间段内的风险事件）
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
 
-        for group in groups:
-            qs = group.components.all()
+        # 使用 annotate 预先计算统计数据，避免 N+1 查询
+        from django.db.models import Count, Q
 
-            # 如果提供了时间范围，过滤在该时间范围内有高风险事件的机器人
-            if start_date and end_date:
-                try:
-                    start_dt = datetime.strptime(start_date, '%Y-%m-%d')
-                    end_dt = datetime.strptime(end_date, '%Y-%m-%d')
-                    # 延长结束日期到当天结束
-                    end_dt = end_dt.replace(hour=23, minute=59, second=59)
+        if start_date and end_date:
+            try:
+                start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+                end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+                end_dt = end_dt.replace(hour=23, minute=59, second=59)
 
-                    # 统计在指定时间范围内有高风险的机器人
-                    from django.db.models import Exists, OuterRef
-                    high_risk_in_period = qs.filter(
-                        level='H',
-                        riskevent__triggered_at__range=(start_dt, end_dt)
-                    ).distinct().count()
+                # 预先计算每个组的统计数据
+                groups = self.get_queryset().annotate(
+                    total_count=Count('components'),
+                    high_risk_count=Count(
+                        'components',
+                        filter=Q(components__level='H') & Q(components__riskevent__triggered_at__range=(start_dt, end_dt))
+                    )
+                ).distinct()
 
+                for group in groups:
                     group._stats = {
-                        "total": qs.count(),
-                        "highRisk": high_risk_in_period,
+                        "total": group.total_count,
+                        "highRisk": group.high_risk_count,
                         "timeRange": f"{start_date} ~ {end_date}"
                     }
-                except ValueError:
-                    # 日期格式错误，使用默认统计
+            except ValueError:
+                # 日期格式错误，使用默认统计
+                groups = self.get_queryset().annotate(
+                    total_count=Count('components'),
+                    high_risk_count=Count('components', filter=Q(components__level='H'))
+                )
+
+                for group in groups:
                     group._stats = {
-                        "total": qs.count(),
-                        "highRisk": qs.filter(level="H").count(),
+                        "total": group.total_count,
+                        "highRisk": group.high_risk_count,
                     }
-            else:
-                # 默认统计（不限制时间范围）
+        else:
+            # 默认统计（不限制时间范围）
+            groups = self.get_queryset().annotate(
+                total_count=Count('components'),
+                high_risk_count=Count('components', filter=Q(components__level='H'))
+            )
+
+            for group in groups:
                 group._stats = {
-                    "total": qs.count(),
-                    "highRisk": qs.filter(level="H").count(),
+                    "total": group.total_count,
+                    "highRisk": group.high_risk_count,
                 }
 
         serializer = self.get_serializer(groups, many=True)

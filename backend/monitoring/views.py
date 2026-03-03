@@ -24,6 +24,10 @@ class SensorDataViewSet(viewsets.ReadOnlyModelViewSet):
         device_id = self.request.query_params.get('device_id')
         limit = self.request.query_params.get('limit', 100)
 
+        # 如果用户未认证，返回空查询集
+        if not self.request.user.is_authenticated:
+            return SensorData.objects.none()
+
         queryset = SensorData.objects.filter(
             device__owner=self.request.user
         ).select_related('device')
@@ -36,6 +40,9 @@ class SensorDataViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=False, methods=['get'])
     def latest(self, request):
         """获取所有设备的最新数据"""
+        # 如果用户未认证，返回空结果
+        if not request.user.is_authenticated:
+            return Response([])
         devices = Device.objects.filter(owner=request.user)
         result = []
 
@@ -91,6 +98,10 @@ class DataQueryView(APIView):
 
     def get(self, request):
         """查询历史数据"""
+        # 如果用户未认证，返回错误
+        if not request.user.is_authenticated:
+            return Response({'error': '需要登录'}, status=status.HTTP_401_UNAUTHORIZED)
+
         serializer = DataQuerySerializer(data=request.query_params)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -133,6 +144,10 @@ class DataExportView(APIView):
 
     def get(self, request):
         """导出数据为Excel"""
+        # 如果用户未认证，返回错误
+        if not request.user.is_authenticated:
+            return Response({'error': '需要登录'}, status=status.HTTP_401_UNAUTHORIZED)
+
         device_id = request.query_params.get('device_id')
         start_time = request.query_params.get('start_time')
         end_time = request.query_params.get('end_time')
@@ -204,6 +219,10 @@ class RealTimeDataView(APIView):
 
     def get(self, request, device_id):
         """获取指定设备的实时数据"""
+        # 如果用户未认证，返回错误
+        if not request.user.is_authenticated:
+            return Response({'error': '需要登录'}, status=status.HTTP_401_UNAUTHORIZED)
+
         try:
             device = Device.objects.get(id=device_id, owner=request.user)
         except Device.DoesNotExist:
@@ -231,6 +250,10 @@ class DataStatisticsView(APIView):
 
     def get(self, request, device_id):
         """获取设备数据统计"""
+        # 如果用户未认证，返回错误
+        if not request.user.is_authenticated:
+            return Response({'error': '需要登录'}, status=status.HTTP_401_UNAUTHORIZED)
+
         try:
             device = Device.objects.get(id=device_id, owner=request.user)
         except Device.DoesNotExist:

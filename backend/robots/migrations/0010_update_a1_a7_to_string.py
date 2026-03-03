@@ -19,10 +19,6 @@ class Migration(migrations.Migration):
                 "verbose_name_plural": "机器人组件",
             },
         ),
-        migrations.AlterModelTableComment(
-            name="robotcomponent",
-            table_comment=None,
-        ),
         migrations.AlterField(
             model_name="robotcomponent",
             name="a1",

@@ -11,6 +11,9 @@ class DeviceViewSet(viewsets.ModelViewSet):
     """设备视图集"""
 
     def get_queryset(self):
+        # 如果用户未认证，返回空查询集
+        if not self.request.user.is_authenticated:
+            return Device.objects.none()
         return Device.objects.filter(owner=self.request.user)
 
     def get_serializer_class(self):
@@ -61,6 +64,10 @@ class DeviceToggleStatusView(APIView):
     """设备状态切换视图"""
 
     def post(self, request, pk):
+        # 如果用户未认证，返回错误
+        if not request.user.is_authenticated:
+            return Response({'error': '需要登录'}, status=status.HTTP_401_UNAUTHORIZED)
+
         try:
             device = Device.objects.get(pk=pk, owner=request.user)
             new_status = request.data.get('status')

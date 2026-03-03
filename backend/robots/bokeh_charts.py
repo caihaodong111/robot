@@ -124,7 +124,7 @@ def create_bi_charts(
         logger.info(f"数据库连接: {host}:{port}/{database}")
     except Exception as e:
         logger.error(f"数据库连接失败: {e}")
-        return None, None, None
+        return None, None, None, None, None
 
     # 获取数据库实际时间范围
     db_start_time, db_end_time = get_table_time_range(table_name, engine)
@@ -151,7 +151,7 @@ def create_bi_charts(
     )
     if df_full.empty:
         logger.warning(f"表 {table_name} 没有数据")
-        return None, None, None
+        return None, None, None, None, None
     logger.info(f"加载数据条数: {len(df_full)}, 列数={len(df_full.columns)}")
 
     # 获取能量数据

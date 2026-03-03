@@ -14,8 +14,10 @@ export default defineConfig({
     host: '0.0.0.0',
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
-        changeOrigin: true
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+        timeout: 60000,
+        proxyTimeout: 60000
       }
     }
   }
