@@ -1223,8 +1223,19 @@ const handleRefresh = () => {
     // 数据更新后强制重新登录编辑
     clearAuthState()
 
-    // 显示成功消息
-    ElMessage.success(`同步成功！新增 ${result.records_created || 0} 条，更新 ${result.records_updated || 0} 条`)
+    // 显示成功消息（包含各车间统计）
+    let message = `同步成功！新增 ${result.records_created || 0} 条，更新 ${result.records_updated || 0} 条`
+    if (result.shop_stats && Object.keys(result.shop_stats).length > 0) {
+      const shopDetails = Object.entries(result.shop_stats)
+        .map(([shop, stats]) => `${shop}: 新增${stats.created} 更新${stats.updated}`)
+        .join(' | ')
+      message += `\n\n各车间详情: ${shopDetails}`
+    }
+    ElMessage.success({
+      message: message,
+      duration: 5000,
+      dangerouslyUseHTMLString: false
+    })
 
     // 刷新页面数据
     currentPage.value = 1
@@ -1465,27 +1476,28 @@ const openBI = async (robot) => {
     return
   }
 
-  try {
-    // 调用API获取数据库实际时间范围
-    const response = await request.get('/robots/components/time_range/', {
-      params: { robot: partNo }
-    })
+  // 默认使用近一个月的时间范围
+  const endDate = new Date()
+  const startDate = new Date()
+  startDate.setTime(startDate.getTime() - 30 * 24 * 60 * 60 * 1000)
 
-    const { start_date, end_date } = response
-
-    router.push({
-      path: '/alerts',
-      query: {
-        group: groupKey,
-        robot: partNo,
-        start_date: start_date,
-        end_date: end_date
-      }
-    })
-  } catch (error) {
-    console.error('Failed to get time range:', error)
-    ElMessage.error('Failed to get robot data time range, please try again later')
+  // 格式化日期为 YYYY-MM-DD
+  const formatDate = (date) => {
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
   }
+
+  router.push({
+    path: '/alerts',
+    query: {
+      group: groupKey,
+      robot: partNo,
+      start_date: formatDate(startDate),
+      end_date: formatDate(endDate)
+    }
+  })
 }
 
 // 打开错误率趋势图弹窗

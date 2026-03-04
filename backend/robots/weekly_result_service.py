@@ -246,6 +246,44 @@ def get_latest_weeklyresult_csv(folder_path: str = None, project: str = None) ->
     return latest_file
 
 
+def get_all_weeklyresult_csvs(folder_path: str = None, project: str = None) -> list:
+    """
+    获取所有路径中的 weeklyresult.csv 文件列表（按修改时间排序）
+
+    参数:
+        folder_path: 文件夹路径，未提供则使用数据库配置或默认路径
+        project: 项目名称（暂未使用，保留参数兼容性）
+
+    返回:
+        所有 weeklyresult.csv 文件路径列表（按修改时间降序排序）
+
+    抛出:
+        FileNotFoundError: 如果未找到文件
+    """
+    folder_paths = _resolve_weekly_result_folders(folder_path)
+    if not folder_paths:
+        raise FileNotFoundError("未配置 weeklyresult.csv 搜索路径")
+
+    # 在所有路径中查找 weeklyresult.csv 文件
+    csv_files = []
+    patterns = []
+    for folder in folder_paths:
+        pattern = os.path.join(folder, '*weeklyresult.csv')
+        patterns.append(pattern)
+        found_files = glob.glob(pattern)
+        for f in found_files:
+            csv_files.append((f, os.path.getmtime(f), folder))
+
+    if not csv_files:
+        raise FileNotFoundError(f"未找到匹配的 weeklyresult.csv 文件: {', '.join(patterns)}")
+
+    # 按修改时间降序排序
+    sorted_files = sorted(csv_files, key=lambda x: x[1], reverse=True)
+
+    # 返回文件路径列表
+    return [f[0] for f in sorted_files]
+
+
 def parse_week_from_filename(filename: str) -> tuple:
     """
     从文件名解析日期
@@ -351,9 +389,10 @@ def import_robot_components_csv(
     跳过 WeeklyResult 表，直接更新机器人状态界面数据
 
     真覆盖模式：CSV 中不存在的机器人数据将被删除
+    多文件模式：自动导入所有路径中的 CSV 文件
 
     参数:
-        file_path: CSV 文件路径，如果为 None 则自动获取最新文件
+        file_path: CSV 文件路径，如果为 None 则自动查找所有 CSV 文件
         folder_path: 文件夹路径（用于自动查找）
         project: 项目名称（用于自动查找）
         source: 数据来源 ("manual" 手动同步 / "auto" 自动同步)
@@ -369,274 +408,329 @@ def import_robot_components_csv(
     if archive_result.get('archived_count', 0) > 0:
         log_print(f"已归档 {archive_result['archived_count']} 条高风险数据到历史快照表")
 
-    # 获取文件路径
+    # 获取文件路径（支持多文件）
     log_print("开始导入流程...")
+    csv_files = []
     if file_path is None:
-        log_print("未指定文件路径，正在查找最新CSV文件...")
-        file_path = get_latest_weeklyresult_csv(folder_path, project)
-        log_print(f"找到文件: {file_path}")
+        log_print("未指定文件路径，正在查找所有CSV文件...")
+        csv_files = get_all_weeklyresult_csvs(folder_path, project)
+        log_print(f"找到 {len(csv_files)} 个 CSV 文件:")
+        for i, f in enumerate(csv_files, 1):
+            log_print(f"  {i}. {os.path.basename(f)}")
     else:
         log_print(f"使用指定文件: {file_path}")
+        csv_files = [file_path]
 
-    # 解析日期
-    week_start, week_end = parse_week_from_filename(file_path)
-    source_file = os.path.basename(file_path)
-    if week_start:
-        log_print(f"解析日期范围: {week_start} ~ {week_end}")
+    # 全局统计信息（累加所有文件）
+    total_records_created = 0
+    total_records_updated = 0
+    total_records_deleted = 0
+    total_skipped = 0
+    all_shop_stats = {}  # 累加各车间统计
+    all_csv_robots = set()  # 所有CSV中的机器人（用于删除）
+    all_csv_shops = set()  # 所有CSV中的车间（用于删除范围限定）
 
-    # 读取 CSV 文件
-    log_print("正在读取CSV文件...")
-    df = pd.read_csv(file_path)
-    total_rows = len(df)
-    log_print(f"读取完成，共 {total_rows} 行数据")
+    # 处理辅助函数（定义在循环外）
+    def safe_float(val):
+        if pd.isna(val) or val == '':
+            return None
+        if isinstance(val, str):
+            return None
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            return None
 
-    # 统计信息
-    records_created = 0
-    records_updated = 0
-    records_protected = 0
-    shop_stats = {}
-    skipped_no_robot = 0
-    csv_robots = set()  # 记录 CSV 中所有的 robot 值，用于删除旧数据
+    def safe_str(val):
+        if pd.isna(val):
+            return ''
+        return str(val) if val is not None else ''
 
-    log_print("开始处理数据行...")
+    def safe_int(val):
+        if pd.isna(val) or val == '':
+            return 0
+        try:
+            return int(val)
+        except (ValueError, TypeError):
+            return 0
 
-    for idx, row in df.iterrows():
-        # 处理 NaN 值
-        def safe_float(val):
-            if pd.isna(val) or val == '':
-                return None
-            if isinstance(val, str):
-                return None
+    # 循环处理每个 CSV 文件
+    for file_idx, current_file in enumerate(csv_files, 1):
+        log_print(f"\n{'='*60}")
+        log_print(f"正在处理第 {file_idx}/{len(csv_files)} 个文件: {os.path.basename(current_file)}")
+        log_print(f"{'='*60}")
+
+        # 解析日期
+        week_start, week_end = parse_week_from_filename(current_file)
+        source_file = os.path.basename(current_file)
+        if week_start:
+            log_print(f"解析日期范围: {week_start} ~ {week_end}")
+
+        # 读取 CSV 文件（兼容常见中文编码）
+        log_print("正在读取CSV文件...")
+        df = None
+        read_errors = []
+        for encoding in ("utf-8", "utf-8-sig", "gb18030"):
             try:
-                return float(val)
-            except (ValueError, TypeError):
-                return None
-
-        def safe_str(val):
-            if pd.isna(val):
-                return ''
-            return str(val) if val is not None else ''
-
-        def safe_int(val):
-            if pd.isna(val) or val == '':
-                return 0
-            try:
-                return int(val)
-            except (ValueError, TypeError):
-                return 0
-
-        # 获取车间名称，如果为空则使用默认值
-        shop_name = safe_str(row.get('shop', ''))
-        if not shop_name:
-            shop_name = '未分配'  # 空车间使用"未分配"
-
-        # 统计各车间数量
-        if shop_name not in shop_stats:
-            shop_stats[shop_name] = {'created': 0, 'updated': 0}
-
-        # 获取或创建 RobotGroup
-        group, _ = RobotGroup.objects.get_or_create(
-            key=shop_name,
-            defaults={'name': shop_name, 'expected_total': 0}
-        )
-
-        # 获取机器人编号
-        robot_val = safe_str(row.get('robot', ''))
-        if not robot_val:
-            skipped_no_robot += 1
-            continue  # 跳过没有 robot 的行
-
-        # 记录 CSV 中所有的 robot 值，用于后续删除旧数据
-        csv_robots.add(robot_val)
-
-        # 检查 RobotComponent 是否存在（通过 robot 查找）
-        existing = RobotComponent.objects.filter(robot=robot_val).first()
-
-        if existing:
-            # 更新现有记录（不再使用快照保护机制，快照表只用于历史记录）
-            existing.group = group
-            existing.robot = robot_val
-            existing.shop = shop_name  # 修复：更新 shop 字段
-            existing.reference = safe_str(row.get('reference', ''))
-            existing.number = safe_int(row.get('number', 0))
-            existing.type = safe_str(row.get('type', ''))
-            existing.tech = safe_str(row.get('tech', ''))
-            existing.mark = safe_int(row.get('mark', 0))
-            existing.remark = safe_str(row.get('remark', ''))
-            existing.level = safe_str(row.get('level', 'L'))
-            # 详细数据字段
-            existing.error1_c1 = safe_float(row.get('error1_c1'))
-            existing.tem1_m = safe_float(row.get('tem1_m'))
-            existing.tem2_m = safe_float(row.get('tem2_m'))
-            existing.tem3_m = safe_float(row.get('tem3_m'))
-            existing.tem4_m = safe_float(row.get('tem4_m'))
-            existing.tem5_m = safe_float(row.get('tem5_m'))
-            existing.tem6_m = safe_float(row.get('tem6_m'))
-            existing.tem7_m = safe_float(row.get('tem7_m'))
-            existing.a1_e_rate = safe_float(row.get('A1_e_rate'))
-            existing.a2_e_rate = safe_float(row.get('A2_e_rate'))
-            existing.a3_e_rate = safe_float(row.get('A3_e_rate'))
-            existing.a4_e_rate = safe_float(row.get('A4_e_rate'))
-            existing.a5_e_rate = safe_float(row.get('A5_e_rate'))
-            existing.a6_e_rate = safe_float(row.get('A6_e_rate'))
-            existing.a7_e_rate = safe_float(row.get('A7_e_rate'))
-            existing.a1_rms = safe_float(row.get('A1_Rms'))
-            existing.a2_rms = safe_float(row.get('A2_Rms'))
-            existing.a3_rms = safe_float(row.get('A3_Rms'))
-            existing.a4_rms = safe_float(row.get('A4_Rms'))
-            existing.a5_rms = safe_float(row.get('A5_Rms'))
-            existing.a6_rms = safe_float(row.get('A6_Rms'))
-            existing.a7_rms = safe_float(row.get('A7_Rms'))
-            existing.a1_e = safe_float(row.get('A1_E'))
-            existing.a2_e = safe_float(row.get('A2_E'))
-            existing.a3_e = safe_float(row.get('A3_E'))
-            existing.a4_e = safe_float(row.get('A4_E'))
-            existing.a5_e = safe_float(row.get('A5_E'))
-            existing.a6_e = safe_float(row.get('A6_E'))
-            existing.a7_e = safe_float(row.get('A7_E'))
-            existing.q1 = safe_float(row.get('Q1'))
-            existing.q2 = safe_float(row.get('Q2'))
-            existing.q3 = safe_float(row.get('Q3'))
-            existing.q4 = safe_float(row.get('Q4'))
-            existing.q5 = safe_float(row.get('Q5'))
-            existing.q6 = safe_float(row.get('Q6'))
-            existing.q7 = safe_float(row.get('Q7'))
-            existing.curr_a1_max = safe_float(row.get('Curr_A1_max'))
-            existing.curr_a2_max = safe_float(row.get('Curr_A2_max'))
-            existing.curr_a3_max = safe_float(row.get('Curr_A3_max'))
-            existing.curr_a4_max = safe_float(row.get('Curr_A4_max'))
-            existing.curr_a5_max = safe_float(row.get('Curr_A5_max'))
-            existing.curr_a6_max = safe_float(row.get('Curr_A6_max'))
-            existing.curr_a7_max = safe_float(row.get('Curr_A7_max'))
-            existing.curr_a1_min = safe_float(row.get('Curr_A1_min'))
-            existing.curr_a2_min = safe_float(row.get('Curr_A2_min'))
-            existing.curr_a3_min = safe_float(row.get('Curr_A3_min'))
-            existing.curr_a4_min = safe_float(row.get('Curr_A4_min'))
-            existing.curr_a5_min = safe_float(row.get('Curr_A5_min'))
-            existing.curr_a6_min = safe_float(row.get('Curr_A6_min'))
-            existing.curr_a7_min = safe_float(row.get('Curr_A7_min'))
-            existing.a1 = safe_str(row.get('A1'))
-            existing.a2 = safe_str(row.get('A2'))
-            existing.a3 = safe_str(row.get('A3'))
-            existing.a4 = safe_str(row.get('A4'))
-            existing.a5 = safe_str(row.get('A5'))
-            existing.a6 = safe_str(row.get('A6'))
-            existing.a7 = safe_str(row.get('A7'))
-            existing.p_change = safe_float(row.get('P_Change'))
-            existing.save(update_fields=[
-                'group', 'robot', 'shop', 'reference',  # 修复：添加 'shop' 字段
-                'number', 'type', 'tech', 'mark', 'remark', 'level',
-                'error1_c1', 'tem1_m', 'tem2_m', 'tem3_m', 'tem4_m', 'tem5_m', 'tem6_m', 'tem7_m',
-                'a1_e_rate', 'a2_e_rate', 'a3_e_rate', 'a4_e_rate', 'a5_e_rate', 'a6_e_rate', 'a7_e_rate',
-                'a1_rms', 'a2_rms', 'a3_rms', 'a4_rms', 'a5_rms', 'a6_rms', 'a7_rms',
-                'a1_e', 'a2_e', 'a3_e', 'a4_e', 'a5_e', 'a6_e', 'a7_e',
-                'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7',
-                'curr_a1_max', 'curr_a2_max', 'curr_a3_max', 'curr_a4_max', 'curr_a5_max', 'curr_a6_max', 'curr_a7_max',
-                'curr_a1_min', 'curr_a2_min', 'curr_a3_min', 'curr_a4_min', 'curr_a5_min', 'curr_a6_min', 'curr_a7_min',
-                'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7',
-                'p_change',
-            ])
-            records_updated += 1
-            shop_stats[shop_name]['updated'] += 1
-
-            # 注意：不再立即创建快照，快照将在下次同步时创建
-        else:
-            # 创建新记录
-            new_component = RobotComponent.objects.create(
-                group=group,
-                robot=robot_val,
-                shop=shop_name,  # 修复：创建时设置 shop 字段
-                reference=safe_str(row.get('reference', '')),
-                number=safe_int(row.get('number', 0)),
-                type=safe_str(row.get('type', '')),
-                tech=safe_str(row.get('tech', '')),
-                mark=safe_int(row.get('mark', 0)),
-                remark=safe_str(row.get('remark', '')),
-                level=safe_str(row.get('level', 'L')),
-                # 详细数据字段
-                error1_c1=safe_float(row.get('error1_c1')),
-                tem1_m=safe_float(row.get('tem1_m')),
-                tem2_m=safe_float(row.get('tem2_m')),
-                tem3_m=safe_float(row.get('tem3_m')),
-                tem4_m=safe_float(row.get('tem4_m')),
-                tem5_m=safe_float(row.get('tem5_m')),
-                tem6_m=safe_float(row.get('tem6_m')),
-                tem7_m=safe_float(row.get('tem7_m')),
-                a1_e_rate=safe_float(row.get('A1_e_rate')),
-                a2_e_rate=safe_float(row.get('A2_e_rate')),
-                a3_e_rate=safe_float(row.get('A3_e_rate')),
-                a4_e_rate=safe_float(row.get('A4_e_rate')),
-                a5_e_rate=safe_float(row.get('A5_e_rate')),
-                a6_e_rate=safe_float(row.get('A6_e_rate')),
-                a7_e_rate=safe_float(row.get('A7_e_rate')),
-                a1_rms=safe_float(row.get('A1_Rms')),
-                a2_rms=safe_float(row.get('A2_Rms')),
-                a3_rms=safe_float(row.get('A3_Rms')),
-                a4_rms=safe_float(row.get('A4_Rms')),
-                a5_rms=safe_float(row.get('A5_Rms')),
-                a6_rms=safe_float(row.get('A6_Rms')),
-                a7_rms=safe_float(row.get('A7_Rms')),
-                a1_e=safe_float(row.get('A1_E')),
-                a2_e=safe_float(row.get('A2_E')),
-                a3_e=safe_float(row.get('A3_E')),
-                a4_e=safe_float(row.get('A4_E')),
-                a5_e=safe_float(row.get('A5_E')),
-                a6_e=safe_float(row.get('A6_E')),
-                a7_e=safe_float(row.get('A7_E')),
-                q1=safe_float(row.get('Q1')),
-                q2=safe_float(row.get('Q2')),
-                q3=safe_float(row.get('Q3')),
-                q4=safe_float(row.get('Q4')),
-                q5=safe_float(row.get('Q5')),
-                q6=safe_float(row.get('Q6')),
-                q7=safe_float(row.get('Q7')),
-                curr_a1_max=safe_float(row.get('Curr_A1_max')),
-                curr_a2_max=safe_float(row.get('Curr_A2_max')),
-                curr_a3_max=safe_float(row.get('Curr_A3_max')),
-                curr_a4_max=safe_float(row.get('Curr_A4_max')),
-                curr_a5_max=safe_float(row.get('Curr_A5_max')),
-                curr_a6_max=safe_float(row.get('Curr_A6_max')),
-                curr_a7_max=safe_float(row.get('Curr_A7_max')),
-                curr_a1_min=safe_float(row.get('Curr_A1_min')),
-                curr_a2_min=safe_float(row.get('Curr_A2_min')),
-                curr_a3_min=safe_float(row.get('Curr_A3_min')),
-                curr_a4_min=safe_float(row.get('Curr_A4_min')),
-                curr_a5_min=safe_float(row.get('Curr_A5_min')),
-                curr_a6_min=safe_float(row.get('Curr_A6_min')),
-                curr_a7_min=safe_float(row.get('Curr_A7_min')),
-                a1=safe_str(row.get('A1')),
-                a2=safe_str(row.get('A2')),
-                a3=safe_str(row.get('A3')),
-                a4=safe_str(row.get('A4')),
-                a5=safe_str(row.get('A5')),
-                a6=safe_str(row.get('A6')),
-                a7=safe_str(row.get('A7')),
-                p_change=safe_float(row.get('P_Change')),
+                df = pd.read_csv(current_file, encoding=encoding)
+                log_print(f"已使用编码 {encoding} 读取CSV")
+                break
+            except UnicodeDecodeError as e:
+                read_errors.append(f"{encoding}: {e}")
+        if df is None:
+            raise UnicodeDecodeError(
+                "csv",
+                b"",
+                0,
+                0,
+                "无法识别CSV编码，已尝试 utf-8/utf-8-sig/gb18030; " + "; ".join(read_errors)
             )
-            records_created += 1
-            shop_stats[shop_name]['created'] += 1
+        total_rows = len(df)
+        log_print(f"读取完成，共 {total_rows} 行数据")
 
-            # 注意：不再立即创建快照，快照将在下次同步时创建
+        # 当前文件统计信息
+        records_created = 0
+        records_updated = 0
+        records_protected = 0
+        shop_stats = {}
+        skipped_no_robot = 0
+        csv_robots = set()  # 当前文件的 robot 集合
+        csv_shops = set()  # 当前文件的 shop 集合
 
-        # 每处理50行记录一次日志
-        if (idx + 1) % 50 == 0:
-            log_print(f"已处理 {idx + 1}/{total_rows} 行...")
+        log_print("开始处理数据行...")
 
-    # 添加最终统计日志
-    log_print("数据处理完成!")
-    log_print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    log_print("统计结果:")
-    log_print(f"  - 总处理行数: {total_rows}")
-    log_print(f"  - 新增记录: {records_created} 条")
-    log_print(f"  - 更新记录: {records_updated} 条")
-    log_print(f"  - 保护记录(高风险): {records_protected} 条")
-    log_print(f"  - 跳过记录(无机器人ID): {skipped_no_robot} 条")
-    log_print(f"  - 有效记录: {records_created + records_updated} 条")
-    log_print(" ")
-    log_print("各车间统计:")
-    for shop, stats in sorted(shop_stats.items()):
+        for idx, row in df.iterrows():
+            # 获取车间名称，如果为空则使用默认值
+            shop_name = safe_str(row.get('shop', ''))
+            if not shop_name:
+                shop_name = '未分配'  # 空车间使用"未分配"
+
+            # 记录当前文件中出现的所有车间
+            csv_shops.add(shop_name)
+
+            # 统计各车间数量
+            if shop_name not in shop_stats:
+                shop_stats[shop_name] = {'created': 0, 'updated': 0}
+
+            # 获取或创建 RobotGroup
+            group, _ = RobotGroup.objects.get_or_create(
+                key=shop_name,
+                defaults={'name': shop_name, 'expected_total': 0}
+            )
+
+            # 获取机器人编号
+            robot_val = safe_str(row.get('robot', ''))
+            if not robot_val:
+                skipped_no_robot += 1
+                continue  # 跳过没有 robot 的行
+
+            # 记录当前文件中所有的 robot 值，用于后续删除旧数据
+            csv_robots.add(robot_val)
+
+            # 检查 RobotComponent 是否存在（通过 robot 查找）
+            existing = RobotComponent.objects.filter(robot=robot_val).first()
+
+            if existing:
+                # 更新现有记录（不再使用快照保护机制，快照表只用于历史记录）
+                existing.group = group
+                existing.robot = robot_val
+                existing.shop = shop_name  # 修复：更新 shop 字段
+                existing.reference = safe_str(row.get('reference', ''))
+                existing.number = safe_int(row.get('number', 0))
+                existing.type = safe_str(row.get('type', ''))
+                existing.tech = safe_str(row.get('tech', ''))
+                existing.mark = safe_int(row.get('mark', 0))
+                existing.remark = safe_str(row.get('remark', ''))
+                existing.level = safe_str(row.get('level', 'L'))
+                # 详细数据字段
+                existing.error1_c1 = safe_float(row.get('error1_c1'))
+                existing.tem1_m = safe_float(row.get('tem1_m'))
+                existing.tem2_m = safe_float(row.get('tem2_m'))
+                existing.tem3_m = safe_float(row.get('tem3_m'))
+                existing.tem4_m = safe_float(row.get('tem4_m'))
+                existing.tem5_m = safe_float(row.get('tem5_m'))
+                existing.tem6_m = safe_float(row.get('tem6_m'))
+                existing.tem7_m = safe_float(row.get('tem7_m'))
+                existing.a1_e_rate = safe_float(row.get('A1_e_rate'))
+                existing.a2_e_rate = safe_float(row.get('A2_e_rate'))
+                existing.a3_e_rate = safe_float(row.get('A3_e_rate'))
+                existing.a4_e_rate = safe_float(row.get('A4_e_rate'))
+                existing.a5_e_rate = safe_float(row.get('A5_e_rate'))
+                existing.a6_e_rate = safe_float(row.get('A6_e_rate'))
+                existing.a7_e_rate = safe_float(row.get('A7_e_rate'))
+                existing.a1_rms = safe_float(row.get('A1_Rms'))
+                existing.a2_rms = safe_float(row.get('A2_Rms'))
+                existing.a3_rms = safe_float(row.get('A3_Rms'))
+                existing.a4_rms = safe_float(row.get('A4_Rms'))
+                existing.a5_rms = safe_float(row.get('A5_Rms'))
+                existing.a6_rms = safe_float(row.get('A6_Rms'))
+                existing.a7_rms = safe_float(row.get('A7_Rms'))
+                existing.a1_e = safe_float(row.get('A1_E'))
+                existing.a2_e = safe_float(row.get('A2_E'))
+                existing.a3_e = safe_float(row.get('A3_E'))
+                existing.a4_e = safe_float(row.get('A4_E'))
+                existing.a5_e = safe_float(row.get('A5_E'))
+                existing.a6_e = safe_float(row.get('A6_E'))
+                existing.a7_e = safe_float(row.get('A7_E'))
+                existing.q1 = safe_float(row.get('Q1'))
+                existing.q2 = safe_float(row.get('Q2'))
+                existing.q3 = safe_float(row.get('Q3'))
+                existing.q4 = safe_float(row.get('Q4'))
+                existing.q5 = safe_float(row.get('Q5'))
+                existing.q6 = safe_float(row.get('Q6'))
+                existing.q7 = safe_float(row.get('Q7'))
+                existing.curr_a1_max = safe_float(row.get('Curr_A1_max'))
+                existing.curr_a2_max = safe_float(row.get('Curr_A2_max'))
+                existing.curr_a3_max = safe_float(row.get('Curr_A3_max'))
+                existing.curr_a4_max = safe_float(row.get('Curr_A4_max'))
+                existing.curr_a5_max = safe_float(row.get('Curr_A5_max'))
+                existing.curr_a6_max = safe_float(row.get('Curr_A6_max'))
+                existing.curr_a7_max = safe_float(row.get('Curr_A7_max'))
+                existing.curr_a1_min = safe_float(row.get('Curr_A1_min'))
+                existing.curr_a2_min = safe_float(row.get('Curr_A2_min'))
+                existing.curr_a3_min = safe_float(row.get('Curr_A3_min'))
+                existing.curr_a4_min = safe_float(row.get('Curr_A4_min'))
+                existing.curr_a5_min = safe_float(row.get('Curr_A5_min'))
+                existing.curr_a6_min = safe_float(row.get('Curr_A6_min'))
+                existing.curr_a7_min = safe_float(row.get('Curr_A7_min'))
+                existing.a1 = safe_str(row.get('A1'))
+                existing.a2 = safe_str(row.get('A2'))
+                existing.a3 = safe_str(row.get('A3'))
+                existing.a4 = safe_str(row.get('A4'))
+                existing.a5 = safe_str(row.get('A5'))
+                existing.a6 = safe_str(row.get('A6'))
+                existing.a7 = safe_str(row.get('A7'))
+                existing.p_change = safe_float(row.get('P_Change'))
+                existing.save(update_fields=[
+                    'group', 'robot', 'shop', 'reference',  # 修复：添加 'shop' 字段
+                    'number', 'type', 'tech', 'mark', 'remark', 'level',
+                    'error1_c1', 'tem1_m', 'tem2_m', 'tem3_m', 'tem4_m', 'tem5_m', 'tem6_m', 'tem7_m',
+                    'a1_e_rate', 'a2_e_rate', 'a3_e_rate', 'a4_e_rate', 'a5_e_rate', 'a6_e_rate', 'a7_e_rate',
+                    'a1_rms', 'a2_rms', 'a3_rms', 'a4_rms', 'a5_rms', 'a6_rms', 'a7_rms',
+                    'a1_e', 'a2_e', 'a3_e', 'a4_e', 'a5_e', 'a6_e', 'a7_e',
+                    'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7',
+                    'curr_a1_max', 'curr_a2_max', 'curr_a3_max', 'curr_a4_max', 'curr_a5_max', 'curr_a6_max', 'curr_a7_max',
+                    'curr_a1_min', 'curr_a2_min', 'curr_a3_min', 'curr_a4_min', 'curr_a5_min', 'curr_a6_min', 'curr_a7_min',
+                    'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7',
+                    'p_change',
+                ])
+                records_updated += 1
+                shop_stats[shop_name]['updated'] += 1
+            else:
+                # 创建新记录
+                new_component = RobotComponent.objects.create(
+                    group=group,
+                    robot=robot_val,
+                    shop=shop_name,  # 修复：创建时设置 shop 字段
+                    reference=safe_str(row.get('reference', '')),
+                    number=safe_int(row.get('number', 0)),
+                    type=safe_str(row.get('type', '')),
+                    tech=safe_str(row.get('tech', '')),
+                    mark=safe_int(row.get('mark', 0)),
+                    remark=safe_str(row.get('remark', '')),
+                    level=safe_str(row.get('level', 'L')),
+                    # 详细数据字段
+                    error1_c1=safe_float(row.get('error1_c1')),
+                    tem1_m=safe_float(row.get('tem1_m')),
+                    tem2_m=safe_float(row.get('tem2_m')),
+                    tem3_m=safe_float(row.get('tem3_m')),
+                    tem4_m=safe_float(row.get('tem4_m')),
+                    tem5_m=safe_float(row.get('tem5_m')),
+                    tem6_m=safe_float(row.get('tem6_m')),
+                    tem7_m=safe_float(row.get('tem7_m')),
+                    a1_e_rate=safe_float(row.get('A1_e_rate')),
+                    a2_e_rate=safe_float(row.get('A2_e_rate')),
+                    a3_e_rate=safe_float(row.get('A3_e_rate')),
+                    a4_e_rate=safe_float(row.get('A4_e_rate')),
+                    a5_e_rate=safe_float(row.get('A5_e_rate')),
+                    a6_e_rate=safe_float(row.get('A6_e_rate')),
+                    a7_e_rate=safe_float(row.get('A7_e_rate')),
+                    a1_rms=safe_float(row.get('A1_Rms')),
+                    a2_rms=safe_float(row.get('A2_Rms')),
+                    a3_rms=safe_float(row.get('A3_Rms')),
+                    a4_rms=safe_float(row.get('A4_Rms')),
+                    a5_rms=safe_float(row.get('A5_Rms')),
+                    a6_rms=safe_float(row.get('A6_Rms')),
+                    a7_rms=safe_float(row.get('A7_Rms')),
+                    a1_e=safe_float(row.get('A1_E')),
+                    a2_e=safe_float(row.get('A2_E')),
+                    a3_e=safe_float(row.get('A3_E')),
+                    a4_e=safe_float(row.get('A4_E')),
+                    a5_e=safe_float(row.get('A5_E')),
+                    a6_e=safe_float(row.get('A6_E')),
+                    a7_e=safe_float(row.get('A7_E')),
+                    q1=safe_float(row.get('Q1')),
+                    q2=safe_float(row.get('Q2')),
+                    q3=safe_float(row.get('Q3')),
+                    q4=safe_float(row.get('Q4')),
+                    q5=safe_float(row.get('Q5')),
+                    q6=safe_float(row.get('Q6')),
+                    q7=safe_float(row.get('Q7')),
+                    curr_a1_max=safe_float(row.get('Curr_A1_max')),
+                    curr_a2_max=safe_float(row.get('Curr_A2_max')),
+                    curr_a3_max=safe_float(row.get('Curr_A3_max')),
+                    curr_a4_max=safe_float(row.get('Curr_A4_max')),
+                    curr_a5_max=safe_float(row.get('Curr_A5_max')),
+                    curr_a6_max=safe_float(row.get('Curr_A6_max')),
+                    curr_a7_max=safe_float(row.get('Curr_A7_max')),
+                    curr_a1_min=safe_float(row.get('Curr_A1_min')),
+                    curr_a2_min=safe_float(row.get('Curr_A2_min')),
+                    curr_a3_min=safe_float(row.get('Curr_A3_min')),
+                    curr_a4_min=safe_float(row.get('Curr_A4_min')),
+                    curr_a5_min=safe_float(row.get('Curr_A5_min')),
+                    curr_a6_min=safe_float(row.get('Curr_A6_min')),
+                    curr_a7_min=safe_float(row.get('Curr_A7_min')),
+                    a1=safe_str(row.get('A1')),
+                    a2=safe_str(row.get('A2')),
+                    a3=safe_str(row.get('A3')),
+                    a4=safe_str(row.get('A4')),
+                    a5=safe_str(row.get('A5')),
+                    a6=safe_str(row.get('A6')),
+                    a7=safe_str(row.get('A7')),
+                    p_change=safe_float(row.get('P_Change')),
+                )
+                records_created += 1
+                shop_stats[shop_name]['created'] += 1
+
+            # 每处理50行记录一次日志
+            if (idx + 1) % 50 == 0:
+                log_print(f"已处理 {idx + 1}/{total_rows} 行...")
+
+        # 当前文件处理完成，累加统计到全局统计
+        log_print(f"\n文件 {os.path.basename(current_file)} 处理完成!")
+        log_print(f"  - 新增: {records_created} 条")
+        log_print(f"  - 更新: {records_updated} 条")
+        log_print(f"  - 跳过: {skipped_no_robot} 条")
+
+        # 累加到全局统计
+        total_records_created += records_created
+        total_records_updated += records_updated
+        total_skipped += skipped_no_robot
+
+        # 累加车间统计
+        for shop, stats in shop_stats.items():
+            if shop not in all_shop_stats:
+                all_shop_stats[shop] = {'created': 0, 'updated': 0}
+            all_shop_stats[shop]['created'] += stats['created']
+            all_shop_stats[shop]['updated'] += stats['updated']
+
+        # 累加 robots 和 shops（用于删除逻辑）
+        all_csv_robots.update(csv_robots)
+        all_csv_shops.update(csv_shops)
+
+    # 所有文件处理完成
+    log_print(f"\n{'='*60}")
+    log_print(f"所有文件处理完成！")
+    log_print(f"{'='*60}")
+    log_print(f"总统计:")
+    log_print(f"  - 总新增记录: {total_records_created} 条")
+    log_print(f"  - 总更新记录: {total_records_updated} 条")
+    log_print(f"  - 总跳过记录: {total_skipped} 条")
+    log_print(f"  - 总有效记录: {total_records_created + total_records_updated} 条")
+    log_print("\n各车间总统计:")
+    for shop, stats in sorted(all_shop_stats.items()):
         log_print(f"  - {shop}: 新增 {stats['created']} 条, 更新 {stats['updated']} 条")
-    log_print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    log_print(f"{'='*60}\n")
 
     # 记录同步时间
     from django.utils import timezone
@@ -649,42 +743,53 @@ def import_robot_components_csv(
     )
     log_print(f"已记录同步时间: {sync_time}")
 
-    # 真覆盖模式：删除 CSV 中不存在的机器人数据
+    # 修正的真覆盖模式：只删除 CSV 中存在的车间里不存在的机器人数据
+    # 避免删除其他车间的数据（解决"只更新部分车间"的问题）
     deleted_count = 0
-    if csv_robots:
-        deleted_count = RobotComponent.objects.exclude(robot__in=csv_robots).delete()[0]
+    if all_csv_robots and all_csv_shops:
+        # 只删除所有 CSV 中出现的车间范围内，不在 CSV 中的机器人数据
+        deleted_count = RobotComponent.objects.filter(
+            shop__in=all_csv_shops  # 限定在所有 CSV 中存在的车间范围内
+        ).exclude(
+            robot__in=all_csv_robots  # 排除所有 CSV 中存在的机器人
+        ).delete()[0]
+
         if deleted_count > 0:
-            log_print(f"已删除 {deleted_count} 条 CSV 中不存在的旧数据（真覆盖模式）")
+            shops_str = ', '.join(sorted(all_csv_shops))
+            log_print(f"已删除车间 [{shops_str}] 中 {deleted_count} 条 CSV 中不存在的旧数据（真覆盖模式）")
     else:
-        log_print("警告：CSV 中没有有效的 robot 数据，不执行删除操作")
+        log_print("警告：CSV 中没有有效的 robot 数据或车间数据，不执行删除操作")
 
     # 记录当前的高风险机器人列表，供下次同步时归档使用
     save_current_high_risk_robots()
 
-    # 写入刷新日志
+    # 写入刷新日志（使用第一个文件的信息作为代表）
+    first_file = csv_files[0] if csv_files else "unknown"
+    first_week_start, _ = parse_week_from_filename(first_file)
+
     RefreshLog.objects.create(
         source=source,
         trigger="scheduled" if source == "auto" else "manual",
         status="success",
-        source_file=source_file,
-        file_date=week_start,
-        records_created=records_created,
-        records_updated=records_updated,
+        source_file=os.path.basename(first_file),
+        file_date=first_week_start,
+        records_created=total_records_created,
+        records_updated=total_records_updated,
         records_deleted=deleted_count,
-        total_records=records_created + records_updated,
+        total_records=total_records_created + total_records_updated,
     )
     log_print(f"已记录刷新日志: {source} 同步完成")
 
     return {
         'success': True,
-        'file': file_path,
-        'source_file': source_file,
-        'records_created': records_created,
-        'records_updated': records_updated,
-        'records_protected': records_protected,
-        'total_records': records_created + records_updated,
-        'shop_stats': shop_stats,
-        'skipped_no_robot': skipped_no_robot,
-        'total_rows': total_rows,
-        'date': week_start.isoformat() if week_start else None,
+        'file': first_file,
+        'source_file': os.path.basename(first_file),
+        'records_created': total_records_created,
+        'records_updated': total_records_updated,
+        'records_protected': 0,
+        'total_records': total_records_created + total_records_updated,
+        'shop_stats': all_shop_stats,
+        'skipped_no_robot': total_skipped,
+        'total_rows': total_records_created + total_records_updated + total_skipped,
+        'date': first_week_start.isoformat() if first_week_start else None,
     }
