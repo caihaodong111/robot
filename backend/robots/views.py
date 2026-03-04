@@ -388,6 +388,7 @@ class RobotComponentViewSet(
             folder_path = serializers.CharField(required=False, allow_blank=True)
             project = serializers.CharField(required=False, default='reuse')
             file_path = serializers.CharField(required=False, allow_blank=True)
+            use_mysql_load_data = serializers.BooleanField(required=False)
 
         serializer = ImportCSVSerializer(data=request.data)
         if not serializer.is_valid():
@@ -403,6 +404,7 @@ class RobotComponentViewSet(
                 file_path=data.get('file_path'),
                 folder_path=data.get('folder_path') or None,
                 project=data.get('project') or None,
+                use_mysql_load_data=data.get('use_mysql_load_data'),
             )
             return Response(result)
         except FileNotFoundError as e:
@@ -415,6 +417,67 @@ class RobotComponentViewSet(
                 'success': False,
                 'error': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=["post"])
+    def import_csv_async(self, request):
+        """
+        异步导入 weeklyresult.csv 文件到 robot_components 表
+        """
+        from rest_framework import serializers
+        from .tasks import import_robot_components_csv_task
+
+        class ImportCSVAsyncSerializer(serializers.Serializer):
+            folder_path = serializers.CharField(required=False, allow_blank=True)
+            project = serializers.CharField(required=False, default='reuse')
+            file_path = serializers.CharField(required=False, allow_blank=True)
+            use_mysql_load_data = serializers.BooleanField(required=False)
+
+        serializer = ImportCSVAsyncSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({
+                'success': False,
+                'error': 'Invalid request data',
+                'details': serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+        task = import_robot_components_csv_task.delay(
+            file_path=data.get('file_path'),
+            folder_path=data.get('folder_path') or None,
+            project=data.get('project') or None,
+            use_mysql_load_data=data.get('use_mysql_load_data'),
+        )
+        return Response({
+            'success': True,
+            'task_id': task.id,
+        }, status=status.HTTP_202_ACCEPTED)
+
+    @action(detail=False, methods=["get"])
+    def import_csv_status(self, request):
+        """
+        查询异步 CSV 导入任务状态
+        """
+        from celery.result import AsyncResult
+
+        task_id = (request.query_params.get("task_id") or "").strip()
+        if not task_id:
+            return Response(
+                {"success": False, "error": "缺少参数 task_id"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        result = AsyncResult(task_id)
+        payload = {
+            "success": True,
+            "task_id": task_id,
+            "state": result.state,
+        }
+        if result.successful():
+            payload["result"] = result.result
+        elif result.failed():
+            payload["error"] = str(result.result)
+
+        return Response(payload)
 
     @action(detail=False, methods=["get"])
     def stats_summary(self, request):

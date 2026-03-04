@@ -231,3 +231,16 @@ def auto_sync_robot_data():
 @shared_task
 def refresh_reference_dict_task():
     return _refresh_reference_dict()
+
+
+@shared_task
+def import_robot_components_csv_task(file_path=None, folder_path=None, project=None, use_mysql_load_data=None):
+    from .weekly_result_service import import_robot_components_csv
+
+    return import_robot_components_csv(
+        file_path=file_path,
+        folder_path=folder_path,
+        project=project,
+        source="manual",
+        use_mysql_load_data=use_mysql_load_data,
+    )

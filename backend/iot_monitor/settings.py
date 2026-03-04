@@ -114,6 +114,12 @@ DATABASES = {
     }
 }
 
+MYSQL_LOCAL_INFILE = os.getenv("MYSQL_LOCAL_INFILE", "0") == "1"
+if MYSQL_LOCAL_INFILE:
+    DATABASES["default"]["OPTIONS"]["local_infile"] = 1
+
+ENABLE_MYSQL_LOAD_DATA = os.getenv("ENABLE_MYSQL_LOAD_DATA", "0") == "1"
+
 
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators

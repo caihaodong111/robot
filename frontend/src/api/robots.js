@@ -193,6 +193,25 @@ export function importRobotComponents(data) {
   })
 }
 
+// 异步导入 CSV 到 RobotComponent 表
+export function importRobotComponentsAsync(data) {
+  return request({
+    url: '/robots/components/import_csv_async/',
+    method: 'post',
+    data,
+    timeout: 10000
+  })
+}
+
+// 查询异步导入任务状态
+export function getImportRobotComponentsStatus(params) {
+  return request({
+    url: '/robots/components/import_csv_status/',
+    method: 'get',
+    params
+  })
+}
+
 // ==================== 历史高风险机器人 API ====================
 
 // 获取历史高风险机器人列表

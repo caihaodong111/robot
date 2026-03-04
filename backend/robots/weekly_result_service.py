@@ -5,12 +5,279 @@
 import os
 import glob
 import logging
+import csv
+import tempfile
+from typing import Optional, Tuple
 import pandas as pd
+from django.db import transaction, connection
 from datetime import datetime
 from django.utils import timezone
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
+
+
+CSV_FIELD_SPECS = [
+    ("reference", "reference", "''"),
+    ("number", "number", "0"),
+    ("type", "type", "''"),
+    ("tech", "tech", "''"),
+    ("mark", "mark", "0"),
+    ("remark", "remark", "''"),
+    ("error1_c1", "error1_c1", None),
+    ("tem1_m", "tem1_m", None),
+    ("tem2_m", "tem2_m", None),
+    ("tem3_m", "tem3_m", None),
+    ("tem4_m", "tem4_m", None),
+    ("tem5_m", "tem5_m", None),
+    ("tem6_m", "tem6_m", None),
+    ("tem7_m", "tem7_m", None),
+    ("a1_e_rate", "A1_e_rate", None),
+    ("a2_e_rate", "A2_e_rate", None),
+    ("a3_e_rate", "A3_e_rate", None),
+    ("a4_e_rate", "A4_e_rate", None),
+    ("a5_e_rate", "A5_e_rate", None),
+    ("a6_e_rate", "A6_e_rate", None),
+    ("a7_e_rate", "A7_e_rate", None),
+    ("a1_rms", "A1_Rms", None),
+    ("a2_rms", "A2_Rms", None),
+    ("a3_rms", "A3_Rms", None),
+    ("a4_rms", "A4_Rms", None),
+    ("a5_rms", "A5_Rms", None),
+    ("a6_rms", "A6_Rms", None),
+    ("a7_rms", "A7_Rms", None),
+    ("a1_e", "A1_E", None),
+    ("a2_e", "A2_E", None),
+    ("a3_e", "A3_E", None),
+    ("a4_e", "A4_E", None),
+    ("a5_e", "A5_E", None),
+    ("a6_e", "A6_E", None),
+    ("a7_e", "A7_E", None),
+    ("q1", "Q1", None),
+    ("q2", "Q2", None),
+    ("q3", "Q3", None),
+    ("q4", "Q4", None),
+    ("q5", "Q5", None),
+    ("q6", "Q6", None),
+    ("q7", "Q7", None),
+    ("curr_a1_max", "Curr_A1_max", None),
+    ("curr_a2_max", "Curr_A2_max", None),
+    ("curr_a3_max", "Curr_A3_max", None),
+    ("curr_a4_max", "Curr_A4_max", None),
+    ("curr_a5_max", "Curr_A5_max", None),
+    ("curr_a6_max", "Curr_A6_max", None),
+    ("curr_a7_max", "Curr_A7_max", None),
+    ("curr_a1_min", "Curr_A1_min", None),
+    ("curr_a2_min", "Curr_A2_min", None),
+    ("curr_a3_min", "Curr_A3_min", None),
+    ("curr_a4_min", "Curr_A4_min", None),
+    ("curr_a5_min", "Curr_A5_min", None),
+    ("curr_a6_min", "Curr_A6_min", None),
+    ("curr_a7_min", "Curr_A7_min", None),
+    ("a1", "A1", "''"),
+    ("a2", "A2", "''"),
+    ("a3", "A3", "''"),
+    ("a4", "A4", "''"),
+    ("a5", "A5", "''"),
+    ("a6", "A6", "''"),
+    ("a7", "A7", "''"),
+    ("p_change", "P_Change", None),
+    ("level", "level", "'L'"),
+]
+
+
+def _detect_csv_encoding(file_path: str) -> str:
+    with open(file_path, "rb") as file_obj:
+        sample = file_obj.read(4096)
+    for enc in ("utf-8-sig", "utf-8", "gb18030"):
+        try:
+            sample.decode(enc)
+            return enc
+        except UnicodeDecodeError:
+            continue
+    return "utf-8"
+
+
+def _read_csv_header(file_path: str, encoding: str) -> list:
+    with open(file_path, "r", encoding=encoding, newline="") as file_obj:
+        reader = csv.reader(file_obj)
+        header = next(reader, [])
+    if header:
+        header[0] = header[0].lstrip("\ufeff")
+    return header
+
+
+def _ensure_utf8_csv(file_path: str, encoding: str) -> Tuple[str, str, bool]:
+    if encoding in ("utf-8", "utf-8-sig"):
+        return file_path, encoding, False
+    with open(file_path, "r", encoding=encoding, newline="") as src:
+        with tempfile.NamedTemporaryFile(
+            "w", delete=False, suffix=".csv", encoding="utf-8", newline=""
+        ) as dst:
+            for line in src:
+                dst.write(line)
+            return dst.name, "utf-8", True
+
+
+def _sql_value(headers: set, source_col: str, default_sql: Optional[str]) -> str:
+    if source_col not in headers:
+        return default_sql if default_sql is not None else "NULL"
+    if default_sql is None:
+        return f"NULLIF(s.`{source_col}`, '')"
+    return f"IFNULL(NULLIF(s.`{source_col}`, ''), {default_sql})"
+
+
+def _mysql_load_csv(
+    file_path: str,
+    log_print_func,
+) -> dict:
+    encoding = _detect_csv_encoding(file_path)
+    header = _read_csv_header(file_path, encoding)
+    if not header or "robot" not in header:
+        raise ValueError("CSV header 缺少 robot 列，无法使用 MySQL LOAD DATA")
+
+    normalized_header = [col.strip() for col in header if col.strip()]
+    normalized_header[0] = normalized_header[0].lstrip("\ufeff")
+    header_set = set(normalized_header)
+
+    tmp_file_path = file_path
+    cleanup_tmp = False
+    if encoding not in ("utf-8", "utf-8-sig"):
+        tmp_file_path, encoding, cleanup_tmp = _ensure_utf8_csv(file_path, encoding)
+        log_print_func(f"CSV 已转换为 UTF-8: {tmp_file_path}")
+
+    tmp_table = "tmp_weeklyresult_import"
+    tmp_dedup = "tmp_weeklyresult_import_dedup"
+
+    columns_sql = ", ".join(f"`{col}`" for col in normalized_header)
+    create_columns_sql = ", ".join(f"`{col}` TEXT NULL" for col in normalized_header)
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(f"DROP TEMPORARY TABLE IF EXISTS `{tmp_table}`")
+            cursor.execute(f"DROP TEMPORARY TABLE IF EXISTS `{tmp_dedup}`")
+            cursor.execute(
+                f"CREATE TEMPORARY TABLE `{tmp_table}` (`__row_id` BIGINT NOT NULL, {create_columns_sql}) "
+                "CHARACTER SET utf8mb4"
+            )
+            cursor.execute("SET @rownum := 0")
+            load_sql = (
+                f"LOAD DATA LOCAL INFILE %s INTO TABLE `{tmp_table}` "
+                "CHARACTER SET utf8mb4 "
+                "FIELDS TERMINATED BY ',' OPTIONALLY ENCLOSED BY '\"' "
+                "LINES TERMINATED BY '\\n' "
+                "IGNORE 1 LINES "
+                f"({columns_sql}) "
+                "SET `__row_id` = (@rownum := @rownum + 1)"
+            )
+            cursor.execute(load_sql, [tmp_file_path])
+            if normalized_header:
+                last_col = normalized_header[-1]
+                cursor.execute(
+                    f"UPDATE `{tmp_table}` SET `{last_col}` = TRIM(TRAILING '\\r' FROM `{last_col}`)"
+                )
+
+            cursor.execute(
+                f"CREATE TEMPORARY TABLE `{tmp_dedup}` AS "
+                f"SELECT t.* FROM `{tmp_table}` t "
+                f"JOIN ("
+                f"  SELECT `robot`, MAX(`__row_id`) AS max_row_id "
+                f"  FROM `{tmp_table}` "
+                f"  WHERE `robot` IS NOT NULL AND `robot` != '' "
+                f"  GROUP BY `robot`"
+                f") pick "
+                f"ON pick.`robot` = t.`robot` AND pick.max_row_id = t.`__row_id`"
+            )
+
+            cursor.execute(
+                f"ALTER TABLE `{tmp_dedup}` "
+                "ADD COLUMN `__robot_norm` VARCHAR(64) NULL, "
+                "ADD COLUMN `__shop_norm` VARCHAR(64) NULL"
+            )
+            cursor.execute(
+                f"UPDATE `{tmp_dedup}` SET "
+                f"`__robot_norm` = NULLIF(`robot`, ''), "
+                f"`__shop_norm` = COALESCE(NULLIF(`shop`, ''), '未分配')"
+                if "shop" in header_set
+                else f"UPDATE `{tmp_dedup}` SET `__robot_norm` = NULLIF(`robot`, ''), `__shop_norm` = '未分配'"
+            )
+
+            cursor.execute(
+                f"SELECT COUNT(*) FROM `{tmp_table}` WHERE `robot` IS NULL OR `robot` = ''"
+            )
+            skipped_no_robot = cursor.fetchone()[0]
+
+            cursor.execute(
+                f"SELECT "
+                f"  s.__shop_norm AS shop, "
+                f"  SUM(CASE WHEN rc.id IS NULL THEN 1 ELSE 0 END) AS created, "
+                f"  SUM(CASE WHEN rc.id IS NOT NULL THEN 1 ELSE 0 END) AS updated "
+                f"FROM `{tmp_dedup}` s "
+                f"LEFT JOIN robot_components rc ON rc.robot = s.__robot_norm "
+                f"GROUP BY s.__shop_norm"
+            )
+            shop_stats = {row[0]: {"created": int(row[1]), "updated": int(row[2])} for row in cursor.fetchall()}
+            records_created = sum(stat["created"] for stat in shop_stats.values())
+            records_updated = sum(stat["updated"] for stat in shop_stats.values())
+
+            cursor.execute(
+                "INSERT IGNORE INTO robot_groups (`key`, `name`, `expected_total`, `created_at`, `updated_at`) "
+                f"SELECT DISTINCT s.__shop_norm, s.__shop_norm, 0, NOW(), NOW() "
+                f"FROM `{tmp_dedup}` s "
+                f"WHERE s.__shop_norm IS NOT NULL AND s.__shop_norm != ''"
+            )
+
+            set_clauses = [
+                "rc.group_id = g.id",
+                "rc.shop = s.__shop_norm",
+            ]
+            for target_col, source_col, default_sql in CSV_FIELD_SPECS:
+                value_sql = _sql_value(header_set, source_col, default_sql)
+                set_clauses.append(f"rc.`{target_col}` = {value_sql}")
+            set_clauses.append("rc.updated_at = NOW()")
+            update_sql = (
+                "UPDATE robot_components rc "
+                f"JOIN `{tmp_dedup}` s ON rc.robot = s.__robot_norm "
+                "JOIN robot_groups g ON g.`key` = s.__shop_norm "
+                "SET " + ", ".join(set_clauses)
+            )
+            cursor.execute(update_sql)
+
+            insert_columns = [
+                "`group_id`",
+                "`robot`",
+                "`shop`",
+            ]
+            insert_values = [
+                "g.id",
+                "s.__robot_norm",
+                "s.__shop_norm",
+            ]
+            for target_col, source_col, default_sql in CSV_FIELD_SPECS:
+                insert_columns.append(f"`{target_col}`")
+                insert_values.append(_sql_value(header_set, source_col, default_sql))
+            insert_columns.extend(["`created_at`", "`updated_at`"])
+            insert_values.extend(["NOW()", "NOW()"])
+            insert_sql = (
+                f"INSERT INTO robot_components ({', '.join(insert_columns)}) "
+                f"SELECT {', '.join(insert_values)} "
+                f"FROM `{tmp_dedup}` s "
+                "JOIN robot_groups g ON g.`key` = s.__shop_norm "
+                "LEFT JOIN robot_components rc ON rc.robot = s.__robot_norm "
+                "WHERE rc.id IS NULL AND s.__robot_norm IS NOT NULL"
+            )
+            cursor.execute(insert_sql)
+    finally:
+        if cleanup_tmp and os.path.exists(tmp_file_path):
+            os.remove(tmp_file_path)
+
+    return {
+        "records_created": records_created,
+        "records_updated": records_updated,
+        "shop_stats": shop_stats,
+        "skipped_no_robot": skipped_no_robot,
+        "total_rows": records_created + records_updated + skipped_no_robot,
+    }
 
 
 def _split_weekly_result_folders(value) -> list:
@@ -238,8 +505,8 @@ def get_latest_weeklyresult_csv(folder_path: str = None, project: str = None) ->
     if not csv_files:
         raise FileNotFoundError(f"未找到匹配的 weeklyresult.csv 文件: {', '.join(patterns)}")
 
-    # 按修改时间降序排序获取最新文件
-    target_files = [(f, os.path.getmtime(f)) for f in csv_files]
+    # 按创建时间降序排序获取最新文件（Windows ctime 为创建时间）
+    target_files = [(f, os.path.getctime(f)) for f in csv_files]
     sorted_files = sorted(target_files, key=lambda x: x[1], reverse=True)
     latest_file = sorted_files[0][0]
 
@@ -281,6 +548,42 @@ def get_all_weeklyresult_csvs(folder_path: str = None, project: str = None) -> l
     sorted_files = sorted(csv_files, key=lambda x: x[1], reverse=True)
 
     # 返回文件路径列表
+    return [f[0] for f in sorted_files]
+
+
+def get_latest_weeklyresult_csvs(folder_path: str = None, project: str = None) -> list:
+    """
+    获取每个路径下最新的 weeklyresult.csv 文件（按创建时间排序）
+
+    参数:
+        folder_path: 文件夹路径，未提供则使用数据库配置或默认路径
+        project: 项目名称（暂未使用，保留参数兼容性）
+
+    返回:
+        每个路径下最新 weeklyresult.csv 文件路径列表（按创建时间降序排序）
+
+    抛出:
+        FileNotFoundError: 如果未找到文件
+    """
+    folder_paths = _resolve_weekly_result_folders(folder_path)
+    if not folder_paths:
+        raise FileNotFoundError("未配置 weeklyresult.csv 搜索路径")
+
+    latest_files = []
+    patterns = []
+    for folder in folder_paths:
+        pattern = os.path.join(folder, '*weeklyresult.csv')
+        patterns.append(pattern)
+        matched = glob.glob(pattern)
+        if not matched:
+            continue
+        latest = max(matched, key=lambda x: os.path.getctime(x))
+        latest_files.append((latest, os.path.getctime(latest)))
+
+    if not latest_files:
+        raise FileNotFoundError(f"未找到匹配的 weeklyresult.csv 文件: {', '.join(patterns)}")
+
+    sorted_files = sorted(latest_files, key=lambda x: x[1], reverse=True)
     return [f[0] for f in sorted_files]
 
 
@@ -382,13 +685,13 @@ def import_robot_components_csv(
     file_path: str = None,
     folder_path: str = None,
     project: str = None,
-    source: str = "manual"
+    source: str = "manual",
+    use_mysql_load_data: Optional[bool] = None
 ) -> dict:
     """
     直接将 weeklyresult.csv 文件导入到 RobotComponent 表
     跳过 WeeklyResult 表，直接更新机器人状态界面数据
 
-    真覆盖模式：CSV 中不存在的机器人数据将被删除
     多文件模式：自动导入所有路径中的 CSV 文件
 
     参数:
@@ -412,9 +715,9 @@ def import_robot_components_csv(
     log_print("开始导入流程...")
     csv_files = []
     if file_path is None:
-        log_print("未指定文件路径，正在查找所有CSV文件...")
-        csv_files = get_all_weeklyresult_csvs(folder_path, project)
-        log_print(f"找到 {len(csv_files)} 个 CSV 文件:")
+        log_print("未指定文件路径，正在查找每个路径下最新CSV文件...")
+        csv_files = get_latest_weeklyresult_csvs(folder_path, project)
+        log_print(f"找到 {len(csv_files)} 个 CSV 文件(每个路径最新):")
         for i, f in enumerate(csv_files, 1):
             log_print(f"  {i}. {os.path.basename(f)}")
     else:
@@ -424,11 +727,8 @@ def import_robot_components_csv(
     # 全局统计信息（累加所有文件）
     total_records_created = 0
     total_records_updated = 0
-    total_records_deleted = 0
     total_skipped = 0
     all_shop_stats = {}  # 累加各车间统计
-    all_csv_robots = set()  # 所有CSV中的机器人（用于删除）
-    all_csv_shops = set()  # 所有CSV中的车间（用于删除范围限定）
 
     # 处理辅助函数（定义在循环外）
     def safe_float(val):
@@ -454,7 +754,25 @@ def import_robot_components_csv(
         except (ValueError, TypeError):
             return 0
 
+    if use_mysql_load_data is None:
+        use_mysql_load_data = getattr(settings, "ENABLE_MYSQL_LOAD_DATA", False)
+
     # 循环处理每个 CSV 文件
+    update_fields = [
+        'group', 'robot', 'shop', 'reference',
+        'number', 'type', 'tech', 'mark', 'remark', 'level',
+        'error1_c1', 'tem1_m', 'tem2_m', 'tem3_m', 'tem4_m', 'tem5_m', 'tem6_m', 'tem7_m',
+        'a1_e_rate', 'a2_e_rate', 'a3_e_rate', 'a4_e_rate', 'a5_e_rate', 'a6_e_rate', 'a7_e_rate',
+        'a1_rms', 'a2_rms', 'a3_rms', 'a4_rms', 'a5_rms', 'a6_rms', 'a7_rms',
+        'a1_e', 'a2_e', 'a3_e', 'a4_e', 'a5_e', 'a6_e', 'a7_e',
+        'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7',
+        'curr_a1_max', 'curr_a2_max', 'curr_a3_max', 'curr_a4_max', 'curr_a5_max', 'curr_a6_max', 'curr_a7_max',
+        'curr_a1_min', 'curr_a2_min', 'curr_a3_min', 'curr_a4_min', 'curr_a5_min', 'curr_a6_min', 'curr_a7_min',
+        'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7',
+        'p_change',
+    ]
+    batch_size = 1000
+
     for file_idx, current_file in enumerate(csv_files, 1):
         log_print(f"\n{'='*60}")
         log_print(f"正在处理第 {file_idx}/{len(csv_files)} 个文件: {os.path.basename(current_file)}")
@@ -466,162 +784,113 @@ def import_robot_components_csv(
         if week_start:
             log_print(f"解析日期范围: {week_start} ~ {week_end}")
 
-        # 读取 CSV 文件（兼容常见中文编码）
-        log_print("正在读取CSV文件...")
-        df = None
-        read_errors = []
-        for encoding in ("utf-8", "utf-8-sig", "gb18030"):
+        load_result = None
+        if use_mysql_load_data:
+            log_print("使用 MySQL LOAD DATA 进行快速导入...")
             try:
-                df = pd.read_csv(current_file, encoding=encoding)
-                log_print(f"已使用编码 {encoding} 读取CSV")
-                break
-            except UnicodeDecodeError as e:
-                read_errors.append(f"{encoding}: {e}")
-        if df is None:
-            raise UnicodeDecodeError(
-                "csv",
-                b"",
-                0,
-                0,
-                "无法识别CSV编码，已尝试 utf-8/utf-8-sig/gb18030; " + "; ".join(read_errors)
+                load_result = _mysql_load_csv(current_file, log_print)
+            except Exception as exc:
+                log_print(f"MySQL LOAD DATA 导入失败，回退到 ORM 批量导入: {exc}")
+                load_result = None
+
+        if load_result is not None:
+            records_created = load_result["records_created"]
+            records_updated = load_result["records_updated"]
+            shop_stats = load_result["shop_stats"]
+            skipped_no_robot = load_result["skipped_no_robot"]
+            total_rows = load_result["total_rows"]
+            parsed_rows = []
+        else:
+            # 读取 CSV 文件（兼容常见中文编码）
+            log_print("正在读取CSV文件...")
+            df = None
+            read_errors = []
+            for encoding in ("utf-8", "utf-8-sig", "gb18030"):
+                try:
+                    df = pd.read_csv(current_file, encoding=encoding)
+                    log_print(f"已使用编码 {encoding} 读取CSV")
+                    break
+                except UnicodeDecodeError as e:
+                    read_errors.append(f"{encoding}: {e}")
+            if df is None:
+                raise UnicodeDecodeError(
+                    "csv",
+                    b"",
+                    0,
+                    0,
+                    "无法识别CSV编码，已尝试 utf-8/utf-8-sig/gb18030; " + "; ".join(read_errors)
+                )
+            total_rows = len(df)
+            log_print(f"读取完成，共 {total_rows} 行数据")
+
+            # 当前文件统计信息
+            records_created = 0
+            records_updated = 0
+            records_protected = 0
+            shop_stats = {}
+            skipped_no_robot = 0
+
+            log_print("开始处理数据行...")
+
+            raw_records = df.to_dict(orient="records")
+            parsed_rows = []
+            shop_names = set()
+            robot_values = set()
+
+            for idx, row in enumerate(raw_records, 1):
+                shop_name = safe_str(row.get('shop', ''))
+                if not shop_name:
+                    shop_name = '未分配'
+
+                robot_val = safe_str(row.get('robot', ''))
+                if not robot_val:
+                    skipped_no_robot += 1
+                    continue
+
+                parsed_rows.append((robot_val, shop_name, row))
+                shop_names.add(shop_name)
+                robot_values.add(robot_val)
+
+                if shop_name not in shop_stats:
+                    shop_stats[shop_name] = {'created': 0, 'updated': 0}
+
+                if idx % 5000 == 0:
+                    log_print(f"已预处理 {idx}/{total_rows} 行...")
+
+        if load_result is None:
+            if not parsed_rows:
+                log_print("当前文件没有有效的 robot 数据，跳过导入")
+                total_skipped += skipped_no_robot
+                continue
+
+            existing_groups = {g.key: g for g in RobotGroup.objects.filter(key__in=shop_names)}
+            missing_keys = [key for key in shop_names if key not in existing_groups]
+            if missing_keys:
+                RobotGroup.objects.bulk_create(
+                    [RobotGroup(key=key, name=key, expected_total=0) for key in missing_keys],
+                    ignore_conflicts=True,
+                    batch_size=batch_size,
+                )
+                existing_groups = {g.key: g for g in RobotGroup.objects.filter(key__in=shop_names)}
+
+            existing_components = dict(
+                RobotComponent.objects.filter(robot__in=robot_values).values_list('robot', 'id')
             )
-        total_rows = len(df)
-        log_print(f"读取完成，共 {total_rows} 行数据")
 
-        # 当前文件统计信息
-        records_created = 0
-        records_updated = 0
-        records_protected = 0
-        shop_stats = {}
-        skipped_no_robot = 0
-        csv_robots = set()  # 当前文件的 robot 集合
-        csv_shops = set()  # 当前文件的 shop 集合
+            pending_create = {}
+            pending_update = {}
+            seen_robots = set()
 
-        log_print("开始处理数据行...")
+            for idx, (robot_val, shop_name, row) in enumerate(parsed_rows, 1):
+                group = existing_groups.get(shop_name)
+                if group is None:
+                    skipped_no_robot += 1
+                    continue
 
-        for idx, row in df.iterrows():
-            # 获取车间名称，如果为空则使用默认值
-            shop_name = safe_str(row.get('shop', ''))
-            if not shop_name:
-                shop_name = '未分配'  # 空车间使用"未分配"
-
-            # 记录当前文件中出现的所有车间
-            csv_shops.add(shop_name)
-
-            # 统计各车间数量
-            if shop_name not in shop_stats:
-                shop_stats[shop_name] = {'created': 0, 'updated': 0}
-
-            # 获取或创建 RobotGroup
-            group, _ = RobotGroup.objects.get_or_create(
-                key=shop_name,
-                defaults={'name': shop_name, 'expected_total': 0}
-            )
-
-            # 获取机器人编号
-            robot_val = safe_str(row.get('robot', ''))
-            if not robot_val:
-                skipped_no_robot += 1
-                continue  # 跳过没有 robot 的行
-
-            # 记录当前文件中所有的 robot 值，用于后续删除旧数据
-            csv_robots.add(robot_val)
-
-            # 检查 RobotComponent 是否存在（通过 robot 查找）
-            existing = RobotComponent.objects.filter(robot=robot_val).first()
-
-            if existing:
-                # 更新现有记录（不再使用快照保护机制，快照表只用于历史记录）
-                existing.group = group
-                existing.robot = robot_val
-                existing.shop = shop_name  # 修复：更新 shop 字段
-                existing.reference = safe_str(row.get('reference', ''))
-                existing.number = safe_int(row.get('number', 0))
-                existing.type = safe_str(row.get('type', ''))
-                existing.tech = safe_str(row.get('tech', ''))
-                existing.mark = safe_int(row.get('mark', 0))
-                existing.remark = safe_str(row.get('remark', ''))
-                existing.level = safe_str(row.get('level', 'L'))
-                # 详细数据字段
-                existing.error1_c1 = safe_float(row.get('error1_c1'))
-                existing.tem1_m = safe_float(row.get('tem1_m'))
-                existing.tem2_m = safe_float(row.get('tem2_m'))
-                existing.tem3_m = safe_float(row.get('tem3_m'))
-                existing.tem4_m = safe_float(row.get('tem4_m'))
-                existing.tem5_m = safe_float(row.get('tem5_m'))
-                existing.tem6_m = safe_float(row.get('tem6_m'))
-                existing.tem7_m = safe_float(row.get('tem7_m'))
-                existing.a1_e_rate = safe_float(row.get('A1_e_rate'))
-                existing.a2_e_rate = safe_float(row.get('A2_e_rate'))
-                existing.a3_e_rate = safe_float(row.get('A3_e_rate'))
-                existing.a4_e_rate = safe_float(row.get('A4_e_rate'))
-                existing.a5_e_rate = safe_float(row.get('A5_e_rate'))
-                existing.a6_e_rate = safe_float(row.get('A6_e_rate'))
-                existing.a7_e_rate = safe_float(row.get('A7_e_rate'))
-                existing.a1_rms = safe_float(row.get('A1_Rms'))
-                existing.a2_rms = safe_float(row.get('A2_Rms'))
-                existing.a3_rms = safe_float(row.get('A3_Rms'))
-                existing.a4_rms = safe_float(row.get('A4_Rms'))
-                existing.a5_rms = safe_float(row.get('A5_Rms'))
-                existing.a6_rms = safe_float(row.get('A6_Rms'))
-                existing.a7_rms = safe_float(row.get('A7_Rms'))
-                existing.a1_e = safe_float(row.get('A1_E'))
-                existing.a2_e = safe_float(row.get('A2_E'))
-                existing.a3_e = safe_float(row.get('A3_E'))
-                existing.a4_e = safe_float(row.get('A4_E'))
-                existing.a5_e = safe_float(row.get('A5_E'))
-                existing.a6_e = safe_float(row.get('A6_E'))
-                existing.a7_e = safe_float(row.get('A7_E'))
-                existing.q1 = safe_float(row.get('Q1'))
-                existing.q2 = safe_float(row.get('Q2'))
-                existing.q3 = safe_float(row.get('Q3'))
-                existing.q4 = safe_float(row.get('Q4'))
-                existing.q5 = safe_float(row.get('Q5'))
-                existing.q6 = safe_float(row.get('Q6'))
-                existing.q7 = safe_float(row.get('Q7'))
-                existing.curr_a1_max = safe_float(row.get('Curr_A1_max'))
-                existing.curr_a2_max = safe_float(row.get('Curr_A2_max'))
-                existing.curr_a3_max = safe_float(row.get('Curr_A3_max'))
-                existing.curr_a4_max = safe_float(row.get('Curr_A4_max'))
-                existing.curr_a5_max = safe_float(row.get('Curr_A5_max'))
-                existing.curr_a6_max = safe_float(row.get('Curr_A6_max'))
-                existing.curr_a7_max = safe_float(row.get('Curr_A7_max'))
-                existing.curr_a1_min = safe_float(row.get('Curr_A1_min'))
-                existing.curr_a2_min = safe_float(row.get('Curr_A2_min'))
-                existing.curr_a3_min = safe_float(row.get('Curr_A3_min'))
-                existing.curr_a4_min = safe_float(row.get('Curr_A4_min'))
-                existing.curr_a5_min = safe_float(row.get('Curr_A5_min'))
-                existing.curr_a6_min = safe_float(row.get('Curr_A6_min'))
-                existing.curr_a7_min = safe_float(row.get('Curr_A7_min'))
-                existing.a1 = safe_str(row.get('A1'))
-                existing.a2 = safe_str(row.get('A2'))
-                existing.a3 = safe_str(row.get('A3'))
-                existing.a4 = safe_str(row.get('A4'))
-                existing.a5 = safe_str(row.get('A5'))
-                existing.a6 = safe_str(row.get('A6'))
-                existing.a7 = safe_str(row.get('A7'))
-                existing.p_change = safe_float(row.get('P_Change'))
-                existing.save(update_fields=[
-                    'group', 'robot', 'shop', 'reference',  # 修复：添加 'shop' 字段
-                    'number', 'type', 'tech', 'mark', 'remark', 'level',
-                    'error1_c1', 'tem1_m', 'tem2_m', 'tem3_m', 'tem4_m', 'tem5_m', 'tem6_m', 'tem7_m',
-                    'a1_e_rate', 'a2_e_rate', 'a3_e_rate', 'a4_e_rate', 'a5_e_rate', 'a6_e_rate', 'a7_e_rate',
-                    'a1_rms', 'a2_rms', 'a3_rms', 'a4_rms', 'a5_rms', 'a6_rms', 'a7_rms',
-                    'a1_e', 'a2_e', 'a3_e', 'a4_e', 'a5_e', 'a6_e', 'a7_e',
-                    'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7',
-                    'curr_a1_max', 'curr_a2_max', 'curr_a3_max', 'curr_a4_max', 'curr_a5_max', 'curr_a6_max', 'curr_a7_max',
-                    'curr_a1_min', 'curr_a2_min', 'curr_a3_min', 'curr_a4_min', 'curr_a5_min', 'curr_a6_min', 'curr_a7_min',
-                    'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7',
-                    'p_change',
-                ])
-                records_updated += 1
-                shop_stats[shop_name]['updated'] += 1
-            else:
-                # 创建新记录
-                new_component = RobotComponent.objects.create(
-                    group=group,
+                values = dict(
+                    group_id=group.id,
                     robot=robot_val,
-                    shop=shop_name,  # 修复：创建时设置 shop 字段
+                    shop=shop_name,
                     reference=safe_str(row.get('reference', '')),
                     number=safe_int(row.get('number', 0)),
                     type=safe_str(row.get('type', '')),
@@ -629,7 +898,6 @@ def import_robot_components_csv(
                     mark=safe_int(row.get('mark', 0)),
                     remark=safe_str(row.get('remark', '')),
                     level=safe_str(row.get('level', 'L')),
-                    # 详细数据字段
                     error1_c1=safe_float(row.get('error1_c1')),
                     tem1_m=safe_float(row.get('tem1_m')),
                     tem2_m=safe_float(row.get('tem2_m')),
@@ -689,12 +957,44 @@ def import_robot_components_csv(
                     a7=safe_str(row.get('A7')),
                     p_change=safe_float(row.get('P_Change')),
                 )
-                records_created += 1
-                shop_stats[shop_name]['created'] += 1
 
-            # 每处理50行记录一次日志
-            if (idx + 1) % 50 == 0:
-                log_print(f"已处理 {idx + 1}/{total_rows} 行...")
+                existing_id = existing_components.get(robot_val)
+                if existing_id:
+                    obj = pending_update.get(robot_val)
+                    if obj is None:
+                        obj = RobotComponent(id=existing_id, **values)
+                        pending_update[robot_val] = obj
+                        if robot_val not in seen_robots:
+                            records_updated += 1
+                            shop_stats[shop_name]['updated'] += 1
+                            seen_robots.add(robot_val)
+                    else:
+                        for key, val in values.items():
+                            setattr(obj, key, val)
+                else:
+                    obj = pending_create.get(robot_val)
+                    if obj is None:
+                        obj = RobotComponent(**values)
+                        pending_create[robot_val] = obj
+                        if robot_val not in seen_robots:
+                            records_created += 1
+                            shop_stats[shop_name]['created'] += 1
+                            seen_robots.add(robot_val)
+                    else:
+                        for key, val in values.items():
+                            setattr(obj, key, val)
+
+                if idx % 5000 == 0:
+                    log_print(f"已准备 {idx}/{len(parsed_rows)} 行...")
+
+            to_create = list(pending_create.values())
+            to_update = list(pending_update.values())
+
+            with transaction.atomic():
+                if to_create:
+                    RobotComponent.objects.bulk_create(to_create, batch_size=batch_size)
+                if to_update:
+                    RobotComponent.objects.bulk_update(to_update, update_fields, batch_size=batch_size)
 
         # 当前文件处理完成，累加统计到全局统计
         log_print(f"\n文件 {os.path.basename(current_file)} 处理完成!")
@@ -713,10 +1013,6 @@ def import_robot_components_csv(
                 all_shop_stats[shop] = {'created': 0, 'updated': 0}
             all_shop_stats[shop]['created'] += stats['created']
             all_shop_stats[shop]['updated'] += stats['updated']
-
-        # 累加 robots 和 shops（用于删除逻辑）
-        all_csv_robots.update(csv_robots)
-        all_csv_shops.update(csv_shops)
 
     # 所有文件处理完成
     log_print(f"\n{'='*60}")
@@ -743,23 +1039,6 @@ def import_robot_components_csv(
     )
     log_print(f"已记录同步时间: {sync_time}")
 
-    # 修正的真覆盖模式：只删除 CSV 中存在的车间里不存在的机器人数据
-    # 避免删除其他车间的数据（解决"只更新部分车间"的问题）
-    deleted_count = 0
-    if all_csv_robots and all_csv_shops:
-        # 只删除所有 CSV 中出现的车间范围内，不在 CSV 中的机器人数据
-        deleted_count = RobotComponent.objects.filter(
-            shop__in=all_csv_shops  # 限定在所有 CSV 中存在的车间范围内
-        ).exclude(
-            robot__in=all_csv_robots  # 排除所有 CSV 中存在的机器人
-        ).delete()[0]
-
-        if deleted_count > 0:
-            shops_str = ', '.join(sorted(all_csv_shops))
-            log_print(f"已删除车间 [{shops_str}] 中 {deleted_count} 条 CSV 中不存在的旧数据（真覆盖模式）")
-    else:
-        log_print("警告：CSV 中没有有效的 robot 数据或车间数据，不执行删除操作")
-
     # 记录当前的高风险机器人列表，供下次同步时归档使用
     save_current_high_risk_robots()
 
@@ -775,7 +1054,7 @@ def import_robot_components_csv(
         file_date=first_week_start,
         records_created=total_records_created,
         records_updated=total_records_updated,
-        records_deleted=deleted_count,
+        records_deleted=0,
         total_records=total_records_created + total_records_updated,
     )
     log_print(f"已记录刷新日志: {source} 同步完成")

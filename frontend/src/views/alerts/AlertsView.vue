@@ -502,7 +502,7 @@ onMounted(async () => {
 /* === 基础布局与背景 === */
 .bi-viewport {
   background: radial-gradient(circle at 50% 35%, #0d1a2d 0%, #030508 100%);
-  min-height: 100vh;
+  min-height: 100svh;
   position: relative;
   overflow-x: hidden;
   color: #fff;
@@ -550,7 +550,7 @@ onMounted(async () => {
 .layout-wrapper {
   position: relative;
   z-index: 1;
-  padding: 40px;
+  padding: clamp(18px, 3vw, 40px);
   max-width: 1600px;
   margin: 0 auto;
 }
@@ -560,6 +560,8 @@ onMounted(async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 16px;
   margin-bottom: 20px;
   padding-bottom: 20px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
@@ -571,7 +573,7 @@ onMounted(async () => {
 }
 
 .ios-title {
-  font-size: 32px;
+  font-size: clamp(22px, 2.4vw, 32px);
   letter-spacing: -0.5px;
   background: linear-gradient(180deg, #fff 40%, rgba(255,255,255,0.6));
   -webkit-background-clip: text;
@@ -580,7 +582,7 @@ onMounted(async () => {
 }
 
 .ios-title .subtitle {
-  font-size: 14px;
+  font-size: clamp(12px, 1.2vw, 14px);
   color: #ffaa00;
   margin-left: 0;
   font-weight: 300;
@@ -723,7 +725,7 @@ onMounted(async () => {
 
 .styled-select {
   flex: 0 0 auto;
-  width: 220px;
+  width: clamp(180px, 20vw, 260px);
   max-width: none;
   min-width: 0;
 }
@@ -755,7 +757,7 @@ onMounted(async () => {
 
 /* === 内容区域 === */
 .bi-content {
-  min-height: 720px;
+  min-height: clamp(520px, 70vh, 720px);
 }
 
 /* === 空状态 === */
@@ -765,7 +767,7 @@ onMounted(async () => {
   align-items: center;
   justify-content: center;
   gap: 16px;
-  min-height: 720px;
+  min-height: clamp(520px, 70vh, 720px);
   padding: 40px;
   border-radius: 0;
 }
@@ -797,7 +799,7 @@ onMounted(async () => {
 .bi-frame-wrapper {
   position: relative;
   width: 100%;
-  height: 900px;
+  height: clamp(520px, 72vh, 900px);
   border-radius: 0;
   overflow: hidden;
   background: #000;
@@ -997,7 +999,7 @@ onMounted(async () => {
 
 .styled-date-picker {
   flex: 0 0 auto;
-  width: 180px;
+  width: clamp(180px, 18vw, 240px);
   max-width: none;
   min-width: 0;
 }
@@ -1017,6 +1019,9 @@ onMounted(async () => {
 }
 
 @media (max-width: 760px) {
+  .page-header {
+    align-items: flex-start;
+  }
   .control-row {
     gap: 12px;
   }
@@ -1027,6 +1032,9 @@ onMounted(async () => {
   .load-analysis-btn {
     width: 100%;
     justify-content: center;
+  }
+  .bi-frame-wrapper {
+    height: clamp(420px, 70vh, 720px);
   }
 }
 
@@ -1056,6 +1064,18 @@ onMounted(async () => {
 :deep(.el-date-editor.el-range-editor .el-range-input) {
   width: 90px !important;
   min-width: 90px !important;
+}
+
+@media (max-width: 760px) {
+  :deep(.el-date-editor.el-range-editor) {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+  :deep(.el-date-editor.el-range-editor .el-range-input) {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
 }
 </style>
 
