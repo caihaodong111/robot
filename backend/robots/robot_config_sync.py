@@ -344,16 +344,22 @@ def read_robot_config_csv(csv_path=None):
         return []
 
     data = []
-    try:
-        with target_path.open("r", encoding="utf-8-sig", newline="") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                data.append(row)
-        logger.info(f"读取CSV配置文件成功: {len(data)} 条记录 -> {target_path}")
-        return data
-    except Exception as e:
-        logger.error(f"读取CSV配置文件失败: {e}")
-        return []
+    # 尝试多种编码读取 CSV 文件
+    for encoding in ("utf-8-sig", "utf-8", "gb18030", "gbk", "gb2312"):
+        try:
+            with target_path.open("r", encoding=encoding, newline="") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    data.append(row)
+            logger.info(f"读取CSV配置文件成功: {len(data)} 条记录 -> {target_path} (编码: {encoding})")
+            return data
+        except UnicodeDecodeError:
+            continue
+        except Exception as e:
+            logger.error(f"读取CSV配置文件失败 (编码: {encoding}): {e}")
+            continue
+    logger.error(f"无法识别CSV文件编码: {target_path}")
+    return []
 
 
 def write_robot_config_csv(data, csv_path=None):
@@ -402,34 +408,51 @@ def _update_robot_in_single_csv(robot, updates, csv_path):
         logger.warning(f"CSV配置文件不存在: {csv_path}")
         return False
 
+    # 尝试多种编码读取 CSV 文件
+    data = None
+    detected_encoding = None
+    for encoding in ("utf-8-sig", "utf-8", "gb18030", "gbk", "gb2312"):
+        try:
+            temp_data = []
+            found = False
+            with csv_path.open("r", encoding=encoding, newline="") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    if row['robot'] == robot:
+                        # 更新匹配的行
+                        for key, value in updates.items():
+                            if value is not None:
+                                row[key] = str(value)
+                        found = True
+                    temp_data.append(row)
+
+            if not found:
+                logger.warning(f"在CSV中未找到机器人: {robot} ({csv_path})")
+                return False
+
+            data = temp_data
+            detected_encoding = encoding
+            break
+        except UnicodeDecodeError:
+            continue
+        except Exception as e:
+            logger.warning(f"读取CSV失败 (编码: {encoding}): {e}")
+            continue
+
+    if data is None:
+        logger.error(f"无法识别CSV文件编码: {csv_path}")
+        return False
+
     try:
-        # 读取现有数据
-        data = []
-        found = False
-
-        with csv_path.open("r", encoding="utf-8-sig", newline="") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                if row['robot'] == robot:
-                    # 更新匹配的行
-                    for key, value in updates.items():
-                        if value is not None:
-                            row[key] = str(value)
-                    found = True
-                data.append(row)
-
-        if not found:
-            logger.warning(f"在CSV中未找到机器人: {robot} ({csv_path})")
-            return False
-
-        # 写回文件
+        # 写回文件（使用检测到的编码或默认 utf-8-sig）
+        write_encoding = detected_encoding if detected_encoding and detected_encoding != "utf-8-sig" else "utf-8-sig"
         fieldnames = ['robot', 'shop', 'reference', 'number', 'type', 'tech', 'mark', 'remark']
-        with csv_path.open("w", encoding="utf-8-sig", newline="") as f:
+        with csv_path.open("w", encoding=write_encoding, newline="") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(data)
 
-        logger.info(f"CSV文件更新成功: robot={robot}, updates={updates}, file={csv_path}")
+        logger.info(f"CSV文件更新成功: robot={robot}, updates={updates}, file={csv_path}, 编码: {write_encoding}")
         return True
 
     except Exception as e:
