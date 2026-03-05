@@ -183,10 +183,12 @@ class RobotComponentViewSet(
         number = serializer.validated_data.get("number")
 
         if reference:
-            mapped_number = RobotReferenceDict.objects.filter(
-                robot=instance.robot,
-                reference=reference,
-            ).values_list("number", flat=True).first()
+            from .robot_config_sync import resolve_reference_number_from_csv
+
+            mapped_number = resolve_reference_number_from_csv(
+                instance.robot,
+                reference,
+            )
             if mapped_number is not None:
                 serializer.save(number=mapped_number)
                 return
@@ -267,7 +269,7 @@ class RobotComponentViewSet(
                 "end_date": "2024-12-31"
             }
         """
-        from .bokeh_charts import get_table_time_range, get_db_engine
+        from .bokeh_charts import get_table_recent_range, get_db_engine
         from sqlalchemy import create_engine
 
         table_name = request.query_params.get("robot")
@@ -283,8 +285,8 @@ class RobotComponentViewSet(
             engine_url = f"mysql+pymysql://{db_config['user']}:{db_config['password']}@{db_config['host']}:{db_config['port']}/{db_config['database']}"
             engine = create_engine(engine_url)
 
-            # 获取时间范围
-            start_time, end_time = get_table_time_range(table_name, engine)
+            # 获取最近时间范围
+            start_time, end_time = get_table_recent_range(table_name, engine)
 
             # 格式化为 YYYY-MM-DD
             start_date = start_time.strftime("%Y-%m-%d")
@@ -794,6 +796,16 @@ class RobotReferenceDictViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
             qs = qs.filter(robot=robot)
         return qs.order_by("reference")
 
+    def list(self, request, *args, **kwargs):
+        robot = (request.query_params.get("robot") or "").strip()
+        if not robot:
+            return super().list(request, *args, **kwargs)
+
+        from .robot_config_sync import get_reference_entries_for_robot
+
+        entries = get_reference_entries_for_robot(robot)
+        return Response(entries)
+
     @action(detail=False, methods=["post"])
     def refresh(self, request):
         from .tasks import refresh_reference_dict_task
@@ -832,10 +844,14 @@ class RobotReferenceDictViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        number = RobotReferenceDict.objects.filter(
-            robot=robot,
-            reference=reference,
-        ).values_list("number", flat=True).first()
+        from .robot_config_sync import resolve_reference_number_from_csv
+
+        number = resolve_reference_number_from_csv(robot, reference)
+        if number is None:
+            number = RobotReferenceDict.objects.filter(
+                robot=robot,
+                reference=reference,
+            ).values_list("number", flat=True).first()
 
         if number is None:
             return Response(

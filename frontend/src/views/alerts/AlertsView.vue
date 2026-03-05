@@ -138,7 +138,7 @@
             <iframe
               ref="biFrame"
               class="bi-frame"
-              :src="biUrl"
+              :src="frameUrl"
               title="程序周期同步视窗"
               @load="handleFrameLoad"
             ></iframe>
@@ -164,6 +164,7 @@ const activeName = ref('')
 const currentRobotLabel = ref('')
 const reloadToken = ref(0)
 const shouldLoad = ref(false)  // 控制是否加载 iframe
+const frameUrl = ref('')
 
 const groups = ref([])
 const robots = ref([])
@@ -228,6 +229,12 @@ const biUrl = computed(() => {
   }
   return url.pathname + url.search
 })
+
+const loadFrame = (url) => {
+  if (!url || url === frameUrl.value) return
+  frameUrl.value = url
+  startLoading()
+}
 
 // 加载车间列表
 const loadGroups = async () => {
@@ -315,7 +322,6 @@ const handleRobotChange = (value) => {
     activeName.value = value
     currentRobotLabel.value = robot.label
     shouldLoad.value = false  // 重置加载状态，等待手动点击"加载分析"
-    fetchTimeRange(value)
   }
 }
 
@@ -335,27 +341,13 @@ const handleFrameLoad = () => {
 const handleLoad = () => {
   if (!activeName.value) return
   shouldLoad.value = true  // 设置为 true，触发 iframe 加载
-  startLoading()
   reloadToken.value = Date.now()
+  loadFrame(biUrl.value)
 }
 
 // 时间范围变化处理
 const handleTimeRangeChange = () => {
   // 不再自动加载，时间范围变化后需要手动点击"加载分析"按钮
-}
-
-const fetchTimeRange = async (robotValue) => {
-  try {
-    const response = await request.get('/robots/components/time_range/', {
-      params: { robot: robotValue }
-    })
-    const { start_date, end_date } = response || {}
-    if (start_date && end_date) {
-      timeRange.value = [new Date(start_date), new Date(end_date)]
-    }
-  } catch (error) {
-    console.error('获取数据库时间范围失败:', error)
-  }
 }
 
 // 初始化：检查URL参数
@@ -383,10 +375,9 @@ const initFromQuery = async () => {
       if (queryStartDate && queryEndDate) {
         timeRange.value = [new Date(queryStartDate), new Date(queryEndDate)]
         shouldLoad.value = true  // 自动加载
-        startLoading()
+        loadFrame(biUrl.value)
       } else {
         shouldLoad.value = false  // 没有时间范围，需要手动点击"加载分析"
-        await fetchTimeRange(robot.value)
       }
     }
 
@@ -405,7 +396,7 @@ onMounted(async () => {
     if (event.data && event.data.type === 'updateBIUrl') {
       // 更新iframe的src来重新加载图表
       if (biFrame.value) {
-        biFrame.value.src = event.data.url
+        loadFrame(event.data.url)
       }
     }
   })
@@ -550,8 +541,9 @@ onMounted(async () => {
 .layout-wrapper {
   position: relative;
   z-index: 1;
-  padding: clamp(18px, 3vw, 40px);
-  max-width: 1600px;
+  padding: clamp(16px, 2.2vw, 32px);
+  width: 100%;
+  max-width: none;
   margin: 0 auto;
 }
 
@@ -757,7 +749,7 @@ onMounted(async () => {
 
 /* === 内容区域 === */
 .bi-content {
-  min-height: clamp(520px, 70vh, 720px);
+  min-height: max(520px, calc(100svh - 280px));
 }
 
 /* === 空状态 === */
@@ -767,7 +759,7 @@ onMounted(async () => {
   align-items: center;
   justify-content: center;
   gap: 16px;
-  min-height: clamp(520px, 70vh, 720px);
+  min-height: max(520px, calc(100svh - 280px));
   padding: 40px;
   border-radius: 0;
 }
@@ -799,7 +791,7 @@ onMounted(async () => {
 .bi-frame-wrapper {
   position: relative;
   width: 100%;
-  height: clamp(520px, 72vh, 900px);
+  height: max(520px, calc(100svh - 280px));
   border-radius: 0;
   overflow: hidden;
   background: #000;

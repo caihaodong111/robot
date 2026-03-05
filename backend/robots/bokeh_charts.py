@@ -12,12 +12,21 @@ from bokeh.embed import components
 import pandas as pd
 import json
 from datetime import datetime, timedelta
+import time
 from sqlalchemy import create_engine
 import logging
 import uuid
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_RANGE_DAYS = 30
+CACHE_TTL_SECONDS = 600
+CACHE_VERSION = 1
+
+try:
+    from django.core.cache import cache
+except Exception:  # pragma: no cover - optional when running outside Django
+    cache = None
 
 # 轴配置 - A1到A7
 AXIS_CONFIG = {
@@ -60,17 +69,21 @@ def get_db_engine():
     }
 
 
-def get_table_time_range(table_name, engine):
-    """获取数据库表中的实际时间范围"""
-    query = f"SELECT MIN(`Timestamp`) as min_time, MAX(`Timestamp`) as max_time FROM `{table_name}`;"
+def get_table_recent_range(table_name, engine, days=DEFAULT_RANGE_DAYS):
+    """获取数据库表最近时间范围（仅取MAX，避免全量MIN/MAX扫描）"""
+    query = f"SELECT MAX(`Timestamp`) as max_time FROM `{table_name}`;"
     try:
         df = pd.read_sql(query, engine)
-        if df.empty or df['min_time'].isna()[0] or df['max_time'].isna()[0]:
-            return datetime.now() - timedelta(days=30), datetime.now()
-        return df['min_time'][0], df['max_time'][0]
+        if df.empty or df['max_time'].isna()[0]:
+            end_time = datetime.now()
+        else:
+            end_time = df['max_time'][0]
+        start_time = end_time - timedelta(days=days)
+        return start_time, end_time
     except Exception as e:
         logger.error(f"获取时间范围失败: {e}")
-        return datetime.now() - timedelta(days=30), datetime.now()
+        end_time = datetime.now()
+        return end_time - timedelta(days=days), end_time
 
 
 def fetch_data_from_mysql(table_name, start_time, end_time, time_column, engine):
@@ -126,8 +139,10 @@ def create_bi_charts(
         logger.error(f"数据库连接失败: {e}")
         return None, None, None, None, None
 
-    # 获取数据库实际时间范围
-    db_start_time, db_end_time = get_table_time_range(table_name, engine)
+    # 获取数据库最近时间范围
+    db_start_time, db_end_time = get_table_recent_range(table_name, engine)
+    logger.info(f"数据库时间范围: {db_start_time} 到 {db_end_time}")
+
     start_time = db_start_time
     end_time = db_end_time
 
@@ -136,32 +151,62 @@ def create_bi_charts(
     if requested_start and requested_end:
         if requested_start > requested_end:
             requested_start, requested_end = requested_end, requested_start
-        start_time = max(db_start_time, requested_start)
-        end_time = min(db_end_time, requested_end)
-
-    logger.info(f"数据库时间范围: {start_time} 到 {end_time}")
+        start_time = requested_start
+        end_time = requested_end
+        logger.info(f"请求时间范围: {start_time} 到 {end_time}")
 
     # 获取主数据
-    df_full = fetch_data_from_mysql(
-        table_name,
-        _format_datetime(start_time),
-        _format_datetime(end_time),
-        time_column,
-        engine,
+    cache_key = (
+        f"bi:data:{CACHE_VERSION}:{table_name}:"
+        f"{start_time.strftime('%Y%m%d%H%M%S')}:{end_time.strftime('%Y%m%d%H%M%S')}"
     )
+    df_cached = cache.get(cache_key) if cache else None
+    if df_cached is not None:
+        df_full = df_cached.copy()
+        logger.info("主数据: cache hit")
+    else:
+        fetch_start = time.perf_counter()
+        df_full = fetch_data_from_mysql(
+            table_name,
+            _format_datetime(start_time),
+            _format_datetime(end_time),
+            time_column,
+            engine,
+        )
+        logger.info("主数据: db fetch %.3fs", time.perf_counter() - fetch_start)
+        if cache:
+            cache.set(cache_key, df_full.copy(), timeout=CACHE_TTL_SECONDS)
     if df_full.empty:
         logger.warning(f"表 {table_name} 没有数据")
         return None, None, None, None, None
     logger.info(f"加载数据条数: {len(df_full)}, 列数={len(df_full.columns)}")
 
     # 获取能量数据
-    energy_query = f"SELECT TimeStamp2,ENERGY,LOSTENERGY FROM energy WHERE RobotName= '{table_name}'"
-    try:
-        energy_full = pd.read_sql(energy_query, engine)
-        logger.info(f"能量数据条数: {len(energy_full)}")
-    except Exception as e:
-        logger.warning(f"能量数据获取失败: {e}")
-        energy_full = pd.DataFrame()
+    energy_cache_key = (
+        f"bi:energy:{CACHE_VERSION}:{table_name}:"
+        f"{start_time.strftime('%Y%m%d%H%M%S')}:{end_time.strftime('%Y%m%d%H%M%S')}"
+    )
+    energy_cached = cache.get(energy_cache_key) if cache else None
+    if energy_cached is not None:
+        energy_full = energy_cached.copy()
+        logger.info("能量数据: cache hit")
+    else:
+        energy_query = (
+            "SELECT TimeStamp2,ENERGY,LOSTENERGY FROM energy "
+            f"WHERE RobotName= '{table_name}' "
+            f"AND TimeStamp2 BETWEEN '{_format_datetime(start_time)}' "
+            f"AND '{_format_datetime(end_time)}'"
+        )
+        try:
+            energy_fetch_start = time.perf_counter()
+            energy_full = pd.read_sql(energy_query, engine)
+            logger.info("能量数据: db fetch %.3fs", time.perf_counter() - energy_fetch_start)
+            logger.info(f"能量数据条数: {len(energy_full)}")
+        except Exception as e:
+            logger.warning(f"能量数据获取失败: {e}")
+            energy_full = pd.DataFrame()
+        if cache:
+            cache.set(energy_cache_key, energy_full.copy(), timeout=CACHE_TTL_SECONDS)
 
     # ============ 数据预处理 ============
     columns_to_drop = ['A1_marker', 'A2_marker', 'A3_marker', 'A4_marker',
