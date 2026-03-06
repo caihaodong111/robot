@@ -1059,6 +1059,14 @@ def import_robot_components_csv(
     )
     log_print(f"已记录刷新日志: {source} 同步完成")
 
+    try:
+        from .tasks import _refresh_reference_dict
+        log_print("开始同步 reference 字典...")
+        _refresh_reference_dict()
+        log_print("reference 字典同步完成")
+    except Exception as exc:
+        log_print(f"reference 字典同步失败: {exc}")
+
     return {
         'success': True,
         'file': first_file,

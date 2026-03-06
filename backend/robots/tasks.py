@@ -19,6 +19,20 @@ def _split_reference_dict_paths(value) -> list:
     return [item.strip() for item in parts if item.strip()]
 
 
+def _format_source_file(paths, max_len: int) -> str:
+    joined = ";".join([str(p) for p in paths])
+    if len(joined) <= max_len:
+        return joined
+    from pathlib import Path
+
+    names = ";".join([Path(str(p)).name for p in paths])
+    if len(names) <= max_len:
+        return names
+    if max_len <= 3:
+        return names[:max_len]
+    return f"{names[:max_len - 3]}..."
+
+
 def _refresh_reference_dict():
     from django.conf import settings
     from django.utils import timezone
@@ -45,6 +59,8 @@ def _refresh_reference_dict():
 
     csv_paths = [Path(path) for path in configured_paths]
     logger.info("Reference dict refresh started: paths=%s", csv_paths)
+    source_file_max_len = RefreshLog._meta.get_field("source_file").max_length
+    source_file_value = _format_source_file(csv_paths, source_file_max_len)
 
     try:
         rows = []
@@ -88,7 +104,7 @@ def _refresh_reference_dict():
                 source="manual",
                 trigger="manual",
                 status="success",
-                source_file=";".join([str(p) for p in csv_paths]),
+                source_file=source_file_value,
                 total_records=0,
                 error_message=f"skipped_rows={skipped};missing_files={missing_paths}",
             )
@@ -100,53 +116,33 @@ def _refresh_reference_dict():
                 "records_skipped": skipped,
             }
 
-        existing_keys = set(
-            RobotReferenceDict.objects.values_list("robot", "reference")
-        )
-
-        to_create = []
-        to_update = []
+        deduped = {}
         for robot, reference, number in rows:
-            if (robot, reference) in existing_keys:
-                to_update.append((robot, reference, number))
-            else:
-                to_create.append((robot, reference, number))
+            deduped[(robot, reference)] = number
 
-        created = 0
-        updated = 0
-
-        if to_create:
-            create_objs = [
-                RobotReferenceDict(
-                    robot=robot,
-                    reference=reference,
-                    number=number,
-                    updated_at=now,
-                )
-                for robot, reference, number in to_create
-            ]
-            created = len(
-                RobotReferenceDict.objects.bulk_create(
-                    create_objs, ignore_conflicts=True
-                )
+        create_objs = [
+            RobotReferenceDict(
+                robot=robot,
+                reference=reference,
+                number=number,
+                updated_at=now,
             )
+            for (robot, reference), number in deduped.items()
+        ]
 
-        BATCH_SIZE = 500
-        for i in range(0, len(to_update), BATCH_SIZE):
-            batch = to_update[i:i + BATCH_SIZE]
-            with transaction.atomic():
-                for robot, reference, number in batch:
-                    RobotReferenceDict.objects.filter(
-                        robot=robot,
-                        reference=reference,
-                    ).update(number=number, updated_at=now)
-            updated += len(batch)
+        with transaction.atomic():
+            RobotReferenceDict.objects.all().delete()
+            if create_objs:
+                RobotReferenceDict.objects.bulk_create(create_objs)
+
+        created = len(create_objs)
+        updated = 0
 
         RefreshLog.objects.create(
             source="manual",
             trigger="manual",
             status="success",
-            source_file=";".join([str(p) for p in csv_paths]),
+            source_file=source_file_value,
             records_created=created,
             records_updated=updated,
             records_deleted=0,
@@ -177,7 +173,7 @@ def _refresh_reference_dict():
             source="manual",
             trigger="manual",
             status="failed",
-            source_file=";".join([str(p) for p in csv_paths]),
+            source_file=source_file_value,
             error_message=str(exc),
             total_records=0,
         )

@@ -183,12 +183,10 @@ class RobotComponentViewSet(
         number = serializer.validated_data.get("number")
 
         if reference:
-            from .robot_config_sync import resolve_reference_number_from_csv
-
-            mapped_number = resolve_reference_number_from_csv(
-                instance.robot,
-                reference,
-            )
+            mapped_number = RobotReferenceDict.objects.filter(
+                robot=instance.robot,
+                reference=reference,
+            ).values_list("number", flat=True).first()
             if mapped_number is not None:
                 serializer.save(number=mapped_number)
                 return
@@ -799,14 +797,7 @@ class RobotReferenceDictViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         return qs.order_by("reference")
 
     def list(self, request, *args, **kwargs):
-        robot = (request.query_params.get("robot") or "").strip()
-        if not robot:
-            return super().list(request, *args, **kwargs)
-
-        from .robot_config_sync import get_reference_entries_for_robot
-
-        entries = get_reference_entries_for_robot(robot)
-        return Response(entries)
+        return super().list(request, *args, **kwargs)
 
     @action(detail=False, methods=["post"])
     def refresh(self, request):
@@ -846,14 +837,10 @@ class RobotReferenceDictViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        from .robot_config_sync import resolve_reference_number_from_csv
-
-        number = resolve_reference_number_from_csv(robot, reference)
-        if number is None:
-            number = RobotReferenceDict.objects.filter(
-                robot=robot,
-                reference=reference,
-            ).values_list("number", flat=True).first()
+        number = RobotReferenceDict.objects.filter(
+            robot=robot,
+            reference=reference,
+        ).values_list("number", flat=True).first()
 
         if number is None:
             return Response(

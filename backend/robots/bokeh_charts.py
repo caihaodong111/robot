@@ -295,14 +295,18 @@ def create_bi_charts(
         title="",  # 空标题，标签单独显示
         value=default_program,
         options=programs,
-        width=200
+        width=260,
+        min_width=220,
+        sizing_mode="stretch_width"
     )
 
     axis_select = Select(
         title="",  # 空标题，标签单独显示
         value=default_axis,
         options=list(AXIS_CONFIG.keys()),
-        width=100
+        width=180,
+        min_width=140,
+        sizing_mode="stretch_width"
     )
 
     # ============ 创建图表 ============

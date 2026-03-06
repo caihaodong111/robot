@@ -1242,6 +1242,9 @@ const handleRefresh = () => {
     await loadGroups()
     await loadRows()
     await fetchLastSyncTime()
+    if (editVisible.value && editTarget.value?.robot) {
+      await loadReferenceOptions(editTarget.value.robot)
+    }
   }).catch((error) => {
     syncing.value = false
 
