@@ -9,10 +9,8 @@
     <!-- Element Plus CSS -->
     <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css" />
 
-    <!-- Bokeh CSS -->
-    <link rel="stylesheet" href="https://cdn.pydata.org/bokeh/release/bokeh-3.8.0.min.css" type="text/css" />
-    <link rel="stylesheet" href="https://cdn.pydata.org/bokeh/release/bokeh-widgets-3.8.0.min.css" type="text/css" />
-    <link rel="stylesheet" href="https://cdn.pydata.org/bokeh/release/bokeh-tables-3.8.0.min.css" type="text/css" />
+    <!-- Bokeh resources (inline) -->
+    {{ bokeh_resources|safe }}
 
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -227,12 +225,6 @@
     <script src="https://unpkg.com/element-plus"></script>
     <!-- Element Plus 中文语言包 -->
     <script src="https://unpkg.com/element-plus/dist/locale/zh-cn.min.js"></script>
-
-    <!-- Bokeh JS -->
-    <script src="https://cdn.pydata.org/bokeh/release/bokeh-3.8.0.min.js"></script>
-    <script src="https://cdn.pydata.org/bokeh/release/bokeh-widgets-3.8.0.min.js"></script>
-    <script src="https://cdn.pydata.org/bokeh/release/bokeh-tables-3.8.0.min.js"></script>
-    <script src="https://cdn.pydata.org/bokeh/release/bokeh-gl-3.8.0.min.js"></script>
 
     <!-- 图表脚本 -->
     {{ bokeh_script|safe }}

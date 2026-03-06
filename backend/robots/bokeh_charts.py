@@ -193,7 +193,7 @@ def create_bi_charts(
     else:
         energy_query = (
             "SELECT TimeStamp2,ENERGY,LOSTENERGY FROM energy "
-            f"WHERE RobotName= '{table_name}' "
+            f"WHERE LOWER(RobotName)= LOWER('{table_name}') "
             f"AND TimeStamp2 BETWEEN '{_format_datetime(start_time)}' "
             f"AND '{_format_datetime(end_time)}'"
         )
@@ -244,51 +244,42 @@ def create_bi_charts(
         energy_full['LOSTENERGY'] = energy_full['LOSTENERGY'].astype(float)
         energy_full = energy_full.sort_values(by='TimeStamp2', ascending=True)
 
-    # ============ 为所有轴和所有程序准备数据 ============
-    # 结构: axis_sources[axis_name][program_name] = {source, agg_source, x_tex}
-    axis_sources = {}
+    # ============ 为所有程序准备数据（避免轴维度重复计算） ============
+    program_sources = {}
+    program_agg_sources = {}
+    program_x_tex = {}
 
-    for axis_name, config in AXIS_CONFIG.items():
-        curr_col = config['curr']
-        max_curr_col = config['max_curr']
-        min_curr_col = config['min_curr']
+    curr_cols = [AXIS_CONFIG[a]['curr'] for a in AXIS_CONFIG]
+    max_cols = [AXIS_CONFIG[a]['max_curr'] for a in AXIS_CONFIG]
+    min_cols = [AXIS_CONFIG[a]['min_curr'] for a in AXIS_CONFIG]
 
-        program_sources = {}
-        program_agg_sources = {}
-        program_x_tex = {}
+    for prog in programs:
+        prog_data = df_full[df_full['Name_C'] == prog].copy()
+        prog_data = prog_data.sort_values(by=['SNR_C', 'Time'])
+        prog_data['sort'] = range(1, len(prog_data) + 1)
 
-        for prog in programs:
-            prog_data = df_full[df_full['Name_C'] == prog].copy()
-            prog_data = prog_data.sort_values(by=['SNR_C', 'Time'])
-            prog_data['sort'] = range(1, len(prog_data) + 1)
+        if prog_data.empty:
+            continue
 
-            if not prog_data.empty:
-                # 聚合数据
-                ref = prog_data.groupby('SNR_C')[[max_curr_col, min_curr_col]].last()
-                x_tex = prog_data["SNR_C"].sort_values(ascending=True).unique().astype(str)
+        # 聚合数据：一次性计算所有轴的分位与参考范围
+        ref = prog_data.groupby('SNR_C')[max_cols + min_cols].last()
+        x_tex = prog_data["SNR_C"].sort_values(ascending=True).unique().astype(str)
 
-                LQ = prog_data.groupby('SNR_C')[curr_col].quantile(
-                    q=0.01, interpolation='nearest').rename(f'{curr_col}_LQ')
-                HQ = prog_data.groupby('SNR_C')[curr_col].quantile(
-                    q=0.99, interpolation='nearest').rename(f'{curr_col}_HQ')
+        LQ = prog_data.groupby('SNR_C')[curr_cols].quantile(
+            q=0.01, interpolation='nearest').rename(columns={c: f'{c}_LQ' for c in curr_cols})
+        HQ = prog_data.groupby('SNR_C')[curr_cols].quantile(
+            q=0.99, interpolation='nearest').rename(columns={c: f'{c}_HQ' for c in curr_cols})
 
-                labeltext = prog_data.groupby('SNR_C')['P_name'].last()
+        labeltext = prog_data.groupby('SNR_C')['P_name'].last()
 
-                Q = pd.merge(pd.merge(LQ, HQ, left_index=True, right_index=True, how='outer'),
-                                       ref, left_index=True, right_index=True, how='inner')
-                Q = pd.merge(Q, labeltext, left_index=True, right_index=True, how='inner').reset_index()
-                Q["SNR_C"] = x_tex
+        Q = pd.merge(pd.merge(LQ, HQ, left_index=True, right_index=True, how='outer'),
+                               ref, left_index=True, right_index=True, how='inner')
+        Q = pd.merge(Q, labeltext, left_index=True, right_index=True, how='inner').reset_index()
+        Q["SNR_C"] = x_tex
 
-                program_sources[prog] = ColumnDataSource(prog_data)
-                program_agg_sources[prog] = ColumnDataSource(Q)
-                program_x_tex[prog] = x_tex
-
-        axis_sources[axis_name] = {
-            'program_sources': program_sources,
-            'program_agg_sources': program_agg_sources,
-            'program_x_tex': program_x_tex,
-            'config': config
-        }
+        program_sources[prog] = ColumnDataSource(prog_data)
+        program_agg_sources[prog] = ColumnDataSource(Q)
+        program_x_tex[prog] = x_tex
 
     # 能量数据源
     energy_source = ColumnDataSource(energy_full) if not energy_full.empty else ColumnDataSource(pd.DataFrame())
@@ -319,10 +310,9 @@ def create_bi_charts(
     # 当切换轴或程序时，我们只需要更新这些代理列的数据
 
     # 从默认轴和程序获取初始数据
-    default_axis_data = axis_sources[default_axis]
-    default_config = default_axis_data['config']
-    default_source_data = default_axis_data['program_sources'][default_program].data
-    default_agg_data = default_axis_data['program_agg_sources'][default_program].data
+    default_config = AXIS_CONFIG[default_axis]
+    default_source_data = program_sources[default_program].data
+    default_agg_data = program_agg_sources[default_program].data
 
     # 创建代理数据源 - 使用固定的列名
     # 时间序列图表使用固定列名
@@ -366,7 +356,7 @@ def create_bi_charts(
     fol_col = default_config['fol']
     axisp_col = default_config['axisp']
 
-    x_tex = default_axis_data['program_x_tex'][default_program]
+    x_tex = program_x_tex[default_program]
 
     # Hover工具定义 - 使用动态列名显示
     hover = HoverTool(tooltips=[
@@ -614,7 +604,9 @@ def create_bi_charts(
     linkage_callback = CustomJS(args=dict(
         program_select=program_select,
         axis_select=axis_select,
-        axis_sources=axis_sources,
+        program_sources=program_sources,
+        program_agg_sources=program_agg_sources,
+        program_x_tex=program_x_tex,
         proxy_source=proxy_source,
         proxy_agg_source=proxy_agg_source,
         curr_plot=p_curr,
@@ -629,12 +621,10 @@ def create_bi_charts(
     const program = program_select.value;
 
     // 获取当前轴的数据源和配置
-    const axisData = axis_sources[axis];
+    const source = program_sources[program];
+    const aggSource = program_agg_sources[program];
+    const xTex = program_x_tex[program];
     const config = AXIS_CONFIG[axis];
-    const source = axisData.program_sources[program];
-    const aggSource = axisData.program_agg_sources[program];
-    const xTex = axisData.program_x_tex[program];
-
     // 获取列名
     const currCol = config.curr;
     const maxCurrCol = config.max_curr;
@@ -676,11 +666,8 @@ def create_bi_charts(
     proxy_agg_source.data['min_curr_value'] = aggSource.data[minCurrCol];
 
     // 查找并复制 LQ 和 HQ 数据
-    let lqCol = null, hqCol = null;
-    for (let col in aggSource.data) {
-        if (col.includes('_LQ')) lqCol = col;
-        if (col.includes('_HQ')) hqCol = col;
-    }
+    const lqCol = currCol + "_LQ";
+    const hqCol = currCol + "_HQ";
     proxy_agg_source.data['lq_value'] = aggSource.data[lqCol] || [];
     proxy_agg_source.data['hq_value'] = aggSource.data[hqCol] || [];
 

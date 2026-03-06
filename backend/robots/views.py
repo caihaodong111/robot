@@ -567,6 +567,7 @@ def bi_view(request):
     支持embed参数：embed=1时返回纯净模板用于iframe嵌入
     """
     from .bokeh_charts import create_bi_charts
+    from bokeh.resources import INLINE
     import logging
 
     logger = logging.getLogger(__name__)
@@ -607,6 +608,7 @@ def bi_view(request):
 
     context = {
         'table_name': table_name,
+        'bokeh_resources': INLINE.render(),
         'bokeh_script': script,
         'bokeh_div': div,
         'chart_info': chart_info,
