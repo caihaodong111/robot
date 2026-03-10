@@ -128,7 +128,7 @@ def _draw_chart(n: int, data: pd.DataFrame, robot: str) -> str:
     matplotlib.rcParams['ytick.labelsize'] = 6
 
     # 创建图表
-    fig = plt.figure(figsize=(10, 7))
+    fig = plt.figure(figsize=(9.2, 11.5))
     gs = fig.add_gridspec(7, 1, height_ratios=[1, 1, 1, 1, 1, 1, 1])
 
     axes = [fig.add_subplot(gs[i]) for i in range(7)]
@@ -179,12 +179,12 @@ def _draw_chart(n: int, data: pd.DataFrame, robot: str) -> str:
             ax.set_ylabel(label_map[key])
 
     # 调整布局
-    fig.subplots_adjust(hspace=0)
+    fig.subplots_adjust(hspace=0.08, top=0.98, bottom=0.06, left=0.06, right=0.99)
     plt.xticks(rotation='vertical')
 
     # 将图片保存到内存，返回 base64 数据
     buf = io.BytesIO()
-    fig.savefig(buf, format='png', dpi=80, bbox_inches='tight')
+    fig.savefig(buf, format='png', dpi=90)
     plt.close(fig)
 
     # 恢复原始字体设置

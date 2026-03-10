@@ -105,8 +105,7 @@ export function executeGripperCheck(data) {
   return request({
     url: '/robots/gripper-check/execute/',
     method: 'post',
-    data,
-    timeout: 60000  // 设置60秒超时，避免处理大量数据时超时
+    data
   })
 }
 

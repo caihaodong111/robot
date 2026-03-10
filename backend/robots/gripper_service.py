@@ -32,7 +32,7 @@ def get_db_engine():
     return engine
 
 
-def fetch_data_from_mysql(table_name, start_time, end_time, time_column='Timestamp', engine=None):
+def fetch_data_from_mysql(table_name, start_time, end_time, time_column='Timestamp', engine=None, columns=None):
     """
     从MySQL表获取数据
 
@@ -49,7 +49,14 @@ def fetch_data_from_mysql(table_name, start_time, end_time, time_column='Timesta
     if engine is None:
         engine = get_db_engine()
 
-    query = f"SELECT * FROM `{table_name}` WHERE `{time_column}` BETWEEN '{start_time}' AND '{end_time}';"
+    if columns:
+        col_sql = ", ".join(f"`{col}`" for col in columns)
+    else:
+        col_sql = "*"
+    query = (
+        f"SELECT {col_sql} FROM `{table_name}` "
+        f"WHERE `{time_column}` BETWEEN '{start_time}' AND '{end_time}';"
+    )
     df = pd.read_sql(query, engine)
     return df
 
@@ -84,9 +91,20 @@ def check_gripper(start_time, end_time, gripper_list, key_paths):
     print(f"  key_paths: {key_paths}")
 
     for rob in gripper_list:
+        required_columns = ['Name_C', 'SNR_C', 'SUB', 'P_name',
+                           'Curr_A1', 'Curr_A2', 'Curr_A3', 'Curr_A4', 'Curr_A5', 'Curr_A6', 'Curr_E1',
+                           'MAXCurr_A1', 'MAXCurr_A2', 'MAXCurr_A3', 'MAXCurr_A4', 'MAXCurr_A5', 'MAXCurr_A6', 'MAXCurr_E1',
+                           'MinCurr_A1', 'MinCurr_A2', 'MinCurr_A3', 'MinCurr_A4', 'MinCurr_A5', 'MinCurr_A6', 'MinCurr_E1']
         try:
             print(f"[DEBUG] Fetching data from table: {rob}")
-            Detail = fetch_data_from_mysql(rob, start_time, end_time, time_column, engine)
+            Detail = fetch_data_from_mysql(
+                rob,
+                start_time,
+                end_time,
+                time_column,
+                engine,
+                columns=required_columns
+            )
             print(f"[DEBUG] Table {rob} returned {len(Detail)} rows")
         except Exception as e:
             print(f"[ERROR] Error fetching data from {rob}: {e}")
@@ -101,10 +119,6 @@ def check_gripper(start_time, end_time, gripper_list, key_paths):
         print(f"[DEBUG] Table {rob} columns: {Detail.columns.tolist()}")
 
         # 检查必需的列是否存在
-        required_columns = ['Name_C', 'SNR_C', 'SUB', 'P_name',
-                           'Curr_A1', 'Curr_A2', 'Curr_A3', 'Curr_A4', 'Curr_A5', 'Curr_A6', 'Curr_E1',
-                           'MAXCurr_A1', 'MAXCurr_A2', 'MAXCurr_A3', 'MAXCurr_A4', 'MAXCurr_A5', 'MAXCurr_A6', 'MAXCurr_E1',
-                           'MinCurr_A1', 'MinCurr_A2', 'MinCurr_A3', 'MinCurr_A4', 'MinCurr_A5', 'MinCurr_A6', 'MinCurr_E1']
         missing_columns = [col for col in required_columns if col not in Detail.columns]
         if missing_columns:
             print(f"[WARNING] Table {rob} missing columns: {missing_columns}")
@@ -181,12 +195,11 @@ def check_gripper(start_time, end_time, gripper_list, key_paths):
         for key in [key1, key2, key3, key4]:
             if key is not None and key == key:  # 检查不是NaN
                 try:
-                    indices = data[data['P_name'].astype(str).str.contains(key, case=False, na=False)].index
-                    print(f"[DEBUG] Key '{key}' matched {len(indices)} rows in table {rob}")
-                    matched_count += len(indices)
-                    for idx in indices:
-                        # 使用 to_frame().T 转换为行格式
-                        GP.append(data.iloc[idx:idx+1, :])
+                    matched = data[data['P_name'].astype(str).str.contains(key, case=False, na=False)]
+                    print(f"[DEBUG] Key '{key}' matched {len(matched)} rows in table {rob}")
+                    matched_count += len(matched)
+                    if not matched.empty:
+                        GP.append(matched)
                 except Exception as e:
                     print(f"[ERROR] Error filtering by key path '{key}': {e}")
                     traceback.print_exc()

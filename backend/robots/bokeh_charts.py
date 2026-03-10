@@ -10,6 +10,7 @@ from bokeh.models import (
 from bokeh.events import ButtonClick
 from bokeh.embed import components
 import pandas as pd
+import re
 import json
 from datetime import datetime, timedelta
 import time
@@ -106,6 +107,24 @@ def _coerce_datetime(value):
         return None
 
 
+def _is_date_only(value):
+    if not isinstance(value, str):
+        return False
+    return re.match(r'^\d{4}-\d{2}-\d{2}$', value) is not None
+
+
+def _normalize_date_bounds(start_value, end_value):
+    start_dt = _coerce_datetime(start_value)
+    end_dt = _coerce_datetime(end_value)
+    if not start_dt or not end_dt:
+        return start_dt, end_dt
+    if _is_date_only(start_value):
+        start_dt = start_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+    if _is_date_only(end_value):
+        end_dt = end_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+    return start_dt, end_dt
+
+
 def _format_datetime(value):
     if not value:
         return None
@@ -146,8 +165,7 @@ def create_bi_charts(
     start_time = db_start_time
     end_time = db_end_time
 
-    requested_start = _coerce_datetime(start_date)
-    requested_end = _coerce_datetime(end_date)
+    requested_start, requested_end = _normalize_date_bounds(start_date, end_date)
     if requested_start and requested_end:
         if requested_start > requested_end:
             requested_start, requested_end = requested_end, requested_start

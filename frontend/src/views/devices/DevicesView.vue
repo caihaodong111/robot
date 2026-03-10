@@ -185,16 +185,24 @@
         </div>
 
         <!-- Table -->
-        <el-table :data="pagedRows" class="status-table table-entrance" stripe height="520" v-loading="loading">
+        <el-table
+          :data="pagedRows"
+          class="status-table table-entrance"
+          stripe
+          height="520"
+          v-loading="loading"
+          :scrollbar-always-on="true"
+          @sort-change="handleSortChange"
+        >
           <!-- 基础列（所有标签页通用） -->
-          <el-table-column prop="partNo" label="robot" width="140" fixed="left" class-name="robot-column" sortable :sort-by="(row) => row.partNo || row.robot || ''">
+          <el-table-column prop="robot" label="robot" width="140" fixed="left" class-name="robot-column" sortable :sort-by="(row) => row.partNo || row.robot || ''">
             <template #default="{ row }">
               <el-button type="primary" link class="mono robot-name-cell" @click="openBI(row)">
                 {{ row.partNo || row.robot }}
               </el-button>
             </template>
           </el-table-column>
-          <el-table-column label="reference" width="130" fixed="left" class-name="reference-column" sortable :sort-by="(row) => row.referenceNo || row.reference || ''">
+          <el-table-column prop="reference" label="reference" width="130" fixed="left" class-name="reference-column" sortable :sort-by="(row) => row.referenceNo || row.reference || ''">
             <template #default="{ row }">
               <template v-if="activeTab === 'history'">
                 <span class="mono">{{ row.referenceNo || row.reference }}</span>
@@ -214,7 +222,7 @@
               </el-button>
             </template>
           </el-table-column>
-          <el-table-column prop="typeSpec" label="type" width="130" fixed="left" sortable class-name="type-column">
+          <el-table-column prop="type" label="type" width="130" fixed="left" sortable class-name="type-column">
             <template #default="{ row }">
               <span>{{ row.typeSpec || row.type }}</span>
             </template>
@@ -223,14 +231,14 @@
 
           <!-- all 标签页的详细列 -->
           <template v-if="activeTab === 'all'">
-            <el-table-column prop="mark" label="mark" width="45" fixed="left" align="center" sortable class-name="mark-column">
+            <el-table-column prop="mark" label="mark" width="60" fixed="left" align="center" sortable class-name="mark-column">
               <template #default="{ row }">
                 <el-button type="primary" link class="mono" @click="openEdit(row, 'mark')">
                   {{ row.mark ?? 0 }}
                 </el-button>
               </template>
             </el-table-column>
-            <el-table-column label="remark" width="130" fixed="left" class-name="fixed-remark-col remark-column" sortable :sort-by="(row) => row.remark || ''">
+            <el-table-column label="remark" width="150" fixed="left" class-name="fixed-remark-col remark-column" sortable :sort-by="(row) => row.remark || ''">
               <template #default="{ row }">
                 <el-button type="primary" link class="remark-link" @click="openEdit(row, 'remark')">
                   {{ row.remark || '-' }}
@@ -344,6 +352,7 @@
             <el-table-column
               v-for="i in 7"
               :key="`a${i}`"
+              :prop="`a${i}`"
               :label="`A${i}`"
               width="65"
               align="center"
@@ -376,7 +385,7 @@
               </template>
             </el-table-column>
             <!-- 更新时间 -->
-            <el-table-column label="更新时间" width="180" sortable :sort-by="(row) => getUpdatedAtSortValue(row)">
+            <el-table-column prop="updated_at" label="更新时间" width="180" sortable :sort-by="(row) => getUpdatedAtSortValue(row)">
               <template #default="{ row }">
                 <span class="mono">{{ getUpdatedAtText(row) }}</span>
               </template>
@@ -385,7 +394,7 @@
 
           <!-- highRisk 和 history 标签页的列 -->
           <template v-else>
-            <el-table-column prop="mark" label="mark" width="50" fixed="left" align="center" sortable>
+            <el-table-column prop="mark" label="mark" width="60" fixed="left" align="center" sortable class-name="mark-column">
               <template #default="{ row }">
                 <template v-if="activeTab === 'history'">
                   <span class="mono">{{ row.mark ?? 0 }}</span>
@@ -395,7 +404,7 @@
                 </el-button>
               </template>
             </el-table-column>
-            <el-table-column label="remark" width="170" fixed="left" class-name="fixed-remark-col" sortable :sort-by="(row) => row.remark || ''">
+            <el-table-column label="remark" width="180" fixed="left" class-name="fixed-remark-col remark-column" sortable :sort-by="(row) => row.remark || ''">
               <template #default="{ row }">
                 <template v-if="activeTab === 'history'">
                   <span class="remark-link">{{ row.remark || '-' }}</span>
@@ -409,6 +418,7 @@
             <el-table-column
               v-for="key in CHECK_KEYS"
               :key="key"
+              :prop="key.toLowerCase()"
               :label="key"
               width="60"
               align="center"
@@ -437,7 +447,7 @@
               </template>
             </el-table-column>
             <!-- 更新时间 -->
-            <el-table-column label="更新时间" width="180" sortable :sort-by="(row) => getUpdatedAtSortValue(row)">
+            <el-table-column prop="updated_at" label="更新时间" width="180" sortable :sort-by="(row) => getUpdatedAtSortValue(row)">
               <template #default="{ row }">
                 <span class="mono">{{ getUpdatedAtText(row) }}</span>
               </template>
@@ -723,6 +733,8 @@ const markMode = ref('')
 const currentPage = ref(1)
 const pageSize = ref(20)
 const jumpPage = ref(1)
+const sortField = ref('')
+const sortOrder = ref('')
 
 const detailVisible = ref(false)
 const detailRobot = ref(null)
@@ -1165,6 +1177,31 @@ const pagedRows = computed(() => {
   // 使用服务器分页，直接返回服务器数据
   return filteredRows.value
 })
+
+const mapSortField = (prop) => {
+  if (!prop) return ''
+  const aliasMap = {
+    partNo: 'robot',
+    robot: 'robot',
+    referenceNo: 'reference',
+    reference: 'reference',
+    typeSpec: 'type',
+    updatedAt: 'updated_at'
+  }
+  return aliasMap[prop] || prop
+}
+
+const handleSortChange = ({ prop, order }) => {
+  if (!order) {
+    sortField.value = ''
+    sortOrder.value = ''
+  } else {
+    sortField.value = mapSortField(prop)
+    sortOrder.value = order === 'descending' ? 'desc' : 'asc'
+  }
+  currentPage.value = 1
+  loadRows()
+}
 
 const resetFilters = () => {
   keyword.value = ''
@@ -1714,6 +1751,8 @@ const loadRows = async (fetchAll = false) => {
         keyword: keyword.value || undefined,
         level: levelFilter.value.length ? levelFilter.value.join(',') : undefined,
         axisOk: axisStateFilter.value || undefined,
+        sort_by: sortField.value || undefined,
+        sort_order: sortOrder.value || undefined,
         page: fetchAll ? 1 : currentPage.value,
         page_size: actualPageSize
       }
@@ -1729,6 +1768,8 @@ const loadRows = async (fetchAll = false) => {
         axisKeys: axisKeysFilter.value.length ? axisKeysFilter.value.join(',') : undefined,
         axisOk: axisStateFilter.value ? axisStateFilter.value === 'ok' : undefined,
         markMode: markMode.value || undefined,
+        sort_by: sortField.value || undefined,
+        sort_order: sortOrder.value || undefined,
         page: fetchAll ? 1 : currentPage.value,
         page_size: actualPageSize
       }
@@ -2044,7 +2085,7 @@ onUnmounted(() => {
 .layout-wrapper {
   position: relative;
   z-index: 1;
-  padding: 40px;
+  padding: 24px;
   max-width: 100%;
   margin: 0 auto;
 }
@@ -2112,8 +2153,8 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
-  padding-bottom: 20px;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
@@ -2254,16 +2295,16 @@ onUnmounted(() => {
 
 /* === KPI 卡片 === */
 .kpi-selector-container {
-  margin: 30px 0;
+  margin: 16px 0;
   display: flex;
   justify-content: flex-start;
 }
 
 .kpi-card {
-  padding: 24px;
+  padding: 16px;
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 14px;
   cursor: pointer;
   transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
@@ -2309,13 +2350,13 @@ onUnmounted(() => {
 }
 
 .kpi-icon-box {
-  width: 56px;
-  height: 56px;
+  width: 48px;
+  height: 48px;
   border-radius: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 26px;
+  font-size: 22px;
   flex-shrink: 0;
   background: rgba(255, 170, 0, 0.12);
   color: #ffaa00;
@@ -2336,7 +2377,7 @@ onUnmounted(() => {
 }
 
 .main-value {
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 900;
   color: #fff;
   margin: 4px 0;
@@ -2350,8 +2391,8 @@ onUnmounted(() => {
 
 .status-mini-tags {
   display: flex;
-  gap: 10px;
-  margin-top: 8px;
+  gap: 8px;
+  margin-top: 6px;
 }
 
 .tag {
@@ -2387,7 +2428,7 @@ onUnmounted(() => {
 }
 
 .table-header {
-  padding: 10px 20px;
+  padding: 8px 16px;
   font-size: 11px;
   color: #c0ccda;
   letter-spacing: 1px;
@@ -2429,6 +2470,10 @@ onUnmounted(() => {
   background: transparent;
 }
 
+:deep(.status-tabs-dark .el-tabs__header) {
+  margin: 4px 0 6px;
+}
+
 :deep(.status-tabs-dark .el-tabs__nav-wrap::after) {
   display: none;
 }
@@ -2448,12 +2493,12 @@ onUnmounted(() => {
 }
 
 :deep(.status-tabs-dark .el-tabs__nav-wrap) {
-  padding-left: 20px;
+  padding-left: 16px;
 }
 
 /* === Filters === */
 .filters {
-  padding: 10px 20px;
+  padding: 8px 16px;
   border-bottom: 1px solid rgba(255,255,255,0.05);
 }
 
@@ -2563,6 +2608,15 @@ onUnmounted(() => {
   font-size: 12px;
 }
 
+.data-table-section :deep(.el-scrollbar__bar.is-horizontal) {
+  opacity: 1;
+  height: 10px;
+}
+
+.data-table-section :deep(.el-scrollbar__thumb) {
+  background-color: rgba(160, 178, 198, 0.55);
+}
+
 .data-table-section :deep(.el-table__header th) {
   background: #060a12 !important;
   border-color: rgba(255, 255, 255, 0.06) !important;
@@ -2634,6 +2688,16 @@ onUnmounted(() => {
 
 .data-table-section :deep(.el-table__header th.type-column .cell),
 .data-table-section :deep(.el-table__body td.type-column .cell) {
+  padding-left: 12px;
+}
+
+.data-table-section :deep(.el-table__header th.mark-column .cell),
+.data-table-section :deep(.el-table__body td.mark-column .cell) {
+  padding-right: 10px;
+}
+
+.data-table-section :deep(.el-table__header th.fixed-remark-col .cell),
+.data-table-section :deep(.el-table__body td.fixed-remark-col .cell) {
   padding-left: 12px;
 }
 
@@ -3419,10 +3483,8 @@ onUnmounted(() => {
 }
 
 .chart-image {
-  width: auto;
-  height: auto;
-  max-width: 100%;
-  max-height: 100%;
+  width: 100%;
+  height: 100%;
   display: block;
   object-fit: contain;
 }

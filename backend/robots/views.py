@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta
 import logging
+import os
+from django.conf import settings
 from django.shortcuts import render
 from django.db.models import Count, Q
 from django.views.decorators.clickjacking import xframe_options_exempt
@@ -17,6 +19,7 @@ from .serializers import (
     GripperCheckSerializer,
     RobotHighRiskSnapshotSerializer,
     RobotReferenceDictSerializer,
+    RefreshLogSerializer,
 )
 from .gripper_service import check_gripper_from_config
 from .error_trend_chart import generate_trend_chart, chart_exists
@@ -83,6 +86,28 @@ def build_disconnected_q(prefix=""):
     for field in DISCONNECTED_FIELDS:
         query &= Q(**{f"{prefix}{field}__isnull": True})
     return query
+
+
+def get_sort_fields(model):
+    fields = set()
+    for field in model._meta.get_fields():
+        if getattr(field, "attname", None) and not field.many_to_many and not field.one_to_many:
+            fields.add(field.name)
+    return fields
+
+
+COMPONENT_SORT_FIELDS = get_sort_fields(RobotComponent)
+SNAPSHOT_SORT_FIELDS = get_sort_fields(RobotHighRiskSnapshot)
+
+
+def apply_ordering(qs, sort_by, sort_order, allowed_fields):
+    if not sort_by:
+        return qs
+    sort_by = sort_by.strip()
+    if sort_by not in allowed_fields:
+        return qs
+    order_prefix = "-" if sort_order == "desc" else ""
+    return qs.order_by(f"{order_prefix}{sort_by}")
 
 
 class StandardResultsSetPagination(PageNumberPagination):
@@ -239,6 +264,12 @@ class RobotComponentViewSet(
                 for k in axis_keys:
                     axis_q |= Q(**{k.lower(): "high"})  # a1="high" OR a2="high" OR ...
                 qs = qs.filter(axis_q)
+
+        sort_by = (self.request.query_params.get("sort_by") or "").strip()
+        sort_order = (self.request.query_params.get("sort_order") or "").lower()
+        if sort_order not in {"asc", "desc"}:
+            sort_order = "asc"
+        qs = apply_ordering(qs, sort_by, sort_order, COMPONENT_SORT_FIELDS)
 
         return qs
 
@@ -847,6 +878,12 @@ class RobotHighRiskSnapshotViewSet(mixins.ListModelMixin, viewsets.GenericViewSe
                 | Q(remark__icontains=keyword)
             )
 
+        sort_by = (self.request.query_params.get("sort_by") or "").strip()
+        sort_order = (self.request.query_params.get("sort_order") or "").lower()
+        if sort_order not in {"asc", "desc"}:
+            sort_order = "asc"
+        qs = apply_ordering(qs, sort_by, sort_order, SNAPSHOT_SORT_FIELDS)
+
         return qs
 
 
@@ -959,6 +996,70 @@ def get_last_sync_time(request):
     })
 
 
+@api_view(['GET'])
+def get_refresh_logs(request):
+    """获取刷新日志列表（按时间倒序）"""
+    from .models import RefreshLog
+
+    raw_limit = (request.query_params.get('limit') or '').strip()
+    try:
+        limit = int(raw_limit) if raw_limit else 12
+    except ValueError:
+        limit = 12
+
+    limit = max(1, min(limit, 50))
+    logs = RefreshLog.objects.all().order_by('-sync_time')[:limit]
+    serializer = RefreshLogSerializer(logs, many=True)
+    return Response({'logs': serializer.data})
+
+
+def _tail_lines(file_path, max_lines=200, chunk_size=65536):
+    if not os.path.exists(file_path):
+        return []
+
+    with open(file_path, "rb") as handle:
+        handle.seek(0, os.SEEK_END)
+        file_size = handle.tell()
+        offset = min(file_size, chunk_size)
+        handle.seek(-offset, os.SEEK_END)
+        data = handle.read(offset)
+
+    try:
+        text = data.decode("utf-8", errors="ignore")
+    except UnicodeDecodeError:
+        text = data.decode("latin1", errors="ignore")
+
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    return lines[-max_lines:]
+
+
+@api_view(['GET'])
+def get_bi_logs(request):
+    """获取BI加载相关的后端日志文本"""
+    raw_limit = (request.query_params.get('limit') or '').strip()
+    try:
+        limit = int(raw_limit) if raw_limit else 8
+    except ValueError:
+        limit = 8
+
+    limit = max(1, min(limit, 20))
+    log_path = os.path.join(settings.BASE_DIR, "logs", "django.log")
+    lines = _tail_lines(log_path)
+
+    keywords = (
+        "bokeh_charts",
+        "请求时间范围",
+        "主数据: db fetch",
+        "加载数据条数",
+        "能量数据: db fetch",
+        "能量数据条数",
+        "可用程序列表",
+        "图表生成成功",
+    )
+    filtered = [line for line in lines if any(keyword in line for keyword in keywords)]
+    return Response({"lines": filtered[-limit:]})
+
+
 # API 端点：获取关键路径告警数据
 @api_view(['GET'])
 def get_keypath_warnings(request):
@@ -998,7 +1099,7 @@ def get_keypath_warnings(request):
             port=int(os.getenv('KEY_DB_PORT', 3306)),
             user=os.getenv('KEY_DB_USER', 'key'),
             password=os.getenv('KEY_DB_PASSWORD', '123456'),
-            database=os.getenv('KEY_DB_NAME', 'key'),
+            database=os.getenv('KEY_DB_NAME', 'keypath_warn'),
             charset='utf8mb4'
         )
 

@@ -904,7 +904,7 @@ onMounted(loadPlantGroups)
 .layout-wrapper {
   position: relative;
   z-index: 1;
-  padding: 40px 24px;
+  padding: 24px 24px;
   max-width: 2600px;
   margin: 0 auto;
 }
@@ -914,8 +914,8 @@ onMounted(loadPlantGroups)
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
-  padding-bottom: 20px;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
@@ -996,12 +996,12 @@ onMounted(loadPlantGroups)
 
 /* 控制区域 */
 .control-area {
-  margin: 40px 0;
+  margin: 24px 0;
   overflow: visible;
 }
 
 .control-content {
-  padding: 20px;
+  padding: 16px;
   position: relative;
   z-index: 1;
 }
@@ -1010,7 +1010,7 @@ onMounted(loadPlantGroups)
 .control-row {
   display: flex;
   align-items: flex-end;
-  gap: 18px;
+  gap: 14px;
   flex-wrap: wrap;
 }
 
@@ -1020,8 +1020,8 @@ onMounted(loadPlantGroups)
 }
 
 .secondary-row {
-  margin-top: 18px;
-  padding-top: 18px;
+  margin-top: 12px;
+  padding-top: 12px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
   flex-wrap: nowrap;
 }
@@ -1139,7 +1139,7 @@ onMounted(loadPlantGroups)
 .result-container {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 10px;
   overflow: hidden;
 }
 
@@ -1151,7 +1151,7 @@ onMounted(loadPlantGroups)
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 14px 18px;
+  padding: 10px 14px;
   background: rgba(10, 10, 15, 0.85);
   backdrop-filter: blur(30px);
   border-radius: 12px;
@@ -1373,7 +1373,7 @@ onMounted(loadPlantGroups)
 .table-footer {
   display: flex;
   justify-content: center;
-  padding: 16px 0;
+  padding: 12px 0;
   overflow: visible;
 }
 
@@ -1389,7 +1389,7 @@ onMounted(loadPlantGroups)
 
 .empty-state {
   text-align: center;
-  padding: 70px 0;
+  padding: 48px 0;
   color: #8899aa;
 }
 
@@ -1425,7 +1425,7 @@ onMounted(loadPlantGroups)
 /* === Loading Spinner === */
 .loading-state {
   text-align: center;
-  padding: 70px 0;
+  padding: 48px 0;
   display: flex;
   flex-direction: column;
   align-items: center;

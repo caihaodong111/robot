@@ -77,6 +77,7 @@
                 start-placeholder="开始日期"
                 end-placeholder="结束日期"
                 :shortcuts="shortcuts"
+                :default-time="defaultTime"
                 unlink-panels
                 popper-class="trajectory-date-picker"
                 @change="handleTimeRangeChange"
@@ -122,7 +123,17 @@
                   <!-- 加载文字 -->
                   <div class="loading-message">
                     <div class="loading-title">正在加载数据</div>
-                    <div class="loading-tip">请保持当前界面，数据加载中...</div>
+                    <div class="loading-tip">后端日志同步中</div>
+                  </div>
+                  <div class="log-plain" :class="{ 'is-empty': !displayLogs.length }">
+                    <div v-if="displayLogs.length" class="log-single">
+                      <Transition name="log-fade" mode="out-in">
+                        <div :key="currentLogIndex" class="log-line">
+                          {{ currentLogLine }}
+                        </div>
+                      </Transition>
+                    </div>
+                    <div v-else class="log-empty">暂无日志</div>
                   </div>
                 </div>
               </div>
@@ -150,7 +161,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Location, Monitor, Search, PieChart, Calendar } from '@element-plus/icons-vue'
 import request from '@/utils/request'
@@ -171,10 +182,42 @@ const robots = ref([])
 const robotsLoading = ref(false)
 const isLoading = ref(false)
 const biFrame = ref(null)
+const biLogs = ref([])
+const logPollingTimer = ref(null)
+const logRotateTimer = ref(null)
+const currentLogIndex = ref(0)
+
+const LOG_LIMIT = 8
+const LOG_POLL_INTERVAL = 4500
+const LOG_ROTATE_INTERVAL = 1600
 
 // 时间范围选择器状态（数组格式：[开始日期, 结束日期]）
 const DEFAULT_TIME_SPAN_DAYS = 7
-const timeRange = ref([new Date(Date.now() - DEFAULT_TIME_SPAN_DAYS * 24 * 3600_000), new Date()])
+const toDayStart = (date) => {
+  const d = new Date(date)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+const toDayEnd = (date) => {
+  const d = new Date(date)
+  d.setHours(23, 59, 59, 999)
+  return d
+}
+const normalizeRangeToDayBounds = (range) => {
+  if (!range || range.length !== 2 || !range[0] || !range[1]) return range
+  return [toDayStart(range[0]), toDayEnd(range[1])]
+}
+const timeRange = ref(
+  normalizeRangeToDayBounds([
+    new Date(Date.now() - DEFAULT_TIME_SPAN_DAYS * 24 * 3600_000),
+    new Date()
+  ])
+)
+
+const defaultTime = [
+  new Date(2000, 1, 1, 0, 0, 0),
+  new Date(2000, 1, 1, 23, 59, 59)
+]
 
 // 快捷选项
 const shortcuts = [
@@ -184,7 +227,7 @@ const shortcuts = [
       const end = new Date()
       const start = new Date()
       start.setTime(start.getTime() - 3600 * 1000 * 24 * 7)
-      return [start, end]
+      return normalizeRangeToDayBounds([start, end])
     }
   },
   {
@@ -193,7 +236,7 @@ const shortcuts = [
       const end = new Date()
       const start = new Date()
       start.setTime(start.getTime() - 3600 * 1000 * 24 * 30)
-      return [start, end]
+      return normalizeRangeToDayBounds([start, end])
     }
   },
   {
@@ -202,7 +245,7 @@ const shortcuts = [
       const end = new Date()
       const start = new Date()
       start.setTime(start.getTime() - 3600 * 1000 * 24 * 90)
-      return [start, end]
+      return normalizeRangeToDayBounds([start, end])
     }
   }
 ]
@@ -252,6 +295,8 @@ const handleGroupChange = async () => {
   activeName.value = ''
   currentRobotLabel.value = ''
   isLoading.value = false
+  stopLogPolling()
+  stopLogRotation()
   shouldLoad.value = false  // 重置加载状态
 
   // 重新搜索机器人
@@ -308,6 +353,8 @@ const handleRobotChange = (value) => {
     activeName.value = ''
     currentRobotLabel.value = ''
     isLoading.value = false
+    stopLogPolling()
+    stopLogRotation()
     shouldLoad.value = false  // 重置加载状态
     return
   }
@@ -328,6 +375,8 @@ const handleRobotChange = (value) => {
 // 开始加载动画
 const startLoading = () => {
   isLoading.value = true
+  startLogPolling()
+  startLogRotation()
 }
 
 // iframe加载完成
@@ -335,6 +384,8 @@ const handleFrameLoad = () => {
   // 延迟一点关闭加载动画，确保内容已渲染
   setTimeout(() => {
     isLoading.value = false
+    stopLogPolling()
+    stopLogRotation()
   }, 500)
 }
 
@@ -346,7 +397,10 @@ const handleLoad = () => {
 }
 
 // 时间范围变化处理
-const handleTimeRangeChange = () => {
+const handleTimeRangeChange = (range) => {
+  if (range && range.length === 2) {
+    timeRange.value = normalizeRangeToDayBounds(range)
+  }
   // 不再自动加载，时间范围变化后需要手动点击"加载分析"按钮
 }
 
@@ -373,7 +427,7 @@ const initFromQuery = async () => {
 
       // 如果有时间范围参数，设置时间范围并自动加载
       if (queryStartDate && queryEndDate) {
-        timeRange.value = [new Date(queryStartDate), new Date(queryEndDate)]
+        timeRange.value = normalizeRangeToDayBounds([new Date(queryStartDate), new Date(queryEndDate)])
         shouldLoad.value = true  // 自动加载
         loadFrame(biUrl.value)
       } else {
@@ -400,6 +454,66 @@ onMounted(async () => {
       }
     }
   })
+})
+
+onUnmounted(() => {
+  stopLogPolling()
+  stopLogRotation()
+})
+
+const fetchBiLogs = async () => {
+  try {
+    const response = await request.get('/robots/bi_logs/', {
+      params: { limit: LOG_LIMIT }
+    })
+    biLogs.value = response?.lines || []
+  } catch (error) {
+    console.error('加载后端日志失败:', error)
+  }
+}
+
+const startLogPolling = () => {
+  fetchBiLogs()
+  if (logPollingTimer.value) return
+  logPollingTimer.value = setInterval(fetchBiLogs, LOG_POLL_INTERVAL)
+}
+
+const stopLogPolling = () => {
+  if (!logPollingTimer.value) return
+  clearInterval(logPollingTimer.value)
+  logPollingTimer.value = null
+}
+
+const startLogRotation = () => {
+  if (logRotateTimer.value) return
+  logRotateTimer.value = setInterval(() => {
+    if (!displayLogs.value.length) return
+    currentLogIndex.value = (currentLogIndex.value + 1) % displayLogs.value.length
+  }, LOG_ROTATE_INTERVAL)
+}
+
+const stopLogRotation = () => {
+  if (!logRotateTimer.value) return
+  clearInterval(logRotateTimer.value)
+  logRotateTimer.value = null
+}
+
+const displayLogs = computed(() => {
+  const stripPrefix = (line) =>
+    line.replace(/^INFO\\s+\\d{4}-\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}:\\d{2},\\d+\\s+/, '')
+  return biLogs.value.map(stripPrefix)
+})
+
+const currentLogLine = computed(() => {
+  if (!displayLogs.value.length) return ''
+  if (currentLogIndex.value >= displayLogs.value.length) {
+    currentLogIndex.value = 0
+  }
+  return displayLogs.value[currentLogIndex.value]
+})
+
+watch(displayLogs, () => {
+  currentLogIndex.value = 0
 })
 </script>
 
@@ -880,6 +994,54 @@ onMounted(async () => {
 .loading-tip {
   font-size: 13px;
   color: #8899aa;
+}
+
+.log-plain {
+  width: min(560px, 88vw);
+  max-height: 120px;
+  overflow: hidden;
+  mask-image: linear-gradient(180deg, transparent 0%, #000 18%, #000 82%, transparent 100%);
+  padding: 12px 0;
+}
+
+.log-plain.is-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.log-single {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 80px;
+}
+
+.log-line {
+  font-size: 12px;
+  color: #b4c7da;
+  text-shadow: 0 0 16px rgba(0, 195, 255, 0.2);
+  letter-spacing: 0.02em;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.log-empty {
+  font-size: 12px;
+  color: #6d8498;
+}
+
+.log-fade-enter-active,
+.log-fade-leave-active {
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+.log-fade-enter-from,
+.log-fade-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
 }
 
 /* === 进度条 === */
