@@ -7,6 +7,8 @@ import glob
 import logging
 import csv
 import tempfile
+import hashlib
+import json
 from typing import Optional, Tuple
 import pandas as pd
 from django.db import transaction, connection
@@ -306,6 +308,35 @@ def _resolve_weekly_result_folders(folder_path: str = None) -> list:
     return _split_weekly_result_folders(resolved)
 
 
+def _weekly_result_state_key(folder: str) -> str:
+    digest = hashlib.sha1(folder.encode("utf-8")).hexdigest()
+    return f"weekly_result_last_mtime:{digest}"
+
+
+def _get_last_import_state(folder: str) -> dict:
+    from .models import SystemConfig
+    key = _weekly_result_state_key(folder)
+    raw = SystemConfig.get(key)
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+    except (TypeError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _set_last_import_state(folder: str, file_path: str, file_mtime: float) -> None:
+    from .models import SystemConfig
+    key = _weekly_result_state_key(folder)
+    payload = {
+        "folder": folder,
+        "file": file_path,
+        "mtime": file_mtime,
+    }
+    SystemConfig.set(key, json.dumps(payload), "weeklyresult csv last import mtime per folder")
+
+
 def log_print(message: str):
     """打印日志到终端，带时间戳"""
     timestamp = datetime.now().strftime('%H:%M:%S')
@@ -553,14 +584,14 @@ def get_all_weeklyresult_csvs(folder_path: str = None, project: str = None) -> l
 
 def get_latest_weeklyresult_csvs(folder_path: str = None, project: str = None) -> list:
     """
-    获取每个路径下最新的 weeklyresult.csv 文件（按创建时间排序）
+    获取每个路径下最新的 weeklyresult.csv 文件（按修改时间排序）
 
     参数:
         folder_path: 文件夹路径，未提供则使用数据库配置或默认路径
         project: 项目名称（暂未使用，保留参数兼容性）
 
     返回:
-        每个路径下最新 weeklyresult.csv 文件路径列表（按创建时间降序排序）
+        每个路径下最新 weeklyresult.csv 文件路径列表（按修改时间降序排序）
 
     抛出:
         FileNotFoundError: 如果未找到文件
@@ -577,14 +608,44 @@ def get_latest_weeklyresult_csvs(folder_path: str = None, project: str = None) -
         matched = glob.glob(pattern)
         if not matched:
             continue
-        latest = max(matched, key=lambda x: os.path.getctime(x))
-        latest_files.append((latest, os.path.getctime(latest)))
+        latest = max(matched, key=lambda x: os.path.getmtime(x))
+        latest_files.append((latest, os.path.getmtime(latest)))
 
     if not latest_files:
         raise FileNotFoundError(f"未找到匹配的 weeklyresult.csv 文件: {', '.join(patterns)}")
 
     sorted_files = sorted(latest_files, key=lambda x: x[1], reverse=True)
     return [f[0] for f in sorted_files]
+
+
+def get_latest_weeklyresult_csvs_with_meta(folder_path: str = None, project: str = None) -> list:
+    """
+    获取每个路径下最新的 weeklyresult.csv 文件及元信息（按修改时间排序）
+    """
+    folder_paths = _resolve_weekly_result_folders(folder_path)
+    if not folder_paths:
+        raise FileNotFoundError("未配置 weeklyresult.csv 搜索路径")
+
+    latest_files = []
+    patterns = []
+    for folder in folder_paths:
+        pattern = os.path.join(folder, '*weeklyresult.csv')
+        patterns.append(pattern)
+        matched = glob.glob(pattern)
+        if not matched:
+            continue
+        latest = max(matched, key=lambda x: os.path.getmtime(x))
+        latest_files.append({
+            "path": latest,
+            "folder": folder,
+            "mtime": os.path.getmtime(latest),
+        })
+
+    if not latest_files:
+        raise FileNotFoundError(f"未找到匹配的 weeklyresult.csv 文件: {', '.join(patterns)}")
+
+    latest_files.sort(key=lambda item: item["mtime"], reverse=True)
+    return latest_files
 
 
 def parse_week_from_filename(filename: str) -> tuple:
@@ -705,24 +766,53 @@ def import_robot_components_csv(
     """
     from .models import RobotComponent, RobotGroup, RefreshLog
 
+    # 获取文件路径（支持多文件）
+    log_print("开始导入流程...")
+    csv_files = []
+    skipped_files = []
+    if file_path is None:
+        log_print("未指定文件路径，正在查找每个路径下最新CSV文件...")
+        candidates = get_latest_weeklyresult_csvs_with_meta(folder_path, project)
+        log_print(f"找到 {len(candidates)} 个 CSV 文件(每个路径最新):")
+        for i, info in enumerate(candidates, 1):
+            log_print(f"  {i}. {os.path.basename(info['path'])}")
+        for info in candidates:
+            last_state = _get_last_import_state(info["folder"])
+            last_mtime = last_state.get("mtime") if last_state else None
+            if last_mtime is not None and info["mtime"] <= float(last_mtime):
+                skipped_files.append({
+                    "path": info["path"],
+                    "folder": info["folder"],
+                })
+                continue
+            csv_files.append(info)
+    else:
+        log_print(f"使用指定文件: {file_path}")
+        csv_files = [{
+            "path": file_path,
+            "folder": os.path.dirname(file_path),
+            "mtime": os.path.getmtime(file_path),
+        }]
+
+    if not csv_files:
+        log_print("未发现更新的CSV文件，跳过同步")
+        return {
+            "success": True,
+            "skipped": True,
+            "message": "no new weeklyresult.csv to import",
+            "records_created": 0,
+            "records_updated": 0,
+            "records_deleted": 0,
+            "total_records": 0,
+            "shop_stats": {},
+            "skipped_files": skipped_files,
+        }
+
     # 步骤0：先归档上次的高风险数据（必须在导入新数据之前执行！）
     log_print("开始归档上次的高风险数据...")
     archive_result = archive_high_risk_robots()
     if archive_result.get('archived_count', 0) > 0:
         log_print(f"已归档 {archive_result['archived_count']} 条高风险数据到历史快照表")
-
-    # 获取文件路径（支持多文件）
-    log_print("开始导入流程...")
-    csv_files = []
-    if file_path is None:
-        log_print("未指定文件路径，正在查找每个路径下最新CSV文件...")
-        csv_files = get_latest_weeklyresult_csvs(folder_path, project)
-        log_print(f"找到 {len(csv_files)} 个 CSV 文件(每个路径最新):")
-        for i, f in enumerate(csv_files, 1):
-            log_print(f"  {i}. {os.path.basename(f)}")
-    else:
-        log_print(f"使用指定文件: {file_path}")
-        csv_files = [file_path]
 
     # 全局统计信息（累加所有文件）
     total_records_created = 0
@@ -773,7 +863,8 @@ def import_robot_components_csv(
     ]
     batch_size = 1000
 
-    for file_idx, current_file in enumerate(csv_files, 1):
+    for file_idx, file_info in enumerate(csv_files, 1):
+        current_file = file_info["path"]
         log_print(f"\n{'='*60}")
         log_print(f"正在处理第 {file_idx}/{len(csv_files)} 个文件: {os.path.basename(current_file)}")
         log_print(f"{'='*60}")
@@ -1014,6 +1105,12 @@ def import_robot_components_csv(
             all_shop_stats[shop]['created'] += stats['created']
             all_shop_stats[shop]['updated'] += stats['updated']
 
+        _set_last_import_state(
+            file_info["folder"],
+            current_file,
+            file_info["mtime"],
+        )
+
     # 所有文件处理完成
     log_print(f"\n{'='*60}")
     log_print(f"所有文件处理完成！")
@@ -1043,7 +1140,7 @@ def import_robot_components_csv(
     save_current_high_risk_robots()
 
     # 写入刷新日志（使用第一个文件的信息作为代表）
-    first_file = csv_files[0] if csv_files else "unknown"
+    first_file = csv_files[0]["path"] if csv_files else "unknown"
     first_week_start, _ = parse_week_from_filename(first_file)
 
     RefreshLog.objects.create(

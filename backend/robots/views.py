@@ -24,6 +24,66 @@ from celery.result import AsyncResult
 
 logger = logging.getLogger(__name__)
 
+DISCONNECTED_FIELDS = [
+    "error1_c1",
+    "tem1_m",
+    "tem2_m",
+    "tem3_m",
+    "tem4_m",
+    "tem5_m",
+    "tem6_m",
+    "tem7_m",
+    "a1_e_rate",
+    "a2_e_rate",
+    "a3_e_rate",
+    "a4_e_rate",
+    "a5_e_rate",
+    "a6_e_rate",
+    "a7_e_rate",
+    "a1_rms",
+    "a2_rms",
+    "a3_rms",
+    "a4_rms",
+    "a5_rms",
+    "a6_rms",
+    "a7_rms",
+    "a1_e",
+    "a2_e",
+    "a3_e",
+    "a4_e",
+    "a5_e",
+    "a6_e",
+    "a7_e",
+    "q1",
+    "q2",
+    "q3",
+    "q4",
+    "q5",
+    "q6",
+    "q7",
+    "curr_a1_max",
+    "curr_a2_max",
+    "curr_a3_max",
+    "curr_a4_max",
+    "curr_a5_max",
+    "curr_a6_max",
+    "curr_a7_max",
+    "curr_a1_min",
+    "curr_a2_min",
+    "curr_a3_min",
+    "curr_a4_min",
+    "curr_a5_min",
+    "curr_a6_min",
+    "curr_a7_min",
+]
+
+
+def build_disconnected_q(prefix=""):
+    query = Q()
+    for field in DISCONNECTED_FIELDS:
+        query &= Q(**{f"{prefix}{field}__isnull": True})
+    return query
+
 
 class StandardResultsSetPagination(PageNumberPagination):
     page_size = 20
@@ -50,7 +110,7 @@ class RobotGroupViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         end_date = request.query_params.get('end_date')
 
         # 使用 annotate 预先计算统计数据，避免 N+1 查询
-        from django.db.models import Count, Q
+        disconnected_q = build_disconnected_q("components__")
 
         if start_date and end_date:
             try:
@@ -64,38 +124,44 @@ class RobotGroupViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
                     high_risk_count=Count(
                         'components',
                         filter=Q(components__level='H') & Q(components__riskevent__triggered_at__range=(start_dt, end_dt))
-                    )
+                    ),
+                    disconnected_count=Count('components', filter=disconnected_q),
                 ).distinct()
 
                 for group in groups:
                     group._stats = {
                         "total": group.total_count,
                         "highRisk": group.high_risk_count,
+                        "disconnected": group.disconnected_count,
                         "timeRange": f"{start_date} ~ {end_date}"
                     }
             except ValueError:
                 # 日期格式错误，使用默认统计
                 groups = self.get_queryset().annotate(
                     total_count=Count('components'),
-                    high_risk_count=Count('components', filter=Q(components__level='H'))
+                    high_risk_count=Count('components', filter=Q(components__level='H')),
+                    disconnected_count=Count('components', filter=disconnected_q),
                 )
 
                 for group in groups:
                     group._stats = {
                         "total": group.total_count,
                         "highRisk": group.high_risk_count,
+                        "disconnected": group.disconnected_count,
                     }
         else:
             # 默认统计（不限制时间范围）
             groups = self.get_queryset().annotate(
                 total_count=Count('components'),
-                high_risk_count=Count('components', filter=Q(components__level='H'))
+                high_risk_count=Count('components', filter=Q(components__level='H')),
+                disconnected_count=Count('components', filter=disconnected_q),
             )
 
             for group in groups:
                 group._stats = {
                     "total": group.total_count,
                     "highRisk": group.high_risk_count,
+                    "disconnected": group.disconnected_count,
                 }
 
         serializer = self.get_serializer(groups, many=True)
@@ -487,18 +553,19 @@ class RobotComponentViewSet(
         返回:
             {
                 "total": 156,
-                "high_risk": 14
+                "high_risk": 14,
+                "disconnected": 8
             }
         """
-        from django.db.models import Count, Q
-
         qs = self.get_queryset()
         total = qs.count()
         high_risk = qs.filter(level='H').count()
+        disconnected = qs.filter(build_disconnected_q()).count()
 
         return Response({
             'total': total,
-            'high_risk': high_risk
+            'high_risk': high_risk,
+            'disconnected': disconnected,
         })
 
 
@@ -890,3 +957,111 @@ def get_last_sync_time(request):
         'records_deleted': records_deleted,
         'total_records': total_records,
     })
+
+
+# API 端点：获取关键路径告警数据
+@api_view(['GET'])
+def get_keypath_warnings(request):
+    """
+    获取关键路径告警数据（从 keypath 数据库的 keypath_warn 表）
+
+    查询参数:
+        robot: 机器人名称（可选，按robot字段筛选）
+        limit: 返回记录数限制（可选，默认10）
+
+    返回:
+        {
+            "recent_alerts": [
+                {
+                    "id": 1,
+                    "robot": "VB25_130RB_100",
+                    "name_c": "/R1/tool_1_couple.SRC",
+                    "p_name": "XL_BHF_NP005",
+                    "time": "2026-02-06T10:12:39",
+                    "triggered_at": "2026-02-06T10:12:39"
+                },
+                ...
+            ]
+        }
+    """
+    import os
+    from pymysql import Connect
+    from datetime import datetime
+
+    robot = request.query_params.get('robot', '').strip()
+    limit = int(request.query_params.get('limit', 10))
+
+    try:
+        # 连接到 keypath 数据库
+        connection = Connect(
+            host=os.getenv('KEY_DB_HOST', '20.212.53.247'),
+            port=int(os.getenv('KEY_DB_PORT', 3306)),
+            user=os.getenv('KEY_DB_USER', 'key'),
+            password=os.getenv('KEY_DB_PASSWORD', '123456'),
+            database=os.getenv('KEY_DB_NAME', 'key'),
+            charset='utf8mb4'
+        )
+
+        with connection.cursor() as cursor:
+            # 构建查询（注意：表没有id字段，需要用其他方式生成）
+            if robot:
+                sql = """
+                    SELECT robot, Name_C, P_name, time
+                    FROM keypath_warn
+                    WHERE robot = %s
+                    ORDER BY time DESC
+                    LIMIT %s
+                """
+                cursor.execute(sql, (robot, limit))
+            else:
+                sql = """
+                    SELECT robot, Name_C, P_name, time
+                    FROM keypath_warn
+                    ORDER BY time DESC
+                    LIMIT %s
+                """
+                cursor.execute(sql, (limit,))
+
+            results = cursor.fetchall()
+
+            # 转换为前端期望的格式
+            recent_alerts = []
+            for idx, row in enumerate(results, 1):
+                # 处理时间格式
+                time_val = row[3]
+                if isinstance(time_val, datetime):
+                    triggered_at = time_val.isoformat()
+                else:
+                    triggered_at = str(time_val) if time_val else None
+
+                # 按照用户要求格式显示：robot在程序Name_C中的P_name轨迹点扭矩持续升高
+                robot = row[0] or ''
+                name_c = row[1] or ''
+                p_name = row[2] or '未指定轨迹点'
+
+                # 如果P_name为空，显示不同的消息
+                if row[2] and row[2].strip():
+                    message = f"{robot}在程序{name_c}中的{p_name}轨迹点扭矩持续升高"
+                else:
+                    message = f"{robot}在程序{name_c}中检测到扭矩持续升高"
+
+                recent_alerts.append({
+                    'id': idx,  # 使用索引作为id
+                    'robot': robot,
+                    'name_c': name_c,
+                    'p_name': p_name,
+                    'time': triggered_at,
+                    'triggered_at': triggered_at,
+                    'robot_name': robot,  # 兼容前端显示
+                    'message': message
+                })
+
+        return Response({
+            'recent_alerts': recent_alerts
+        })
+
+    except Exception as e:
+        logger.error(f"获取关键路径告警失败: {e}")
+        return Response({
+            'recent_alerts': []
+        })

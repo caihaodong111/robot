@@ -51,8 +51,9 @@
             </div>
             <div class="main-value">{{ activeGroupName }} <small>WORKSPACE</small></div>
             <div class="status-mini-tags">
-              <span class="tag risk">高风险 {{ groupStats.highRisk }}</span>
-              <span class="tag total">总数 {{ groupStats.total }}</span>
+              <span class="tag risk">High Risk {{ groupStats.highRisk }}</span>
+              <span class="tag disconnected">Disconnected {{ groupStats.disconnected }}</span>
+              <span class="tag total">Total {{ groupStats.total }}</span>
             </div>
           </div>
         </button>
@@ -78,7 +79,8 @@
               <span class="ws-name">{{ group.name }}</span>
               <div class="ws-badges">
                 <span v-if="group.stats.highRisk > 0" class="badge-risk">{{ group.stats.highRisk }}</span>
-                <span class="badge-total">总数 {{ group.total }}</span>
+                <span class="badge-disconnected">Disconnected {{ group.stats.disconnected }}</span>
+                <span class="badge-total">Total {{ group.total }}</span>
               </div>
             </div>
             <div class="ws-progress-track">
@@ -221,14 +223,14 @@
 
           <!-- all 标签页的详细列 -->
           <template v-if="activeTab === 'all'">
-            <el-table-column prop="mark" label="mark" width="45" fixed="left" align="center" sortable>
+            <el-table-column prop="mark" label="mark" width="45" fixed="left" align="center" sortable class-name="mark-column">
               <template #default="{ row }">
                 <el-button type="primary" link class="mono" @click="openEdit(row, 'mark')">
                   {{ row.mark ?? 0 }}
                 </el-button>
               </template>
             </el-table-column>
-            <el-table-column label="remark" width="130" fixed="left" class-name="fixed-remark-col" sortable :sort-by="(row) => row.remark || ''">
+            <el-table-column label="remark" width="130" fixed="left" class-name="fixed-remark-col remark-column" sortable :sort-by="(row) => row.remark || ''">
               <template #default="{ row }">
                 <el-button type="primary" link class="remark-link" @click="openEdit(row, 'remark')">
                   {{ row.remark || '-' }}
@@ -651,7 +653,8 @@
     <el-dialog
       v-model="chartDialogVisible"
       :title="`${chartDialogData.robotPartNo} - ${chartDialogData.axisName} Error Rate Trend Chart`"
-      width="900px"
+      width="620px"
+      align-center
       center
       class="dark-dialog chart-dialog"
     >
@@ -664,9 +667,6 @@
           <p>No chart data available</p>
         </div>
       </div>
-      <template #footer>
-        <el-button @click="chartDialogVisible = false">Close</el-button>
-      </template>
     </el-dialog>
   </div>
 </template>
@@ -915,7 +915,8 @@ const groups = computed(() => {
       total: group.stats?.total ?? group.expected_total ?? 0,
       stats: {
         highRisk: group.stats?.highRisk ?? 0,
-        historyHighRisk: group.stats?.historyHighRisk ?? 0
+        historyHighRisk: group.stats?.historyHighRisk ?? 0,
+        disconnected: group.stats?.disconnected ?? 0
       }
     }
   })
@@ -929,12 +930,13 @@ const activeGroupName = computed(() => {
 
 const groupStats = computed(() => {
   if (!selectedGroup.value) {
-    return { highRisk: 0, historyHighRisk: 0, total: 0 }
+    return { highRisk: 0, historyHighRisk: 0, disconnected: 0, total: 0 }
   }
   const group = groups.value.find((g) => g.key === selectedGroup.value)
   return {
     highRisk: group?.stats?.highRisk ?? 0,
     historyHighRisk: group?.stats?.historyHighRisk ?? 0,
+    disconnected: group?.stats?.disconnected ?? 0,
     total: group?.total ?? 0
   }
 })
@@ -1222,6 +1224,12 @@ const handleRefresh = () => {
 
     // 数据更新后强制重新登录编辑
     clearAuthState()
+
+    if (result.skipped) {
+      ElMessage.info('未发现更新的CSV文件，已跳过同步')
+      await fetchLastSyncTime()
+      return
+    }
 
     // 显示成功消息（包含各车间统计）
     let message = `同步成功！新增 ${result.records_created || 0} 条，更新 ${result.records_updated || 0} 条`
@@ -2365,6 +2373,12 @@ onUnmounted(() => {
   background: rgba(136, 153, 170, 0.1);
 }
 
+.tag.disconnected {
+  color: #f59e0b;
+  border-color: rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.12);
+}
+
 /* === 数据表格区域 === */
 .data-table-section {
   padding: 0;
@@ -2586,9 +2600,36 @@ onUnmounted(() => {
   text-align: left;
 }
 
+.data-table-section :deep(.el-table__body td.robot-column .cell),
+.data-table-section :deep(.el-table__body td.robot-column .el-button),
+.data-table-section :deep(.el-table__body td.robot-column .mono),
+.data-table-section :deep(.el-table__body td.reference-column .cell),
+.data-table-section :deep(.el-table__body td.reference-column .el-button),
+.data-table-section :deep(.el-table__body td.reference-column .mono),
+.data-table-section :deep(.el-table__body td.mark-column .cell),
+.data-table-section :deep(.el-table__body td.mark-column .el-button),
+.data-table-section :deep(.el-table__body td.mark-column .mono),
+.data-table-section :deep(.el-table__body td.remark-column .cell),
+.data-table-section :deep(.el-table__body td.remark-column .el-button),
+.data-table-section :deep(.el-table__body td.remark-column .mono),
+.data-table-section :deep(.el-table__body td.number-column .cell),
+.data-table-section :deep(.el-table__body td.number-column .el-button),
+.data-table-section :deep(.el-table__body td.number-column .mono) {
+  font-size: 11px;
+}
+
 .data-table-section :deep(.el-table__header th.number-column .cell),
 .data-table-section :deep(.el-table__body td.number-column .cell) {
   padding-right: 18px;
+}
+
+.data-table-section :deep(.el-table__body td.number-column .cell),
+.data-table-section :deep(.el-table__body td.number-column .el-button),
+.data-table-section :deep(.el-table__body td.number-column .mono) {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  word-break: break-word;
 }
 
 .data-table-section :deep(.el-table__header th.type-column .cell),
@@ -3280,6 +3321,15 @@ onUnmounted(() => {
   font-weight: 800;
 }
 
+.badge-disconnected {
+  background: rgba(245, 158, 11, 0.18);
+  color: #f59e0b;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 800;
+}
+
 .badge-total {
   color: #8899aa;
   font-size: 11px;
@@ -3315,24 +3365,40 @@ onUnmounted(() => {
 }
 
 /* === 图表弹窗样式 === */
-:deep(.chart-dialog) {
-  max-width: 95vw;
-  margin-top: 5vh !important;
+:deep(.chart-dialog .el-dialog) {
+  max-width: 78vw;
+  max-height: 95vh;
+  height: 92vh;
 }
 
 :deep(.chart-dialog .el-dialog__header) {
-  padding: 16px 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 6px 44px;
+  border-bottom: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 :deep(.chart-dialog .el-dialog__title) {
   font-size: 15px;
   font-weight: 700;
   color: #fff;
+  line-height: 1;
 }
 
 :deep(.chart-dialog .el-dialog__body) {
   padding: 0;
+  height: 84vh;
+}
+
+:deep(.chart-dialog .el-dialog__headerbtn) {
+  top: 6px;
+  right: 12px;
+}
+
+:deep(.chart-dialog .el-dialog__footer) {
+  padding: 8px 16px 12px;
+  border-top: none;
 }
 
 .chart-dialog-content {
@@ -3341,18 +3407,24 @@ onUnmounted(() => {
   justify-content: center;
   background: #000;
   padding: 0;
+  height: 100%;
 }
 
 .chart-image-wrapper {
   width: 100%;
+  height: 100%;
   display: flex;
   justify-content: center;
+  align-items: center;
 }
 
 .chart-image {
-  width: 100%;
+  width: auto;
   height: auto;
+  max-width: 100%;
+  max-height: 100%;
   display: block;
+  object-fit: contain;
 }
 
 .chart-placeholder {

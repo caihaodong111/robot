@@ -19,25 +19,14 @@ load_dotenv()
 def get_db_engine():
     """
     从.env或Django settings获取数据库配置并创建SQLAlchemy引擎
-    支持两种配置方式：
-    1. Django settings (DATABASES)
-    2. .env文件 (DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT)
+    机器人表数据在PROGRAM CYCLE SYNC数据库（SG数据库）中
     """
-    # 优先使用Django settings
-    if hasattr(settings, 'DATABASES') and 'default' in settings.DATABASES:
-        db_config = settings.DATABASES['default']
-        user = db_config.get('USER', os.getenv('DB_USER', 'root'))
-        password = db_config.get('PASSWORD', os.getenv('DB_PASSWORD', ''))
-        host = db_config.get('HOST', os.getenv('DB_HOST', 'localhost'))
-        port = db_config.get('PORT', os.getenv('DB_PORT', '3306'))
-        database = db_config.get('NAME', os.getenv('DB_NAME', 'showdata'))
-    else:
-        # 使用.env配置
-        user = os.getenv('DB_USER', 'root')
-        password = os.getenv('DB_PASSWORD', '')
-        host = os.getenv('DB_HOST', 'localhost')
-        port = os.getenv('DB_PORT', '3306')
-        database = os.getenv('DB_NAME', 'showdata')
+    # 优先使用SG数据库配置（PROGRAM CYCLE SYNC）
+    user = os.getenv('SG_DB_USER', os.getenv('DB_USER', 'root'))
+    password = os.getenv('SG_DB_PASSWORD', os.getenv('DB_PASSWORD', ''))
+    host = os.getenv('SG_DB_HOST', os.getenv('DB_HOST', 'localhost'))
+    port = os.getenv('SG_DB_PORT', os.getenv('DB_PORT', '3306'))
+    database = os.getenv('SG_DB_NAME', os.getenv('DB_NAME', 'showdata'))
 
     engine = create_engine(f'mysql+pymysql://{user}:{password}@{host}:{port}/{database}')
     return engine

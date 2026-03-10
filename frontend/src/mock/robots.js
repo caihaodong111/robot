@@ -295,7 +295,8 @@ export const getGroupStats = (groupKey) => {
     offline: 0,
     maintenance: 0,
     highRisk: 0,
-    historyHighRisk: 0
+    historyHighRisk: 0,
+    disconnected: 0
   }
 
   for (const robot of robots) {
@@ -303,6 +304,7 @@ export const getGroupStats = (groupKey) => {
     if (robot.isHighRisk) stats.highRisk += 1
     if (robot.riskHistory?.length) stats.historyHighRisk += 1
   }
+  stats.disconnected = stats.offline
 
   return stats
 }

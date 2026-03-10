@@ -16,6 +16,17 @@
             <span class="dot pulse"></span> 最近更新时间：{{ lastUpdateTime }}
           </div>
         </div>
+        <div class="header-actions">
+          <el-button
+            :icon="Refresh"
+            @click="handleSync"
+            :loading="syncing"
+            :disabled="syncing"
+            class="ios-btn"
+          >
+            {{ syncing ? '同步中...' : '同步数据' }}
+          </el-button>
+        </div>
       </header>
 
       <div class="dashboard-content">
@@ -44,6 +55,13 @@
                     <span class="connection-label">Total</span>
                   </div>
                   <span class="connection-count">{{ connectionStats.total }}</span>
+                </div>
+                <div class="connection-item disconnected">
+                  <div class="connection-indicator">
+                    <span class="dot dot-disconnected"></span>
+                    <span class="connection-label">Disconnected</span>
+                  </div>
+                  <span class="connection-count">{{ connectionStats.disconnected }}</span>
                 </div>
                 <div class="connection-item high-risk">
                   <div class="connection-indicator">
@@ -100,17 +118,21 @@
                 </div>
 
                 <div class="workshop-data-col">
-                  <div class="mini-stat-row">
-                    <label>High Risk</label>
-                    <span class="value" :class="{ 'has-risk': group.stats?.highRisk > 0 }">
-                      {{ group.stats?.highRisk || 0 }}
-                    </span>
-                  </div>
-                  <div class="mini-stat-row">
-                    <label>Total</label>
-                    <span class="value normal">{{ group.stats?.total || 0 }}</span>
-                  </div>
+                <div class="mini-stat-row">
+                  <label>High Risk</label>
+                  <span class="value" :class="{ 'has-risk': group.stats?.highRisk > 0 }">
+                    {{ group.stats?.highRisk || 0 }}
+                  </span>
                 </div>
+                <div class="mini-stat-row">
+                  <label>Disconnected</label>
+                  <span class="value disconnected">{{ group.stats?.disconnected || 0 }}</span>
+                </div>
+                <div class="mini-stat-row">
+                  <label>Total</label>
+                  <span class="value normal">{{ group.stats?.total || 0 }}</span>
+                </div>
+              </div>
               </div>
             </div>
           </div>
@@ -175,9 +197,9 @@ import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import * as echarts from 'echarts'
 import { ElMessage } from 'element-plus'
-import { Monitor } from '@element-plus/icons-vue'
+import { Monitor, Refresh } from '@element-plus/icons-vue'
 import { DEMO_MODE } from '@/config/appConfig'
-import { getRobotComponents, getRobotGroups, getRiskEventStatistics, getRobotStatsSummary } from '@/api/robots'
+import { getRobotComponents, getRobotGroups, getRiskEventStatistics, getRobotStatsSummary, getKeypathWarnings, importRobotComponents } from '@/api/robots'
 import { createRiskEvents, getGroupStats, getRobotsByGroup, robotGroups as mockGroups } from '@/mock/robots'
 import request from '@/utils/request'
 
@@ -188,12 +210,14 @@ const alertLoading = ref(false)
 const connectionLoading = ref(false)
 const connectionStats = ref({
   total: 0,
-  highRisk: 0
+  highRisk: 0,
+  disconnected: 0
 })
 const overallTotal = ref(null)
 const groupsData = ref([])
 const recentAlerts = ref([])
 const lastSyncTime = ref(null)
+const syncing = ref(false)
 const lastUpdateTime = computed(() => {
   if (!lastSyncTime.value) return '暂无同步记录'
   const syncTime = new Date(lastSyncTime.value)
@@ -276,7 +300,14 @@ const groupRows = computed(() => {
 
 const formatTimeOnly = (value) => {
   if (!value) return '-'
-  return new Date(value).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+  const date = new Date(value)
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  const seconds = String(date.getSeconds()).padStart(2, '0')
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
 }
 
 const levelTagType = (level) => {
@@ -454,7 +485,7 @@ const renderWorkshopCharts = () => {
       series: [
         {
           type: 'pie',
-          radius: ['60%', '85%'],
+          radius: ['65%', '94%'],
           center: ['50%', '50%'],
           silent: true,
           label: { show: false },
@@ -483,13 +514,13 @@ const renderWorkshopCharts = () => {
             formatter: () => `{${hasHighRisk ? 'value' : 'valueSafe'}|${percentage}%}`,
             rich: {
               value: {
-                fontSize: 16,
+                fontSize: 13,
                 fontWeight: 800,
                 color: '#ff4d4f',
                 textShadow: '0 0 8px rgba(255, 77, 79, 0.6)'
               },
               valueSafe: {
-                fontSize: 16,
+                fontSize: 13,
                 fontWeight: 700,
                 color: '#00c3ff',
                 textShadow: '0 0 6px rgba(0, 195, 255, 0.5)'
@@ -509,9 +540,13 @@ const loadAlerts = async () => {
     if (DEMO_MODE) {
       recentAlerts.value = createRiskEvents(8) // 稍微多加载几个以填充左侧
     } else {
-      const data = await getRiskEventStatistics()
+      // 使用关键路径告警API获取数据
+      const data = await getKeypathWarnings({ limit: 8 })
       recentAlerts.value = data?.recent_alerts || []
     }
+  } catch (error) {
+    console.error('加载告警数据失败:', error)
+    recentAlerts.value = []
   } finally { alertLoading.value = false }
 }
 
@@ -537,7 +572,8 @@ const loadConnectionStats = async () => {
       // 模拟数据
       connectionStats.value = {
         total: 156,
-        highRisk: 14
+        highRisk: 14,
+        disconnected: 6
       }
       overallTotal.value = 156
     } else {
@@ -545,7 +581,8 @@ const loadConnectionStats = async () => {
       const data = await getRobotStatsSummary()
       connectionStats.value = {
         total: data.total || 0,
-        highRisk: data.high_risk || 0
+        highRisk: data.high_risk || 0,
+        disconnected: data.disconnected || 0
       }
       overallTotal.value = data?.total ?? null
     }
@@ -553,20 +590,123 @@ const loadConnectionStats = async () => {
     console.error('加载连接状态失败:', error)
     connectionStats.value = {
       total: 0,
-      highRisk: 0
+      highRisk: 0,
+      disconnected: 0
     }
   } finally {
     connectionLoading.value = false
   }
 }
 
-const handleRefresh = async () => {
+const refreshDashboardData = async () => {
   await Promise.all([loadGroupsData(), loadAlerts(), fetchLastSyncTime(), loadConnectionStats()])
   renderMainPieChart()
   renderWorkshopCharts()
 }
 
+const handleRefresh = async () => {
+  await refreshDashboardData()
+}
+
+const handleSync = () => {
+  if (syncing.value) {
+    ElMessage.warning('数据同步中，请稍候...')
+    return
+  }
+
+  syncing.value = true
+  const syncStartTime = Date.now()
+  sessionStorage.setItem('robot_sync_state', JSON.stringify({
+    syncing: true,
+    startTime: syncStartTime
+  }))
+
+  importRobotComponents({}).then(async (result) => {
+    syncing.value = false
+    sessionStorage.removeItem('robot_sync_state')
+
+    if (result.skipped) {
+      ElMessage.info('未发现更新的CSV文件，已跳过同步')
+      await refreshDashboardData()
+      return
+    }
+
+    let message = `同步成功！新增 ${result.records_created || 0} 条，更新 ${result.records_updated || 0} 条`
+    if (result.shop_stats && Object.keys(result.shop_stats).length > 0) {
+      const shopDetails = Object.entries(result.shop_stats)
+        .map(([shop, stats]) => `${shop}: 新增${stats.created} 更新${stats.updated}`)
+        .join(' | ')
+      message += `\n\n各车间详情: ${shopDetails}`
+    }
+    ElMessage.success({
+      message: message,
+      duration: 5000,
+      dangerouslyUseHTMLString: false
+    })
+
+    await refreshDashboardData()
+  }).catch((error) => {
+    syncing.value = false
+    sessionStorage.removeItem('robot_sync_state')
+    console.error('导入数据失败:', error)
+    ElMessage.error(`同步失败：${error.message || '未知错误'}`)
+    refreshDashboardData()
+  })
+}
+
+let syncPollTimer = null
+const pollSyncStatus = async () => {
+  if (syncPollTimer) {
+    clearInterval(syncPollTimer)
+  }
+
+  syncPollTimer = setInterval(async () => {
+    try {
+      const response = await request.get('/robots/last_sync_time/')
+      const lastSync = response.last_sync_time
+      if (lastSync) {
+        const syncTime = new Date(lastSync).getTime()
+        const now = Date.now()
+        const timeDiff = now - syncTime
+        if (timeDiff < 5000 && timeDiff > 0) {
+          syncing.value = false
+          sessionStorage.removeItem('robot_sync_state')
+          clearInterval(syncPollTimer)
+          syncPollTimer = null
+          ElMessage.success('数据同步已成功完成')
+          await refreshDashboardData()
+        }
+      }
+    } catch (error) {
+      console.error('检查同步状态失败:', error)
+    }
+  }, 2000)
+}
+
+const checkAndRestoreSyncState = async () => {
+  try {
+    const syncStateStr = sessionStorage.getItem('robot_sync_state')
+    if (!syncStateStr) return
+
+    const syncState = JSON.parse(syncStateStr)
+    const SYNC_TIMEOUT = 5 * 60 * 1000
+    const now = Date.now()
+
+    if (now - syncState.startTime > SYNC_TIMEOUT) {
+      sessionStorage.removeItem('robot_sync_state')
+      return
+    }
+
+    syncing.value = true
+    pollSyncStatus()
+  } catch (error) {
+    console.error('检查同步状态失败:', error)
+    sessionStorage.removeItem('robot_sync_state')
+  }
+}
+
 onMounted(async () => {
+  await checkAndRestoreSyncState()
   await Promise.all([loadGroupsData(), loadAlerts(), fetchLastSyncTime(), loadConnectionStats()])
 
   nextTick(() => {
@@ -576,7 +716,13 @@ onMounted(async () => {
   window.addEventListener('resize', () => chartInstances.forEach(c => c.resize()))
 })
 
-onBeforeUnmount(() => chartInstances.forEach(c => c.dispose()))
+onBeforeUnmount(() => {
+  if (syncPollTimer) {
+    clearInterval(syncPollTimer)
+    syncPollTimer = null
+  }
+  chartInstances.forEach(c => c.dispose())
+})
 watch(groupRows, () => {
   renderMainPieChart()
   renderWorkshopCharts()
@@ -617,6 +763,7 @@ watch(groupRows, () => {
   flex-direction: column;
   gap: 16px;
   overflow: hidden;
+  align-self: flex-start;
 }
 
 .main-chart-card {
@@ -690,6 +837,11 @@ watch(groupRows, () => {
   text-shadow: 0 0 8px rgba(239, 68, 68, 0.4);
 }
 
+.connection-item.disconnected .connection-count {
+  color: #f59e0b;
+  text-shadow: 0 0 8px rgba(245, 158, 11, 0.45);
+}
+
 .dot-total {
   background: #00c3ff;
   box-shadow: 0 0 6px #00c3ff;
@@ -700,11 +852,18 @@ watch(groupRows, () => {
   box-shadow: 0 0 6px #ef4444;
 }
 
+.dot-disconnected {
+  background: #f59e0b;
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.9);
+}
+
 .feed-panel {
-  flex: 1 1 auto;
-  min-height: 200px;
+  flex: 0 0 auto;
+  height: 420px;
+  max-height: 420px;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 /* 右侧面板 */
@@ -717,11 +876,14 @@ watch(groupRows, () => {
 
 /* 12宫格布局 */
 .workshop-grid {
+  flex: 1;
   display: grid;
-  grid-template-columns: repeat(4, 1fr); /* 4 列 */
-  grid-template-rows: repeat(3, 1fr);    /* 3 行 */
+  grid-template-columns: repeat(4, minmax(0, 1fr)); /* 4 列 */
+  grid-auto-rows: minmax(150px, 1fr);
   gap: 16px;
   height: 100%;
+  align-content: stretch;
+  min-height: 0;
 }
 
 /* 车间卡片优化 */
@@ -730,6 +892,8 @@ watch(groupRows, () => {
   flex-direction: column;
   cursor: pointer;
   transition: transform 0.2s;
+  height: 100%;
+  overflow: hidden;
 }
 
 .workshop-card:hover {
@@ -741,13 +905,16 @@ watch(groupRows, () => {
   flex: 1;
   display: flex;
   align-items: center;
-  padding: 0 16px 10px;
+  gap: 6px;
+  padding: 0 12px 10px;
+  min-height: 0;
 }
 
 .workshop-chart-wrapper {
-  width: 90px;
-  height: 90px;
-  flex-shrink: 0;
+  width: clamp(60px, 26%, 86px);
+  height: auto;
+  aspect-ratio: 1 / 1;
+  flex: 0 0 auto;
 }
 
 .workshop-mini-chart {
@@ -756,32 +923,44 @@ watch(groupRows, () => {
 }
 
 .workshop-data-col {
-  flex: 1;
+  flex: 1 1 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding-left: 12px;
+  gap: 6px;
+  min-width: 0;
+  padding-left: 0;
 }
 
 .mini-stat-row {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
+  gap: 6px;
   background: rgba(0, 0, 0, 0.2);
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.45);
   padding: 6px 10px;
   border-radius: 6px;
+  width: 100%;
+  overflow: hidden;
 }
 
 .mini-stat-row label {
-  font-size: 10px;
+  font-size: clamp(9px, 1vw, 10px);
   color: #8899aa;
+  min-width: 0;
+  flex: 0 0 auto;
 }
 
 .mini-stat-row .value {
-  font-size: 14px;
+  font-size: clamp(10px, 1.05vw, 12px);
   font-weight: 700;
   color: #fff;
   font-family: 'SF Mono', monospace;
+  flex: 0 0 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mini-stat-row .value.has-risk {
@@ -791,6 +970,11 @@ watch(groupRows, () => {
 
 .mini-stat-row .value.normal {
   color: #00c3ff;
+}
+
+.mini-stat-row .value.disconnected {
+  color: #f59e0b;
+  text-shadow: 0 0 8px rgba(245, 158, 11, 0.6);
 }
 
 /* 头部样式微调 */
@@ -809,20 +993,24 @@ watch(groupRows, () => {
 .log-stream {
   flex: 1;
   overflow-y: auto;
-  padding: 12px;
+  padding: 10px 12px;
+  min-height: 0;
 }
 
 .log-stream::-webkit-scrollbar {
-  width: 4px;
+  width: 3px;
 }
 .log-stream::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+.log-stream::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
 }
 
 .log-row {
   align-items: flex-start;
-  padding: 12px;
+  padding: 8px 10px;
   background: rgba(0,0,0,0.15);
   margin-bottom: 8px;
 }
@@ -832,19 +1020,20 @@ watch(groupRows, () => {
 .log-info {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 }
 
 .log-info p {
-  font-size: 12px;
-  line-height: 1.4;
+  font-size: 11px;
+  line-height: 1.3;
   color: #e0e6ed;
   margin: 0;
 }
 
 .log-time {
-  font-size: 10px;
+  font-size: 9px;
   color: #5c6b7f;
+  font-family: 'SF Mono', 'Monaco', monospace;
 }
 
 /* 媒体查询：适配小屏幕 */
@@ -861,6 +1050,10 @@ watch(groupRows, () => {
     height: auto;
     grid-auto-rows: 140px; /* 固定高度 */
   }
+}
+@media (max-width: 900px) {
+  .page-header { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .header-actions { flex-wrap: wrap; }
 }
 
 /* === 背景与环境样式 === */
@@ -893,6 +1086,7 @@ watch(groupRows, () => {
 @keyframes pulseDot { 0%, 100% { transform: scale(1); opacity: 0.8; } 50% { transform: scale(1.5); opacity: 1; } }
 .ios-btn { background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.12); color: #fff; border-radius: 999px; padding: 6px 14px; }
 .ios-btn:hover { background: rgba(255, 255, 255, 0.12); }
+.header-actions { display: flex; align-items: center; gap: 12px; }
 .page-header { display: flex; justify-content: space-between; align-items: flex-end; padding-bottom: 15px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); margin-bottom: 0; }
 .title-group { display: flex; flex-direction: column; gap: 6px; }
 .cell-header { padding: 12px 15px; font-size: 12px; color: #c0ccda; font-weight: bold; border-bottom: 1px solid rgba(255, 255, 255, 0.06); letter-spacing: 1px; display: flex; align-items: center; gap: 10px; }
@@ -904,13 +1098,19 @@ watch(groupRows, () => {
   box-shadow: 0 0 6px #ef4444;
 }
 
+/* 覆盖通用 dot 的绿色，确保断开连接点为黄色 */
+.connection-item.disconnected .dot {
+  background: #f59e0b;
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.9);
+}
+
 /* 日志流标签样式 */
-.log-tag { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-.log-tag.critical { background: #ff4444; box-shadow: 0 0 8px #ff4444; }
-.log-tag.high { background: #ffaa00; box-shadow: 0 0 8px #ffaa00; }
-.log-tag.medium { background: #00c3ff; box-shadow: 0 0 8px #00c3ff; }
+.log-tag { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; margin-top: 3px; }
+.log-tag.critical { background: #ff4444; box-shadow: 0 0 6px #ff4444; }
+.log-tag.high { background: #ffaa00; box-shadow: 0 0 6px #ffaa00; }
+.log-tag.medium { background: #00c3ff; box-shadow: 0 0 6px #00c3ff; }
 .log-tag.low { background: #00ffcc; }
-.loading-state, .no-data { text-align: center; padding: 40px 0; color: #8899aa; font-size: 12px; }
+.loading-state, .no-data { text-align: center; padding: 60px 0; color: #8899aa; font-size: 11px; }
 
 /* === 入场动画类 === */
 .entrance-slide-in { animation: slideInFade 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards; opacity: 0; transform: translateX(-40px); }

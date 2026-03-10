@@ -275,3 +275,14 @@ export function getEditAuthStatus(params) {
     params
   })
 }
+
+// ==================== 关键路径告警 API ====================
+
+// 获取关键路径告警数据（从keypath数据库的keypath_warn表）
+export function getKeypathWarnings(params) {
+  return request({
+    url: '/robots/keypath-warnings/',
+    method: 'get',
+    params
+  })
+}

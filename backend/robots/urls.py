@@ -14,6 +14,7 @@ from .views import (
     RobotReferenceDictViewSet,
     bi_view,
     get_last_sync_time,
+    get_keypath_warnings,
 )
 from .auth_views import (
     verify_edit_credentials,
@@ -53,6 +54,7 @@ urlpatterns = [
     path("bi/", bi_view, name="robot-bi"),
     path("charts/<path:filename>", serve_chart, name="robot-chart"),
     path("last_sync_time/", get_last_sync_time, name="last-sync-time"),
+    path("keypath-warnings/", get_keypath_warnings, name="keypath-warnings"),
     # 编辑认证相关接口
     path("auth/verify/", verify_edit_credentials, name="verify-edit-credentials"),
     path("auth/status/", get_edit_auth_status, name="edit-auth-status"),
