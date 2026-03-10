@@ -10,11 +10,12 @@ export function getRobotGroups(params) {
 }
 
 // 获取机器人部件列表
-export function getRobotComponents(params) {
+export function getRobotComponents(params, options = {}) {
   return request({
     url: '/robots/components/',
     method: 'get',
-    params
+    params,
+    ...options
   })
 }
 
@@ -214,11 +215,12 @@ export function getImportRobotComponentsStatus(params) {
 // ==================== 历史高风险机器人 API ====================
 
 // 获取历史高风险机器人列表
-export function getHighRiskHistories(params) {
+export function getHighRiskHistories(params, options = {}) {
   return request({
     url: '/robots/high-risk-histories/',
     method: 'get',
-    params
+    params,
+    ...options
   })
 }
 

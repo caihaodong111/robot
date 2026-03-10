@@ -149,7 +149,6 @@ def _mysql_load_csv(
         log_print_func(f"CSV 已转换为 UTF-8: {tmp_file_path}")
 
     tmp_table = "tmp_weeklyresult_import"
-    tmp_dedup = "tmp_weeklyresult_import_dedup"
 
     columns_sql = ", ".join(f"`{col}`" for col in normalized_header)
     create_columns_sql = ", ".join(f"`{col}` TEXT NULL" for col in normalized_header)
@@ -157,7 +156,6 @@ def _mysql_load_csv(
     try:
         with connection.cursor() as cursor:
             cursor.execute(f"DROP TEMPORARY TABLE IF EXISTS `{tmp_table}`")
-            cursor.execute(f"DROP TEMPORARY TABLE IF EXISTS `{tmp_dedup}`")
             cursor.execute(
                 f"CREATE TEMPORARY TABLE `{tmp_table}` (`__row_id` BIGINT NOT NULL, {create_columns_sql}) "
                 "CHARACTER SET utf8mb4"
@@ -180,70 +178,46 @@ def _mysql_load_csv(
                 )
 
             cursor.execute(
-                f"CREATE TEMPORARY TABLE `{tmp_dedup}` AS "
-                f"SELECT t.* FROM `{tmp_table}` t "
-                f"JOIN ("
-                f"  SELECT `robot`, MAX(`__row_id`) AS max_row_id "
-                f"  FROM `{tmp_table}` "
-                f"  WHERE `robot` IS NOT NULL AND `robot` != '' "
-                f"  GROUP BY `robot`"
-                f") pick "
-                f"ON pick.`robot` = t.`robot` AND pick.max_row_id = t.`__row_id`"
-            )
-
-            cursor.execute(
-                f"ALTER TABLE `{tmp_dedup}` "
+                f"ALTER TABLE `{tmp_table}` "
                 "ADD COLUMN `__robot_norm` VARCHAR(64) NULL, "
                 "ADD COLUMN `__shop_norm` VARCHAR(64) NULL"
             )
             cursor.execute(
-                f"UPDATE `{tmp_dedup}` SET "
+                f"UPDATE `{tmp_table}` SET "
                 f"`__robot_norm` = NULLIF(`robot`, ''), "
                 f"`__shop_norm` = COALESCE(NULLIF(`shop`, ''), '未分配')"
                 if "shop" in header_set
-                else f"UPDATE `{tmp_dedup}` SET `__robot_norm` = NULLIF(`robot`, ''), `__shop_norm` = '未分配'"
+                else f"UPDATE `{tmp_table}` SET `__robot_norm` = NULLIF(`robot`, ''), `__shop_norm` = '未分配'"
             )
 
             cursor.execute(
-                f"SELECT COUNT(*) FROM `{tmp_table}` WHERE `robot` IS NULL OR `robot` = ''"
+                f"SELECT COUNT(*) FROM `{tmp_table}` WHERE `__robot_norm` IS NULL"
             )
             skipped_no_robot = cursor.fetchone()[0]
 
             cursor.execute(
                 f"SELECT "
                 f"  s.__shop_norm AS shop, "
-                f"  SUM(CASE WHEN rc.id IS NULL THEN 1 ELSE 0 END) AS created, "
-                f"  SUM(CASE WHEN rc.id IS NOT NULL THEN 1 ELSE 0 END) AS updated "
-                f"FROM `{tmp_dedup}` s "
-                f"LEFT JOIN robot_components rc ON rc.robot = s.__robot_norm "
+                f"  COUNT(*) AS created "
+                f"FROM `{tmp_table}` s "
+                f"WHERE s.__robot_norm IS NOT NULL "
                 f"GROUP BY s.__shop_norm"
             )
-            shop_stats = {row[0]: {"created": int(row[1]), "updated": int(row[2])} for row in cursor.fetchall()}
+            shop_stats = {row[0]: {"created": int(row[1]), "updated": 0} for row in cursor.fetchall()}
             records_created = sum(stat["created"] for stat in shop_stats.values())
-            records_updated = sum(stat["updated"] for stat in shop_stats.values())
+            records_updated = 0
+
+            cursor.execute(
+                "DELETE FROM robot_components "
+                f"WHERE robot IN (SELECT DISTINCT __robot_norm FROM `{tmp_table}` WHERE __robot_norm IS NOT NULL)"
+            )
 
             cursor.execute(
                 "INSERT IGNORE INTO robot_groups (`key`, `name`, `expected_total`, `created_at`, `updated_at`) "
                 f"SELECT DISTINCT s.__shop_norm, s.__shop_norm, 0, NOW(), NOW() "
-                f"FROM `{tmp_dedup}` s "
+                f"FROM `{tmp_table}` s "
                 f"WHERE s.__shop_norm IS NOT NULL AND s.__shop_norm != ''"
             )
-
-            set_clauses = [
-                "rc.group_id = g.id",
-                "rc.shop = s.__shop_norm",
-            ]
-            for target_col, source_col, default_sql in CSV_FIELD_SPECS:
-                value_sql = _sql_value(header_set, source_col, default_sql)
-                set_clauses.append(f"rc.`{target_col}` = {value_sql}")
-            set_clauses.append("rc.updated_at = NOW()")
-            update_sql = (
-                "UPDATE robot_components rc "
-                f"JOIN `{tmp_dedup}` s ON rc.robot = s.__robot_norm "
-                "JOIN robot_groups g ON g.`key` = s.__shop_norm "
-                "SET " + ", ".join(set_clauses)
-            )
-            cursor.execute(update_sql)
 
             insert_columns = [
                 "`group_id`",
@@ -263,10 +237,9 @@ def _mysql_load_csv(
             insert_sql = (
                 f"INSERT INTO robot_components ({', '.join(insert_columns)}) "
                 f"SELECT {', '.join(insert_values)} "
-                f"FROM `{tmp_dedup}` s "
+                f"FROM `{tmp_table}` s "
                 "JOIN robot_groups g ON g.`key` = s.__shop_norm "
-                "LEFT JOIN robot_components rc ON rc.robot = s.__robot_norm "
-                "WHERE rc.id IS NULL AND s.__robot_norm IS NOT NULL"
+                "WHERE s.__robot_norm IS NOT NULL"
             )
             cursor.execute(insert_sql)
     finally:
@@ -310,7 +283,8 @@ def _resolve_weekly_result_folders(folder_path: str = None) -> list:
 
 def _weekly_result_state_key(folder: str) -> str:
     digest = hashlib.sha1(folder.encode("utf-8")).hexdigest()
-    return f"weekly_result_last_mtime:{digest}"
+    # Keep within SystemConfig.key max_length=64 (24 + 40 = 64).
+    return f"weekly_result_last_mtime{digest}"
 
 
 def _get_last_import_state(folder: str) -> dict:
@@ -776,15 +750,19 @@ def import_robot_components_csv(
         log_print(f"找到 {len(candidates)} 个 CSV 文件(每个路径最新):")
         for i, info in enumerate(candidates, 1):
             log_print(f"  {i}. {os.path.basename(info['path'])}")
+        force_import = not RobotComponent.objects.exists()
+        if force_import:
+            log_print("检测到 robot_components 为空，忽略上次导入状态，强制导入最新CSV")
         for info in candidates:
-            last_state = _get_last_import_state(info["folder"])
-            last_mtime = last_state.get("mtime") if last_state else None
-            if last_mtime is not None and info["mtime"] <= float(last_mtime):
-                skipped_files.append({
-                    "path": info["path"],
-                    "folder": info["folder"],
-                })
-                continue
+            if not force_import:
+                last_state = _get_last_import_state(info["folder"])
+                last_mtime = last_state.get("mtime") if last_state else None
+                if last_mtime is not None and info["mtime"] <= float(last_mtime):
+                    skipped_files.append({
+                        "path": info["path"],
+                        "folder": info["folder"],
+                    })
+                    continue
             csv_files.append(info)
     else:
         log_print(f"使用指定文件: {file_path}")
@@ -848,19 +826,6 @@ def import_robot_components_csv(
         use_mysql_load_data = getattr(settings, "ENABLE_MYSQL_LOAD_DATA", False)
 
     # 循环处理每个 CSV 文件
-    update_fields = [
-        'group', 'robot', 'shop', 'reference',
-        'number', 'type', 'tech', 'mark', 'remark', 'level',
-        'error1_c1', 'tem1_m', 'tem2_m', 'tem3_m', 'tem4_m', 'tem5_m', 'tem6_m', 'tem7_m',
-        'a1_e_rate', 'a2_e_rate', 'a3_e_rate', 'a4_e_rate', 'a5_e_rate', 'a6_e_rate', 'a7_e_rate',
-        'a1_rms', 'a2_rms', 'a3_rms', 'a4_rms', 'a5_rms', 'a6_rms', 'a7_rms',
-        'a1_e', 'a2_e', 'a3_e', 'a4_e', 'a5_e', 'a6_e', 'a7_e',
-        'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7',
-        'curr_a1_max', 'curr_a2_max', 'curr_a3_max', 'curr_a4_max', 'curr_a5_max', 'curr_a6_max', 'curr_a7_max',
-        'curr_a1_min', 'curr_a2_min', 'curr_a3_min', 'curr_a4_min', 'curr_a5_min', 'curr_a6_min', 'curr_a7_min',
-        'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7',
-        'p_change',
-    ]
     batch_size = 1000
 
     for file_idx, file_info in enumerate(csv_files, 1):
@@ -926,7 +891,7 @@ def import_robot_components_csv(
             raw_records = df.to_dict(orient="records")
             parsed_rows = []
             shop_names = set()
-            robot_values = set()
+            robots_to_replace = set()
 
             for idx, row in enumerate(raw_records, 1):
                 shop_name = safe_str(row.get('shop', ''))
@@ -940,7 +905,7 @@ def import_robot_components_csv(
 
                 parsed_rows.append((robot_val, shop_name, row))
                 shop_names.add(shop_name)
-                robot_values.add(robot_val)
+                robots_to_replace.add(robot_val)
 
                 if shop_name not in shop_stats:
                     shop_stats[shop_name] = {'created': 0, 'updated': 0}
@@ -964,13 +929,11 @@ def import_robot_components_csv(
                 )
                 existing_groups = {g.key: g for g in RobotGroup.objects.filter(key__in=shop_names)}
 
-            existing_components = dict(
-                RobotComponent.objects.filter(robot__in=robot_values).values_list('robot', 'id')
-            )
+            if robots_to_replace:
+                log_print(f"删除当前文件涉及的 {len(robots_to_replace)} 个机器人旧数据...")
+                RobotComponent.objects.filter(robot__in=robots_to_replace).delete()
 
-            pending_create = {}
-            pending_update = {}
-            seen_robots = set()
+            pending_create = []
 
             for idx, (robot_val, shop_name, row) in enumerate(parsed_rows, 1):
                 group = existing_groups.get(shop_name)
@@ -1049,43 +1012,19 @@ def import_robot_components_csv(
                     p_change=safe_float(row.get('P_Change')),
                 )
 
-                existing_id = existing_components.get(robot_val)
-                if existing_id:
-                    obj = pending_update.get(robot_val)
-                    if obj is None:
-                        obj = RobotComponent(id=existing_id, **values)
-                        pending_update[robot_val] = obj
-                        if robot_val not in seen_robots:
-                            records_updated += 1
-                            shop_stats[shop_name]['updated'] += 1
-                            seen_robots.add(robot_val)
-                    else:
-                        for key, val in values.items():
-                            setattr(obj, key, val)
-                else:
-                    obj = pending_create.get(robot_val)
-                    if obj is None:
-                        obj = RobotComponent(**values)
-                        pending_create[robot_val] = obj
-                        if robot_val not in seen_robots:
-                            records_created += 1
-                            shop_stats[shop_name]['created'] += 1
-                            seen_robots.add(robot_val)
-                    else:
-                        for key, val in values.items():
-                            setattr(obj, key, val)
+                pending_create.append(RobotComponent(**values))
+                records_created += 1
+                shop_stats[shop_name]['created'] += 1
+
+                if len(pending_create) >= batch_size:
+                    RobotComponent.objects.bulk_create(pending_create, batch_size=batch_size)
+                    pending_create = []
 
                 if idx % 5000 == 0:
                     log_print(f"已准备 {idx}/{len(parsed_rows)} 行...")
 
-            to_create = list(pending_create.values())
-            to_update = list(pending_update.values())
-
-            with transaction.atomic():
-                if to_create:
-                    RobotComponent.objects.bulk_create(to_create, batch_size=batch_size)
-                if to_update:
-                    RobotComponent.objects.bulk_update(to_update, update_fields, batch_size=batch_size)
+            if pending_create:
+                RobotComponent.objects.bulk_create(pending_create, batch_size=batch_size)
 
         # 当前文件处理完成，累加统计到全局统计
         log_print(f"\n文件 {os.path.basename(current_file)} 处理完成!")

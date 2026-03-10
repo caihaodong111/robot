@@ -110,6 +110,19 @@ def apply_ordering(qs, sort_by, sort_order, allowed_fields):
     return qs.order_by(f"{order_prefix}{sort_by}")
 
 
+def parse_axis_ok(value):
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "ok", "normal", "good"}:
+        return True
+    if text in {"0", "false", "no", "bad", "high", "abnormal"}:
+        return False
+    return None
+
+
 class StandardResultsSetPagination(PageNumberPagination):
     page_size = 20
     page_size_query_param = 'page_size'
@@ -253,17 +266,16 @@ class RobotComponentViewSet(
         allowed_axes = {"A1", "A2", "A3", "A4", "A5", "A6", "A7"}
         axis_keys = [k for k in axis_keys if k in allowed_axes]
         if axis_keys and axis_ok is not None:
-            axis_ok_bool = str(axis_ok).lower() in {"1", "true", "yes"}
-            if axis_ok_bool:
-                # 轴状态为 ok（不是 "high"）
+            axis_ok_bool = parse_axis_ok(axis_ok)
+            if axis_ok_bool is True:
+                # 轴状态为 ok（排除 high，允许空值代表正常）
                 for k in axis_keys:
-                    qs = qs.filter(**{k.lower(): "ok"})  # a1, a2, ...
-            else:
-                # 轴状态为 high
-                axis_q = Q()
+                    field = k.lower()
+                    qs = qs.exclude(**{f"{field}__iexact": "high"})
+            elif axis_ok_bool is False:
+                # 轴状态为 high（所有所选轴都为 high）
                 for k in axis_keys:
-                    axis_q |= Q(**{k.lower(): "high"})  # a1="high" OR a2="high" OR ...
-                qs = qs.filter(axis_q)
+                    qs = qs.filter(**{f"{k.lower()}__iexact": "high"})
 
         sort_by = (self.request.query_params.get("sort_by") or "").strip()
         sort_order = (self.request.query_params.get("sort_order") or "").lower()
@@ -869,14 +881,44 @@ class RobotHighRiskSnapshotViewSet(mixins.ListModelMixin, viewsets.GenericViewSe
             else:
                 qs = qs.filter(level__in=levels)
 
-        # 搜索关键词 - 使用 robot 字段（RobotHighRiskSnapshot 模型的字段）
+        # 搜索关键词
         keyword = (self.request.query_params.get('keyword') or '').strip()
         if keyword:
             qs = qs.filter(
                 Q(robot__icontains=keyword)
+                | Q(shop__icontains=keyword)
+                | Q(reference__icontains=keyword)
+                | Q(type__icontains=keyword)
                 | Q(tech__icontains=keyword)
                 | Q(remark__icontains=keyword)
             )
+
+        mark_mode = self.request.query_params.get("markMode")
+        if mark_mode == "zero":
+            qs = qs.filter(mark=0)
+        elif mark_mode == "nonzero":
+            qs = qs.exclude(mark=0)
+
+        axis_keys_raw = (self.request.query_params.get("axisKeys") or "").strip()
+        axis_keys = [k.strip() for k in axis_keys_raw.split(",") if k.strip()] if axis_keys_raw else []
+        axis_key = (self.request.query_params.get("axisKey") or "").strip()
+        if axis_key and axis_key not in axis_keys:
+            axis_keys.append(axis_key)
+
+        axis_ok = self.request.query_params.get("axisOk")
+        allowed_axes = {"A1", "A2", "A3", "A4", "A5", "A6", "A7"}
+        axis_keys = [k for k in axis_keys if k in allowed_axes]
+        if axis_keys and axis_ok is not None:
+            axis_ok_bool = parse_axis_ok(axis_ok)
+            if axis_ok_bool is True:
+                # 轴状态为 ok（排除 high，允许空值代表正常）
+                for k in axis_keys:
+                    field = k.lower()
+                    qs = qs.exclude(**{f"{field}__iexact": "high"})
+            elif axis_ok_bool is False:
+                # 轴状态为 high（所有所选轴都为 high）
+                for k in axis_keys:
+                    qs = qs.filter(**{f"{k.lower()}__iexact": "high"})
 
         sort_by = (self.request.query_params.get("sort_by") or "").strip()
         sort_order = (self.request.query_params.get("sort_order") or "").lower()

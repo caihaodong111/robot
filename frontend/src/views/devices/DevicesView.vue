@@ -1110,48 +1110,12 @@ const latestRiskTime = (robot) => {
     .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0]
 }
 
-const matchesKeyword = (robot) => {
-  const key = keyword.value.trim().toLowerCase()
-  if (!key) return true
-  return (
-    (robot.robot || '').toLowerCase().includes(key) ||
-    (robot.robot_id || robot.id || '').toString().toLowerCase().includes(key) ||
-    (robot.name || '').toLowerCase().includes(key) ||
-    (robot.model || '').toLowerCase().includes(key) ||
-    (robot.partNo || '').toLowerCase().includes(key) ||
-    (robot.referenceNo || robot.reference || '').toLowerCase().includes(key) ||
-    (robot.type || robot.typeSpec || '').toLowerCase().includes(key) ||
-    (robot.tech || '').toLowerCase().includes(key) ||
-    (robot.remark || '').toLowerCase().includes(key)
-  )
-}
-
-const matchesFilters = (robot) => {
-  if (levelFilter.value.length && !levelFilter.value.includes(robot.level)) return false
-  if (markMode.value === 'zero' && (robot.mark ?? 0) !== 0) return false
-  if (markMode.value === 'nonzero' && (robot.mark ?? 0) === 0) return false
-  if (axisKeysFilter.value.length) {
-    const keys = axisKeysFilter.value
-    if (axisStateFilter.value === 'bad') {
-      // 筛选 label 为 'high' 的项
-      const anyBad = keys.some((k) => robot?.checks?.[k]?.label?.toLowerCase() === 'high')
-      if (!anyBad) return false
-    } else if (axisStateFilter.value === 'ok') {
-      // 筛选 label 不为 'high' 的项
-      const allOk = keys.every((k) => robot?.checks?.[k]?.label?.toLowerCase() !== 'high')
-      if (!allOk) return false
-    }
-  }
-  return matchesKeyword(robot)
-}
-
 const filteredRows = computed(() => {
   const list = robots.value
 
   console.log('filteredRows computing:', {
     listLength: list.length,
     activeTab: activeTab.value,
-    keyword: keyword.value,
     firstRobot: list[0]
   })
 
@@ -1166,11 +1130,7 @@ const filteredRows = computed(() => {
 
   console.log('After tab filter:', { filteredLength: filtered.length })
 
-  // 应用所有过滤器（包括关键词搜索）
-  // 前端始终进行过滤，确保搜索功能在所有模式下都能正常工作
-  const result = filtered.filter(matchesFilters)
-  console.log('After all filters:', { resultLength: result.length })
-  return result
+  return filtered
 })
 
 const pagedRows = computed(() => {
@@ -1217,8 +1177,7 @@ const resetFilters = () => {
 const handleSearch = () => {
   console.log('handleSearch called, keyword:', keyword.value)
   currentPage.value = 1
-  // 搜索时请求所有数据，由前端进行过滤
-  loadRows(true)
+  loadRows()
 }
 
 // 监听关键词变化，自动触发搜索（debounce 延迟）
@@ -1232,7 +1191,7 @@ watch(keyword, (newKeyword) => {
     if (newKeyword.trim() !== '') {
       console.log('Auto-triggering search for:', newKeyword)
       currentPage.value = 1
-      loadRows(true)
+      loadRows()
     }
   }, 500)
 })
@@ -1460,7 +1419,7 @@ const saveEdit = async () => {
     await loadGroups()
     if (keyword.value.trim()) {
       currentPage.value = 1
-      await loadRows(true)
+      await loadRows()
     } else {
       await loadRows()
     }
@@ -1733,14 +1692,16 @@ const loadGroups = async () => {
   }
 }
 
-const loadRows = async (fetchAll = false) => {
+const LIST_TIMEOUT_MS = 20000
+
+const loadRows = async () => {
   loading.value = true
   try {
     const tabMap = { highRisk: 'highRisk', all: 'all', history: 'history' }
-    // 搜索时获取所有数据用于前端过滤
-    const actualPageSize = fetchAll ? 10000 : pageSize.value
+    const actualPageSize = pageSize.value
+    const requestOptions = { timeout: LIST_TIMEOUT_MS }
 
-    console.log('loadRows called:', { activeTab: activeTab.value, fetchAll, keyword: keyword.value, actualPageSize })
+    console.log('loadRows called:', { activeTab: activeTab.value, keyword: keyword.value, actualPageSize })
 
     // 根据标签页选择不同的 API
     let data
@@ -1750,14 +1711,16 @@ const loadRows = async (fetchAll = false) => {
         group: selectedGroup.value,
         keyword: keyword.value || undefined,
         level: levelFilter.value.length ? levelFilter.value.join(',') : undefined,
-        axisOk: axisStateFilter.value || undefined,
+        axisKeys: axisKeysFilter.value.length ? axisKeysFilter.value.join(',') : undefined,
+        axisOk: axisStateFilter.value ? axisStateFilter.value === 'ok' : undefined,
+        markMode: markMode.value || undefined,
         sort_by: sortField.value || undefined,
         sort_order: sortOrder.value || undefined,
-        page: fetchAll ? 1 : currentPage.value,
+        page: currentPage.value,
         page_size: actualPageSize
       }
       console.log('Calling getHighRiskHistories with params:', historyParams)
-      data = await getHighRiskHistories(historyParams)
+      data = await getHighRiskHistories(historyParams, requestOptions)
     } else {
       // highRisk 和 all 标签页都使用 RobotComponent API
       const params = {
@@ -1770,11 +1733,11 @@ const loadRows = async (fetchAll = false) => {
         markMode: markMode.value || undefined,
         sort_by: sortField.value || undefined,
         sort_order: sortOrder.value || undefined,
-        page: fetchAll ? 1 : currentPage.value,
+        page: currentPage.value,
         page_size: actualPageSize
       }
       console.log('Calling getRobotComponents with params:', params)
-      data = await getRobotComponents(params)
+      data = await getRobotComponents(params, requestOptions)
     }
 
     console.log('Loaded data:', { count: data.count, resultsLength: data.results?.length })
@@ -3430,9 +3393,12 @@ onUnmounted(() => {
 
 /* === 图表弹窗样式 === */
 :deep(.chart-dialog .el-dialog) {
-  max-width: 78vw;
-  max-height: 95vh;
-  height: 92vh;
+  --chart-body-height: 84vh;
+  --chart-image-aspect: 0.8;
+  width: min(90vw, calc(var(--chart-body-height) * var(--chart-image-aspect)));
+  max-width: min(90vw, calc(var(--chart-body-height) * var(--chart-image-aspect)));
+  height: calc(var(--chart-body-height) + 8vh);
+  max-height: calc(var(--chart-body-height) + 8vh);
 }
 
 :deep(.chart-dialog .el-dialog__header) {
@@ -3452,7 +3418,7 @@ onUnmounted(() => {
 
 :deep(.chart-dialog .el-dialog__body) {
   padding: 0;
-  height: 84vh;
+  height: var(--chart-body-height);
 }
 
 :deep(.chart-dialog .el-dialog__headerbtn) {
