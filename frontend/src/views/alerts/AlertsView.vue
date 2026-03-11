@@ -89,11 +89,14 @@
             <el-button
               type="primary"
               class="action-btn btn-entrance-2 load-analysis-btn"
-              :disabled="!activeName"
-              @click="handleLoad"
+              :class="{ 'is-cancel': isLoading && isLoadHover }"
+              :disabled="!activeName && !isLoading"
+              @mouseenter="handleLoadHover(true)"
+              @mouseleave="handleLoadHover(false)"
+              @click="handleLoadOrCancel"
             >
               <el-icon v-if="!isLoading"><Search /></el-icon>
-              {{ isLoading ? '加载中...' : '加载分析' }}
+              {{ isLoading ? (isLoadHover ? '取消' : '加载中...') : '加载分析' }}
             </el-button>
           </div>
         </div>
@@ -166,6 +169,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { Location, Monitor, Search, PieChart, Calendar } from '@element-plus/icons-vue'
 import request from '@/utils/request'
 
+defineOptions({ name: 'Alerts' })
+
 const route = useRoute()
 const router = useRouter()
 
@@ -181,11 +186,13 @@ const groups = ref([])
 const robots = ref([])
 const robotsLoading = ref(false)
 const isLoading = ref(false)
+const isLoadHover = ref(false)
 const biFrame = ref(null)
 const biLogs = ref([])
 const logPollingTimer = ref(null)
 const logRotateTimer = ref(null)
 const currentLogIndex = ref(0)
+const lastStableFrameUrl = ref('')
 
 const LOG_LIMIT = 8
 const LOG_POLL_INTERVAL = 4500
@@ -275,6 +282,9 @@ const biUrl = computed(() => {
 
 const loadFrame = (url) => {
   if (!url || url === frameUrl.value) return
+  if (frameUrl.value) {
+    lastStableFrameUrl.value = frameUrl.value
+  }
   frameUrl.value = url
   startLoading()
 }
@@ -375,6 +385,7 @@ const handleRobotChange = (value) => {
 // 开始加载动画
 const startLoading = () => {
   isLoading.value = true
+  isLoadHover.value = false
   startLogPolling()
   startLogRotation()
 }
@@ -384,6 +395,7 @@ const handleFrameLoad = () => {
   // 延迟一点关闭加载动画，确保内容已渲染
   setTimeout(() => {
     isLoading.value = false
+    isLoadHover.value = false
     stopLogPolling()
     stopLogRotation()
   }, 500)
@@ -394,6 +406,33 @@ const handleLoad = () => {
   shouldLoad.value = true  // 设置为 true，触发 iframe 加载
   reloadToken.value = Date.now()
   loadFrame(biUrl.value)
+}
+
+const handleLoadHover = (val) => {
+  if (!isLoading.value) return
+  isLoadHover.value = val
+}
+
+const handleCancel = () => {
+  isLoading.value = false
+  isLoadHover.value = false
+  stopLogPolling()
+  stopLogRotation()
+  if (lastStableFrameUrl.value) {
+    frameUrl.value = lastStableFrameUrl.value
+    shouldLoad.value = true
+  } else {
+    frameUrl.value = ''
+    shouldLoad.value = false
+  }
+}
+
+const handleLoadOrCancel = () => {
+  if (isLoading.value) {
+    handleCancel()
+    return
+  }
+  handleLoad()
 }
 
 // 时间范围变化处理
@@ -437,6 +476,17 @@ const initFromQuery = async () => {
 
     // 清空URL参数，避免刷新后重新加载
     router.replace({ query: {} })
+    return true
+  }
+  return false
+}
+
+const handleBiMessage = (event) => {
+  if (event.data && event.data.type === 'updateBIUrl') {
+    // 更新iframe的src来重新加载图表
+    if (biFrame.value) {
+      loadFrame(event.data.url)
+    }
   }
 }
 
@@ -446,19 +496,13 @@ onMounted(async () => {
   await initFromQuery()
 
   // 监听来自iframe的postMessage（用于日期范围更新）
-  window.addEventListener('message', (event) => {
-    if (event.data && event.data.type === 'updateBIUrl') {
-      // 更新iframe的src来重新加载图表
-      if (biFrame.value) {
-        loadFrame(event.data.url)
-      }
-    }
-  })
+  window.addEventListener('message', handleBiMessage)
 })
 
 onUnmounted(() => {
   stopLogPolling()
   stopLogRotation()
+  window.removeEventListener('message', handleBiMessage)
 })
 
 const fetchBiLogs = async () => {
@@ -724,6 +768,15 @@ watch(displayLogs, () => {
   align-items: center;
   gap: 6px;
   margin: 0;
+}
+
+.load-analysis-btn.is-cancel {
+  background: linear-gradient(135deg, #ff6b6b 0%, #ff3b30 100%);
+  box-shadow: 0 6px 20px rgba(255, 59, 48, 0.35);
+}
+
+.load-analysis-btn.is-cancel:hover {
+  transform: translateY(-1px);
 }
 
 /* === iOS 超透明玻璃卡片 === */

@@ -46,7 +46,11 @@
     </transition>
 
     <main class="app-main">
-      <RouterView />
+      <RouterView v-slot="{ Component }">
+        <KeepAlive :include="['Alerts', 'Monitoring']">
+          <component :is="Component" />
+        </KeepAlive>
+      </RouterView>
     </main>
   </div>
 </template>

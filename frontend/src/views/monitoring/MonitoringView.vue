@@ -105,12 +105,14 @@
               <el-button
                 type="primary"
                 class="pulse-btn"
-                :loading="checking"
-                :disabled="!canExecute"
-                @click="executeCheck"
+                :class="{ 'is-cancel': checking && isCheckHover }"
+                :disabled="!canExecute && !checking"
+                @mouseenter="handleCheckHover(true)"
+                @mouseleave="handleCheckHover(false)"
+                @click="handleExecuteOrCancel"
               >
                 <el-icon v-if="!checking"><Search /></el-icon>
-                {{ checking ? '正在诊断...' : '执行诊断' }}
+                {{ checking ? (isCheckHover ? '取消' : '正在诊断...') : '执行诊断' }}
               </el-button>
               <el-button
                 v-if="checkResult"
@@ -393,15 +395,17 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   Download, Search, Location, Cpu, Calendar,
   Operation, Monitor, Warning
 } from '@element-plus/icons-vue'
 import { DEMO_MODE, API_BASE_URL } from '@/config/appConfig'
-import { getRobotGroups, getGripperRobotTables, executeGripperCheck } from '@/api/robots'
+import { getRobotGroups, getGripperRobotTables, executeGripperCheck, getGripperCheckStatus } from '@/api/robots'
 import { useLayoutStore } from '@/stores/layout'
+
+defineOptions({ name: 'Monitoring' })
 
 const layoutStore = useLayoutStore()
 
@@ -480,11 +484,16 @@ const isIndeterminate = computed(() => selectedRobots.value.length > 0 && select
 
 // Executive Logic
 const checking = ref(false)
+const isCheckHover = ref(false)
 const checkResult = ref(null)
 const errorMessage = ref('')
 const currentPage = ref(1)
 const pageSize = ref(15)
 const sortState = ref({ prop: 'robot', order: 'ascending' })
+const activeCheckId = ref(0)
+const canceledCheckId = ref(0)
+const statusPollingTimer = ref(null)
+const STATUS_POLL_INTERVAL = 4000
 
 const canExecute = computed(() => selectedPlant.value && selectedRobots.value.length > 0 && timeRange.value?.length === 2)
 
@@ -578,7 +587,12 @@ const handleSelectAllRobots = (val) => {
 }
 
 const executeCheck = async () => {
+  const myCheckId = activeCheckId.value + 1
+  activeCheckId.value = myCheckId
+  canceledCheckId.value = 0
   checking.value = true
+  isCheckHover.value = false
+  startStatusPolling()
   checkResult.value = null
   errorMessage.value = ''
 
@@ -590,17 +604,24 @@ const executeCheck = async () => {
       key_paths: activePaths.value
     }
 
+    let result
     if (DEMO_MODE) {
       await new Promise(r => setTimeout(r, 1200))
-      checkResult.value = {
+      result = {
         success: true,
         count: 42,
         data: generateMockData(42),
         columns: ['robot', 'Name_C', 'P_name', 'Curr_A1_LQ', 'Curr_A1_HQ', 'QH1', 'QL1', 'size']
       }
     } else {
-      checkResult.value = await executeGripperCheck(payload)
+      result = await executeGripperCheck(payload)
     }
+
+    if (canceledCheckId.value === myCheckId || activeCheckId.value !== myCheckId) {
+      return
+    }
+
+    checkResult.value = result
 
     if (checkResult.value.success) {
       ElMessage.success(`检查完成，发现 ${checkResult.value.count} 条记录`)
@@ -609,10 +630,65 @@ const executeCheck = async () => {
       errorMessage.value = checkResult.value.error || '检查失败'
     }
   } catch (e) {
-    errorMessage.value = e?.message || '执行异常'
+    if (canceledCheckId.value !== myCheckId && activeCheckId.value === myCheckId) {
+      errorMessage.value = e?.message || '执行异常'
+    }
   } finally {
-    checking.value = false
+    if (canceledCheckId.value !== myCheckId && activeCheckId.value === myCheckId) {
+      checking.value = false
+      stopStatusPolling()
+    }
   }
+}
+
+const handleCheckHover = (val) => {
+  if (!checking.value) return
+  isCheckHover.value = val
+}
+
+const handleCancelCheck = () => {
+  if (!checking.value) return
+  canceledCheckId.value = activeCheckId.value
+  checking.value = false
+  isCheckHover.value = false
+  stopStatusPolling()
+}
+
+const handleExecuteOrCancel = () => {
+  if (checking.value) {
+    handleCancelCheck()
+    return
+  }
+  executeCheck()
+}
+
+const fetchCheckStatus = async () => {
+  if (!checking.value) return
+  try {
+    const resp = await getGripperCheckStatus()
+    const statusValue = (resp?.status || '').toLowerCase()
+    if (statusValue && statusValue !== 'running') {
+      checking.value = false
+      isCheckHover.value = false
+      stopStatusPolling()
+      if (statusValue === 'failed' && resp?.error) {
+        errorMessage.value = resp.error
+      }
+    }
+  } catch (error) {
+    console.error('获取轨迹检查状态失败:', error)
+  }
+}
+
+const startStatusPolling = () => {
+  if (statusPollingTimer.value) return
+  statusPollingTimer.value = setInterval(fetchCheckStatus, STATUS_POLL_INTERVAL)
+}
+
+const stopStatusPolling = () => {
+  if (!statusPollingTimer.value) return
+  clearInterval(statusPollingTimer.value)
+  statusPollingTimer.value = null
 }
 
 // Helpers
@@ -732,7 +808,13 @@ const goToRobotBI = (robotName) => {
   window.open(biUrl, '_blank')
 }
 
-onMounted(loadPlantGroups)
+onMounted(async () => {
+  await loadPlantGroups()
+})
+
+onUnmounted(() => {
+  stopStatusPolling()
+})
 </script>
 
 <style scoped>
@@ -1104,6 +1186,15 @@ onMounted(loadPlantGroups)
 .action-btn:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 24px rgba(0, 195, 255, 0.5);
+}
+
+.pulse-btn.is-cancel {
+  background: linear-gradient(135deg, #ff6b6b 0%, #ff3b30 100%);
+  box-shadow: 0 6px 20px rgba(255, 59, 48, 0.35);
+}
+
+.pulse-btn.is-cancel:hover {
+  transform: translateY(-1px);
 }
 
 .export-btn {

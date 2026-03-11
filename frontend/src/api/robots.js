@@ -110,6 +110,22 @@ export function executeGripperCheck(data) {
   })
 }
 
+// 获取关键轨迹检查状态
+export function getGripperCheckStatus() {
+  return request({
+    url: '/robots/gripper-check/status/',
+    method: 'get'
+  })
+}
+
+// 获取最近一次关键轨迹检查结果
+export function getGripperCheckLatest() {
+  return request({
+    url: '/robots/gripper-check/latest/',
+    method: 'get'
+  })
+}
+
 // 获取配置模板
 export function getGripperConfigTemplate() {
   return request({

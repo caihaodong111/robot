@@ -2,8 +2,10 @@ from datetime import datetime, timedelta
 import logging
 import os
 from django.conf import settings
+from django.core.cache import cache
 from django.shortcuts import render
 from django.db.models import Count, Q
+from django.utils import timezone
 from django.views.decorators.clickjacking import xframe_options_exempt
 from rest_framework import mixins, viewsets, status
 from rest_framework.decorators import action, api_view
@@ -26,6 +28,20 @@ from .error_trend_chart import generate_trend_chart, chart_exists
 from celery.result import AsyncResult
 
 logger = logging.getLogger(__name__)
+GRIPPER_CHECK_STATUS_KEY = "gripper_check_status"
+GRIPPER_CHECK_STATUS_TTL = 60 * 60
+GRIPPER_CHECK_LATEST_KEY = "gripper_check_latest"
+GRIPPER_CHECK_LATEST_TTL = 60 * 60
+
+
+def set_gripper_check_status(status_value, error=None):
+    payload = {
+        "status": status_value,
+        "updated_at": timezone.now().isoformat(),
+    }
+    if error:
+        payload["error"] = error
+    cache.set(GRIPPER_CHECK_STATUS_KEY, payload, timeout=GRIPPER_CHECK_STATUS_TTL)
 
 DISCONNECTED_FIELDS = [
     "error1_c1",
@@ -773,14 +789,32 @@ class GripperCheckViewSet(viewsets.GenericViewSet):
             }, status=status.HTTP_400_BAD_REQUEST)
 
         try:
+            set_gripper_check_status("running")
             # 执行检查
             result = check_gripper_from_config(serializer.validated_data)
+            cache.set(GRIPPER_CHECK_LATEST_KEY, result, timeout=GRIPPER_CHECK_LATEST_TTL)
+            set_gripper_check_status("idle")
             return Response(result)
         except Exception as e:
+            set_gripper_check_status("failed", error=str(e))
             return Response({
                 'success': False,
                 'error': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'])
+    def status(self, request):
+        payload = cache.get(GRIPPER_CHECK_STATUS_KEY)
+        if not payload:
+            return Response({"status": "idle"})
+        return Response(payload)
+
+    @action(detail=False, methods=['get'])
+    def latest(self, request):
+        payload = cache.get(GRIPPER_CHECK_LATEST_KEY)
+        if not payload:
+            return Response({"success": False, "error": "no-latest-result"})
+        return Response(payload)
 
     @action(detail=False, methods=['get'])
     def robot_tables(self, request):
