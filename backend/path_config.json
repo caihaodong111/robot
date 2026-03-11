@@ -1,0 +1,44 @@
+{
+  "weekly_result_folders": [
+    {
+      "key": "weekly_1",
+      "path": "P:/v206",
+      "description": ""
+    },
+    {
+      "key": "weekly_2",
+      "path": "P:/V214&254",
+      "description": ""
+    },
+    {
+      "key": "weekly_3",
+      "path": "P:/engine-robot",
+      "description": ""
+    },
+    {
+      "key": "weekly_4",
+      "path": "P:/540",
+      "description": ""
+    },
+    {
+      "key": "weekly_5",
+      "path": "P:/MFA",
+      "description": ""
+    },
+    {
+      "key": "weekly_6",
+      "path": "P:/Shunyi",
+      "description": ""
+    },
+    {
+      "key": "weekly_7",
+      "path": "P:/AS",
+      "description": ""
+    },
+    {
+      "key": "weekly_8",
+      "path": "P:/reuse",
+      "description": ""
+    }
+  ]
+}

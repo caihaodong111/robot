@@ -87,6 +87,61 @@ CSV_FIELD_SPECS = [
     ("level", "level", "'L'"),
 ]
 
+def _load_path_config_file() -> dict:
+    config_path = getattr(
+        settings,
+        "PATH_CONFIG_FILE",
+        str(settings.BASE_DIR.parent / "path_config.json"),
+    )
+    if not config_path or not os.path.exists(config_path):
+        return {}
+    try:
+        with open(config_path, "r", encoding="utf-8") as file_obj:
+            data = json.load(file_obj)
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("读取路径配置文件失败: %s (%s)", config_path, exc)
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _get_weekly_result_sources_from_config() -> list:
+    data = _load_path_config_file()
+    entries = data.get("weekly_result_folders", []) if data else []
+    sources = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        key = str(entry.get("key", "")).strip()
+        folder = str(entry.get("path") or entry.get("folder") or "").strip()
+        description = str(entry.get("description") or "").strip()
+        if not key or not folder:
+            continue
+        sources.append(
+            {
+                "key": key,
+                "folder": folder,
+                "description": description,
+            }
+        )
+    return sources
+
+
+def sync_weekly_result_path_config() -> list:
+    sources = _get_weekly_result_sources_from_config()
+    if not sources:
+        return []
+    from .models import PathConfig, RobotComponent
+
+    for entry in sources:
+        key = entry["key"]
+        folder = entry["folder"]
+        description = entry.get("description", "")
+        PathConfig.set_path(f"weekly_result_folder:{key}", folder, description)
+        RobotComponent.objects.filter(source_key=key).exclude(source_path=folder).update(
+            source_path=folder
+        )
+    return sources
+
 
 def _detect_csv_encoding(file_path: str) -> str:
     with open(file_path, "rb") as file_obj:
@@ -132,6 +187,8 @@ def _sql_value(headers: set, source_col: str, default_sql: Optional[str]) -> str
 def _mysql_load_csv(
     file_path: str,
     log_print_func,
+    source_key: Optional[str] = None,
+    source_path: Optional[str] = None,
 ) -> dict:
     encoding = _detect_csv_encoding(file_path)
     header = _read_csv_header(file_path, encoding)
@@ -207,10 +264,15 @@ def _mysql_load_csv(
             records_created = sum(stat["created"] for stat in shop_stats.values())
             records_updated = 0
 
-            cursor.execute(
-                "DELETE FROM robot_components "
-                f"WHERE robot IN (SELECT DISTINCT __robot_norm FROM `{tmp_table}` WHERE __robot_norm IS NOT NULL)"
-            )
+            delete_sql = "DELETE FROM robot_components"
+            delete_params = []
+            if source_key:
+                delete_sql += " WHERE source_key = %s"
+                delete_params.append(source_key)
+            elif source_path:
+                delete_sql += " WHERE source_path = %s"
+                delete_params.append(source_path)
+            cursor.execute(delete_sql, delete_params)
 
             cursor.execute(
                 "INSERT IGNORE INTO robot_groups (`key`, `name`, `expected_total`, `created_at`, `updated_at`) "
@@ -229,6 +291,15 @@ def _mysql_load_csv(
                 "s.__robot_norm",
                 "s.__shop_norm",
             ]
+            insert_params = []
+            if source_key is not None:
+                insert_columns.append("`source_key`")
+                insert_values.append("%s")
+                insert_params.append(source_key)
+            if source_path is not None:
+                insert_columns.append("`source_path`")
+                insert_values.append("%s")
+                insert_params.append(source_path)
             for target_col, source_col, default_sql in CSV_FIELD_SPECS:
                 insert_columns.append(f"`{target_col}`")
                 insert_values.append(_sql_value(header_set, source_col, default_sql))
@@ -241,7 +312,7 @@ def _mysql_load_csv(
                 "JOIN robot_groups g ON g.`key` = s.__shop_norm "
                 "WHERE s.__robot_norm IS NOT NULL"
             )
-            cursor.execute(insert_sql)
+            cursor.execute(insert_sql, insert_params)
     finally:
         if cleanup_tmp and os.path.exists(tmp_file_path):
             os.remove(tmp_file_path)
@@ -267,18 +338,69 @@ def _split_weekly_result_folders(value) -> list:
     return [item.strip() for item in parts if item.strip()]
 
 
-def _resolve_weekly_result_folders(folder_path: str = None) -> list:
-    """优先使用数据库配置的路径，缺失时使用默认值"""
+def _resolve_weekly_result_sources(folder_path: str = None) -> list:
+    """优先使用路径配置文件，缺失时使用数据库配置或默认值"""
     if folder_path:
-        return _split_weekly_result_folders(folder_path)
+        folders = _split_weekly_result_folders(folder_path)
+        return [
+            {"key": None, "folder": folder, "description": ""}
+            for folder in folders
+        ]
+
+    sources = _get_weekly_result_sources_from_config()
+    if sources:
+        return sources
+
+    try:
+        from .models import PathConfig
+        stored = PathConfig.objects.filter(key__startswith="weekly_result_folder:")
+        if stored.exists():
+            entries = []
+            for item in stored:
+                key = item.key.split(":", 1)[1]
+                entries.append(
+                    {
+                        "key": key,
+                        "folder": item.path,
+                        "description": item.description,
+                    }
+                )
+            return entries
+    except Exception:
+        logger.warning("读取 weekly_result_folder 配置失败，使用默认路径")
+
     default_path = getattr(settings, "WEEKLY_RESULT_FOLDER", str(settings.BASE_DIR.parent))
     try:
         from .models import PathConfig
         resolved = PathConfig.get_path("weekly_result_folder", default_path)
     except Exception:
-        logger.warning("读取 weekly_result_folder 配置失败，使用默认路径: %s", default_path)
         resolved = default_path
-    return _split_weekly_result_folders(resolved)
+    folders = _split_weekly_result_folders(resolved)
+    if not folders:
+        return []
+    if len(folders) == 1:
+        return [{"key": "default", "folder": folders[0], "description": ""}]
+    return [
+        {"key": f"default_{idx}", "folder": folder, "description": ""}
+        for idx, folder in enumerate(folders, 1)
+    ]
+
+
+def _resolve_weekly_result_folders(folder_path: str = None) -> list:
+    return [entry["folder"] for entry in _resolve_weekly_result_sources(folder_path)]
+
+
+def _find_weekly_result_source(folder: str, sources: list) -> dict | None:
+    if not folder:
+        return None
+    target = os.path.abspath(folder)
+    for entry in sources:
+        entry_folder = entry.get("folder")
+        if not entry_folder:
+            continue
+        if os.path.abspath(entry_folder) == target:
+            return entry
+    return None
 
 
 def _weekly_result_state_key(folder: str) -> str:
@@ -400,6 +522,8 @@ def create_high_risk_snapshot(component) -> bool:
         a7=component.a7,
         p_change=component.p_change,
         level=component.level,
+        source_key=component.source_key,
+        source_path=component.source_path,
     )
     return True
 
@@ -596,13 +720,14 @@ def get_latest_weeklyresult_csvs_with_meta(folder_path: str = None, project: str
     """
     获取每个路径下最新的 weeklyresult.csv 文件及元信息（按修改时间排序）
     """
-    folder_paths = _resolve_weekly_result_folders(folder_path)
-    if not folder_paths:
+    sources = _resolve_weekly_result_sources(folder_path)
+    if not sources:
         raise FileNotFoundError("未配置 weeklyresult.csv 搜索路径")
 
     latest_files = []
     patterns = []
-    for folder in folder_paths:
+    for entry in sources:
+        folder = entry["folder"]
         pattern = os.path.join(folder, '*weeklyresult.csv')
         patterns.append(pattern)
         matched = glob.glob(pattern)
@@ -613,6 +738,8 @@ def get_latest_weeklyresult_csvs_with_meta(folder_path: str = None, project: str
             "path": latest,
             "folder": folder,
             "mtime": os.path.getmtime(latest),
+            "source_key": entry.get("key"),
+            "source_path": folder,
         })
 
     if not latest_files:
@@ -742,6 +869,7 @@ def import_robot_components_csv(
 
     # 获取文件路径（支持多文件）
     log_print("开始导入流程...")
+    sync_weekly_result_path_config()
     csv_files = []
     skipped_files = []
     if file_path is None:
@@ -766,10 +894,14 @@ def import_robot_components_csv(
             csv_files.append(info)
     else:
         log_print(f"使用指定文件: {file_path}")
+        sources = _resolve_weekly_result_sources(None)
+        matched_source = _find_weekly_result_source(os.path.dirname(file_path), sources)
         csv_files = [{
             "path": file_path,
             "folder": os.path.dirname(file_path),
             "mtime": os.path.getmtime(file_path),
+            "source_key": matched_source.get("key") if matched_source else None,
+            "source_path": matched_source.get("folder") if matched_source else os.path.dirname(file_path),
         }]
 
     if not csv_files:
@@ -830,6 +962,8 @@ def import_robot_components_csv(
 
     for file_idx, file_info in enumerate(csv_files, 1):
         current_file = file_info["path"]
+        source_key = file_info.get("source_key")
+        source_path = file_info.get("source_path") or file_info.get("folder")
         log_print(f"\n{'='*60}")
         log_print(f"正在处理第 {file_idx}/{len(csv_files)} 个文件: {os.path.basename(current_file)}")
         log_print(f"{'='*60}")
@@ -844,7 +978,12 @@ def import_robot_components_csv(
         if use_mysql_load_data:
             log_print("使用 MySQL LOAD DATA 进行快速导入...")
             try:
-                load_result = _mysql_load_csv(current_file, log_print)
+                load_result = _mysql_load_csv(
+                    current_file,
+                    log_print,
+                    source_key=source_key,
+                    source_path=source_path,
+                )
             except Exception as exc:
                 log_print(f"MySQL LOAD DATA 导入失败，回退到 ORM 批量导入: {exc}")
                 load_result = None
@@ -929,7 +1068,16 @@ def import_robot_components_csv(
                 )
                 existing_groups = {g.key: g for g in RobotGroup.objects.filter(key__in=shop_names)}
 
-            if robots_to_replace:
+            if source_key or source_path:
+                scope_desc = source_key or source_path
+                log_print(f"删除来源 {scope_desc} 下的旧数据...")
+                delete_qs = RobotComponent.objects.all()
+                if source_key:
+                    delete_qs = delete_qs.filter(source_key=source_key)
+                else:
+                    delete_qs = delete_qs.filter(source_path=source_path)
+                delete_qs.delete()
+            elif robots_to_replace:
                 log_print(f"删除当前文件涉及的 {len(robots_to_replace)} 个机器人旧数据...")
                 RobotComponent.objects.filter(robot__in=robots_to_replace).delete()
 
@@ -1010,6 +1158,8 @@ def import_robot_components_csv(
                     a6=safe_str(row.get('A6')),
                     a7=safe_str(row.get('A7')),
                     p_change=safe_float(row.get('P_Change')),
+                    source_key=source_key,
+                    source_path=source_path,
                 )
 
                 pending_create.append(RobotComponent(**values))

@@ -279,6 +279,11 @@ os.makedirs(BASE_DIR / 'logs', exist_ok=True)
 
 
 # ==================== 本地路径配置（可通过 .env 覆盖）====================
+# 路径配置文件（用于同步 weeklyresult 路径到数据库）
+PATH_CONFIG_FILE = os.getenv(
+    "PATH_CONFIG_FILE",
+    str(BASE_DIR / "path_config.json"),
+)
 # 周结果 CSV 目录
 WEEKLY_RESULT_FOLDER = os.getenv("WEEKLY_RESULT_FOLDER", str(BASE_DIR.parent))
 # 机器人配置 CSV 文件路径

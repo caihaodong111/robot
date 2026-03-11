@@ -120,6 +120,15 @@ class RobotComponent(models.Model):
     p_change = models.FloatField(null=True, blank=True, verbose_name="P_Change")
     level = models.CharField(max_length=1, choices=LEVEL_CHOICES, default="L", verbose_name="level")
 
+    source_key = models.CharField(
+        max_length=64,
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name="source_key",
+    )
+    source_path = models.TextField(null=True, blank=True, verbose_name="source_path")
+
     # 元数据字段
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
@@ -390,6 +399,15 @@ class RobotHighRiskSnapshot(models.Model):
 
     p_change = models.FloatField(null=True, blank=True, verbose_name="P_Change")
     level = models.CharField(max_length=1, choices=LEVEL_CHOICES, default="H", verbose_name="level")
+
+    source_key = models.CharField(
+        max_length=64,
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name="source_key",
+    )
+    source_path = models.TextField(null=True, blank=True, verbose_name="source_path")
 
     # 元数据字段
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")

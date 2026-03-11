@@ -117,7 +117,6 @@ class Migration(migrations.Migration):
             ],
             options={
                 'db_table': 'robot_components',
-                'db_table_comment': '机器人组件表，严格按照 CSV 字段设计',
             },
         ),
     ]
