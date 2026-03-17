@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_RANGE_DAYS = 30
 CACHE_TTL_SECONDS = 600
-CACHE_VERSION = 1
+CACHE_VERSION = 2
 
 try:
     from django.core.cache import cache
@@ -136,10 +136,55 @@ def fetch_data_from_mysql(table_name, start_time, end_time, time_column, engine)
     """从MySQL获取数据"""
     # 自动修正表名大小写
     real_table_name = get_real_table_name(table_name, engine)
-    query = f"SELECT * FROM `{real_table_name}` WHERE `{time_column}` BETWEEN '{start_time}' AND '{end_time}';"
+
+    columns = None
+    program = None
+    if isinstance(time_column, dict):
+        # Backward-compatible shim if older call sites pass a dict of options.
+        options = time_column
+        time_column = options.get("time_column", "Timestamp")
+        columns = options.get("columns")
+        program = options.get("program")
+
+    select_cols = "*"
+    if columns:
+        safe_cols = [str(c) for c in columns if c]
+        select_cols = ", ".join(f"`{c.replace('`', '')}`" for c in safe_cols)
+
+    base_sql = (
+        f"SELECT {select_cols} "
+        f"FROM `{real_table_name}` "
+        f"WHERE `{time_column}` BETWEEN :start_time AND :end_time"
+    )
+    params = {"start_time": start_time, "end_time": end_time}
+    if program:
+        base_sql += " AND `Name_C` = :program"
+        params["program"] = program
+    base_sql += ";"
+
     try:
-        df = pd.read_sql(query, engine)
-        return df
+        # 使用 chunksize 分批读取，避免内存溢出和超时
+        from sqlalchemy import text
+
+        logger.info(
+            "执行查询: table=%s, time_col=%s, cols=%s, program=%s, range=%s..%s",
+            real_table_name,
+            time_column,
+            "ALL" if select_cols == "*" else len(columns),
+            program or "ALL",
+            start_time,
+            end_time,
+        )
+        chunks = []
+        chunk_size = 10000
+        for chunk in pd.read_sql(text(base_sql), engine, params=params, chunksize=chunk_size):
+            chunks.append(chunk)
+            logger.info(f"已读取 {len(chunk)} 行，总计 {sum(len(c) for c in chunks)} 行")
+        if chunks:
+            df = pd.concat(chunks, ignore_index=True)
+            logger.info(f"查询完成，共 {len(df)} 行")
+            return df
+        return pd.DataFrame()
     except Exception as e:
         logger.error(f"获取数据失败: {e}")
         return pd.DataFrame()
@@ -222,23 +267,71 @@ def create_bi_charts(
         start_time = requested_start
         end_time = requested_end
         logger.info(f"请求时间范围: {start_time} 到 {end_time}")
+    # 将请求范围收敛到数据库实际范围内，避免扫描无数据的大区间
+    if start_time < db_start_time:
+        start_time = db_start_time
+    if end_time > db_end_time:
+        end_time = db_end_time
+    if start_time > end_time:
+        start_time, end_time = end_time, start_time
 
     # 获取主数据
+    logger.info("准备获取主数据...")
+    base_columns = ["Timestamp", "Name_C", "SNR_C", "P_name", "Tem_1"]
+    axis_columns = []
+    for cfg in AXIS_CONFIG.values():
+        axis_columns.extend(
+            [
+                cfg["curr"],
+                cfg["max_curr"],
+                cfg["min_curr"],
+                cfg["torque"],
+                cfg["speed"],
+                cfg["fol"],
+                cfg["axisp"],
+            ]
+        )
+    # 保留顺序：基础列在前，其余去重后追加
+    seen = set()
+    selected_columns = []
+    for col in base_columns + axis_columns:
+        if col and col not in seen:
+            seen.add(col)
+            selected_columns.append(col)
+
     cache_key = (
         f"bi:data:{CACHE_VERSION}:{table_name}:"
-        f"{start_time.strftime('%Y%m%d%H%M%S')}:{end_time.strftime('%Y%m%d%H%M%S')}"
+        f"{start_time.strftime('%Y%m%d%H%M%S')}:{end_time.strftime('%Y%m%d%H%M%S')}:"
+        f"prog:{(program or 'ALL')}"
     )
-    df_cached = cache.get(cache_key) if cache else None
+    logger.info(f"缓存键: {cache_key}")
+
+    # 安全获取缓存，避免阻塞
+    df_cached = None
+    if cache:
+        try:
+            df_cached = cache.get(cache_key)
+            logger.info(f"缓存结果: {'hit' if df_cached is not None else 'miss'}")
+        except Exception as e:
+            logger.warning(f"缓存获取失败: {e}")
+            df_cached = None
+    else:
+        logger.info("缓存未启用")
     if df_cached is not None:
         df_full = df_cached.copy()
         logger.info("主数据: cache hit")
     else:
+        logger.info("开始从数据库获取主数据...")
         fetch_start = time.perf_counter()
         df_full = fetch_data_from_mysql(
             table_name,
             _format_datetime(start_time),
             _format_datetime(end_time),
-            time_column,
+            {
+                "time_column": time_column,
+                "columns": selected_columns,
+                "program": program,
+            },
             engine,
         )
         logger.info("主数据: db fetch %.3fs", time.perf_counter() - fetch_start)
@@ -277,6 +370,7 @@ def create_bi_charts(
             cache.set(energy_cache_key, energy_full.copy(), timeout=CACHE_TTL_SECONDS)
 
     # ============ 数据预处理 ============
+    preprocess_start = time.perf_counter()
     columns_to_drop = ['A1_marker', 'A2_marker', 'A3_marker', 'A4_marker',
                        'A5_marker', 'A6_marker', 'A7_marker', 'SUB']
     for col in columns_to_drop:
@@ -291,6 +385,7 @@ def create_bi_charts(
         col = f'AxisP{i}' if i < 7 else 'AxisP7'
         if col in df_full.columns:
             df_full[col] = df_full[col].astype(float)
+    logger.info("数据预处理: %.3fs", time.perf_counter() - preprocess_start)
 
     # 获取程序选项
     programs = df_full['Name_C'].unique().tolist()
@@ -321,6 +416,7 @@ def create_bi_charts(
     max_cols = [AXIS_CONFIG[a]['max_curr'] for a in AXIS_CONFIG]
     min_cols = [AXIS_CONFIG[a]['min_curr'] for a in AXIS_CONFIG]
 
+    agg_start = time.perf_counter()
     for prog in programs:
         prog_data = df_full[df_full['Name_C'] == prog].copy()
         prog_data = prog_data.sort_values(by=['SNR_C', 'Time'])
@@ -348,6 +444,7 @@ def create_bi_charts(
         program_sources[prog] = ColumnDataSource(prog_data)
         program_agg_sources[prog] = ColumnDataSource(Q)
         program_x_tex[prog] = x_tex
+    logger.info("程序数据聚合: %.3fs", time.perf_counter() - agg_start)
 
     # 能量数据源
     energy_source = ColumnDataSource(energy_full) if not energy_full.empty else ColumnDataSource(pd.DataFrame())
@@ -378,6 +475,7 @@ def create_bi_charts(
     )
 
     # ============ 创建图表 ============
+    chart_create_start = time.perf_counter()
     # 创建代理数据源，使用固定的列名，这样渲染器不需要修改列引用
     # 当切换轴或程序时，我们只需要更新这些代理列的数据
 
@@ -812,7 +910,10 @@ def create_bi_charts(
     main_layout = column(top_controls, charts_column, sizing_mode="stretch_width", width=2100)
 
     # 使用components生成图表脚本和div
+    logger.info("图表对象创建: %.3fs", time.perf_counter() - chart_create_start)
+    components_start = time.perf_counter()
     script, div = components(main_layout)
+    logger.info("components生成: %.3fs", time.perf_counter() - components_start)
 
     return script, div, {
         'table_name': table_name,
