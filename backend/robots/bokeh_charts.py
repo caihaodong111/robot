@@ -30,6 +30,7 @@ except Exception:  # pragma: no cover - optional when running outside Django
     cache = None
 
 # 轴配置 - A1到A7
+_TABLE_NAME_CACHE = {}  # 表名缓存 {lower_name: real_name}
 AXIS_CONFIG = {
     'A1': {'curr': 'Curr_A1', 'max_curr': 'MAXCurr_A1', 'min_curr': 'MinCurr_A1', 'torque': 'Torque1', 'speed': 'Speed1', 'fol': 'Fol1', 'axisp': 'AxisP1'},
     'A2': {'curr': 'Curr_A2', 'max_curr': 'MAXCurr_A2', 'min_curr': 'MinCurr_A2', 'torque': 'Torque2', 'speed': 'Speed2', 'fol': 'Fol2', 'axisp': 'AxisP2'},
@@ -70,9 +71,53 @@ def get_db_engine():
     }
 
 
+def get_real_table_name(table_name, engine):
+    """获取数据库中实际的表名（不区分大小写匹配）"""
+    import os
+    from sqlalchemy import text
+
+    lower_name = table_name.lower()
+
+    # 检查缓存
+    if lower_name in _TABLE_NAME_CACHE:
+        return _TABLE_NAME_CACHE[lower_name]
+
+    sg_db_name = os.getenv('SG_DB_NAME')
+    if not sg_db_name:
+        _TABLE_NAME_CACHE[lower_name] = table_name
+        return table_name
+
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(
+                text(
+                    "SELECT table_name "
+                    "FROM information_schema.tables "
+                    "WHERE table_schema = :schema "
+                    "AND LOWER(table_name) = LOWER(:name) "
+                    "LIMIT 1"
+                ),
+                {"schema": sg_db_name, "name": table_name}
+            ).fetchone()
+
+            if result and result[0]:
+                real_name = result[0]
+                if real_name != table_name:
+                    logger.info(f"表名自动修正: {table_name} -> {real_name}")
+                _TABLE_NAME_CACHE[lower_name] = real_name
+                return real_name
+    except Exception as e:
+        logger.warning(f"查找表名失败: {e}")
+
+    _TABLE_NAME_CACHE[lower_name] = table_name
+    return table_name
+
+
 def get_table_recent_range(table_name, engine, days=DEFAULT_RANGE_DAYS):
     """获取数据库表最近时间范围（仅取MAX，避免全量MIN/MAX扫描）"""
-    query = f"SELECT MAX(`Timestamp`) as max_time FROM `{table_name}`;"
+    # 自动修正表名大小写
+    real_table_name = get_real_table_name(table_name, engine)
+    query = f"SELECT MAX(`Timestamp`) as max_time FROM `{real_table_name}`;"
     try:
         df = pd.read_sql(query, engine)
         if df.empty or df['max_time'].isna()[0]:
@@ -89,7 +134,9 @@ def get_table_recent_range(table_name, engine, days=DEFAULT_RANGE_DAYS):
 
 def fetch_data_from_mysql(table_name, start_time, end_time, time_column, engine):
     """从MySQL获取数据"""
-    query = f"SELECT * FROM `{table_name}` WHERE `{time_column}` BETWEEN '{start_time}' AND '{end_time}';"
+    # 自动修正表名大小写
+    real_table_name = get_real_table_name(table_name, engine)
+    query = f"SELECT * FROM `{real_table_name}` WHERE `{time_column}` BETWEEN '{start_time}' AND '{end_time}';"
     try:
         df = pd.read_sql(query, engine)
         return df
@@ -157,6 +204,9 @@ def create_bi_charts(
     except Exception as e:
         logger.error(f"数据库连接失败: {e}")
         return None, None, None, None, None
+
+    # 自动修正表名大小写（使用正确的表名进行后续所有操作）
+    table_name = get_real_table_name(table_name, engine)
 
     # 获取数据库最近时间范围
     db_start_time, db_end_time = get_table_recent_range(table_name, engine)
