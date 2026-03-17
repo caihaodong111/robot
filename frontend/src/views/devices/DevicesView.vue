@@ -190,6 +190,7 @@
           class="status-table table-entrance"
           stripe
           height="520"
+          row-key="id"
           v-loading="loading"
           :scrollbar-always-on="true"
           @sort-change="handleSortChange"
@@ -691,6 +692,7 @@ import request from '@/utils/request'
 
 const router = useRouter()
 const route = useRoute()
+const DEBUG = import.meta.env?.DEV
 
 const CHECK_KEYS = ['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7']
 const referenceOptions = ref([])
@@ -1015,12 +1017,13 @@ const handleJump = () => {
 // 页码按钮点击处理
 const handlePageClick = (page) => {
   if (page === '...') return
-  console.log('handlePageClick called with page:', page, 'totalPages:', totalPages.value, 'currentPage:', currentPage.value)
+  if (DEBUG) console.log('handlePageClick called with page:', page, 'totalPages:', totalPages.value, 'currentPage:', currentPage.value)
   goToPage(page)
 }
 
 // 添加原生事件监听用于调试
 const setupPaginationDebug = () => {
+  if (!DEBUG) return
   setTimeout(() => {
     const pageButtons = document.querySelectorAll('.pagination-page')
     console.log('Found pagination buttons:', pageButtons.length)
@@ -1034,7 +1037,7 @@ const setupPaginationDebug = () => {
 
 // 统一的页码跳转方法
 const goToPage = (page) => {
-  console.log('goToPage called with page:', page)
+  if (DEBUG) console.log('goToPage called with page:', page)
   currentPage.value = page
   jumpPage.value = page
   loadRows()
@@ -1113,7 +1116,7 @@ const latestRiskTime = (robot) => {
 const filteredRows = computed(() => {
   const list = robots.value
 
-  console.log('filteredRows computing:', {
+  if (DEBUG) console.log('filteredRows computing:', {
     listLength: list.length,
     activeTab: activeTab.value,
     firstRobot: list[0]
@@ -1128,7 +1131,7 @@ const filteredRows = computed(() => {
     filtered = list
   }
 
-  console.log('After tab filter:', { filteredLength: filtered.length })
+  if (DEBUG) console.log('After tab filter:', { filteredLength: filtered.length })
 
   return filtered
 })
@@ -1175,7 +1178,7 @@ const resetFilters = () => {
 
 // 搜索处理函数
 const handleSearch = () => {
-  console.log('handleSearch called, keyword:', keyword.value)
+  if (DEBUG) console.log('handleSearch called, keyword:', keyword.value)
   currentPage.value = 1
   loadRows()
 }
@@ -1183,13 +1186,13 @@ const handleSearch = () => {
 // 监听关键词变化，自动触发搜索（debounce 延迟）
 let keywordTimer = null
 watch(keyword, (newKeyword) => {
-  console.log('keyword changed:', newKeyword)
+  if (DEBUG) console.log('keyword changed:', newKeyword)
   if (keywordTimer) {
     clearTimeout(keywordTimer)
   }
   keywordTimer = setTimeout(() => {
     if (newKeyword.trim() !== '') {
-      console.log('Auto-triggering search for:', newKeyword)
+      if (DEBUG) console.log('Auto-triggering search for:', newKeyword)
       currentPage.value = 1
       loadRows()
     }
@@ -1474,11 +1477,18 @@ const getAxisStatusText = (row, axisNum) => {
   return '无数据'
 }
 
+const normalizeBiTableName = (value) => {
+  const raw = String(value ?? '').trim()
+  if (!raw) return ''
+  return raw.toLowerCase()
+}
+
 const openBI = async (robot) => {
-  const partNo = robot?.partNo || robot?.part_no || robot?.robot || ''
+  const rawRobotName = robot?.robot || robot?.partNo || robot?.part_no || ''
+  const tableName = normalizeBiTableName(rawRobotName)
   const groupKey = robot?.group || selectedGroup.value || ''
 
-  if (!partNo) {
+  if (!tableName) {
     ElMessage.warning('Cannot get robot information')
     return
   }
@@ -1500,7 +1510,7 @@ const openBI = async (robot) => {
     path: '/alerts',
     query: {
       group: groupKey,
-      robot: partNo,
+      robot: tableName,
       start_date: formatDate(startDate),
       end_date: formatDate(endDate)
     }
@@ -1701,7 +1711,7 @@ const loadRows = async () => {
     const actualPageSize = pageSize.value
     const requestOptions = { timeout: LIST_TIMEOUT_MS }
 
-    console.log('loadRows called:', { activeTab: activeTab.value, keyword: keyword.value, actualPageSize })
+    if (DEBUG) console.log('loadRows called:', { activeTab: activeTab.value, keyword: keyword.value, actualPageSize })
 
     // 根据标签页选择不同的 API
     let data
@@ -1719,7 +1729,7 @@ const loadRows = async () => {
         page: currentPage.value,
         page_size: actualPageSize
       }
-      console.log('Calling getHighRiskHistories with params:', historyParams)
+      if (DEBUG) console.log('Calling getHighRiskHistories with params:', historyParams)
       data = await getHighRiskHistories(historyParams, requestOptions)
     } else {
       // highRisk 和 all 标签页都使用 RobotComponent API
@@ -1736,15 +1746,15 @@ const loadRows = async () => {
         page: currentPage.value,
         page_size: actualPageSize
       }
-      console.log('Calling getRobotComponents with params:', params)
+      if (DEBUG) console.log('Calling getRobotComponents with params:', params)
       data = await getRobotComponents(params, requestOptions)
     }
 
-    console.log('Loaded data:', { count: data.count, resultsLength: data.results?.length })
+    if (DEBUG) console.log('Loaded data:', { count: data.count, resultsLength: data.results?.length })
     // 打印第一条数据，检查字段名
     if (data.results && data.results.length > 0) {
-      console.log('First row data:', data.results[0])
-      console.log('First row fields:', Object.keys(data.results[0]))
+      if (DEBUG) console.log('First row data:', data.results[0])
+      if (DEBUG) console.log('First row fields:', Object.keys(data.results[0]))
     }
     serverRows.value = data.results || data
     serverTotal.value = data.count ?? serverRows.value.length
@@ -1788,13 +1798,13 @@ const checkAndRestoreSyncState = async () => {
     if (now - syncState.startTime > SYNC_TIMEOUT) {
       // 同步状态已过期，清除
       sessionStorage.removeItem('robot_sync_state')
-      console.log('同步状态已过期，已清除')
+      if (DEBUG) console.log('同步状态已过期，已清除')
       return
     }
 
     // 恢复同步状态
     syncing.value = true
-    console.log('恢复同步状态:', syncState)
+    if (DEBUG) console.log('恢复同步状态:', syncState)
 
     // 启动轮询检查后端同步状态
     pollSyncStatus()
@@ -1852,16 +1862,10 @@ const pollSyncStatus = async () => {
   }, 2000) // 每2秒检查一次
 }
 
-// 监听页码变化
-watch(currentPage, (newPage) => {
-  console.log('Current page changed:', newPage)
-  loadRows()
-})
-
 // 监听其他过滤器变化
 let suppressFilterLoad = false
 watch([selectedGroup, activeTab], () => {
-  console.log('selectedGroup or activeTab changed, resetting page to 1')
+  if (DEBUG) console.log('selectedGroup or activeTab changed, resetting page to 1')
   suppressFilterLoad = true
   levelFilter.value = activeTab.value === 'highRisk' ? ['H'] : []
   currentPage.value = 1
@@ -1877,7 +1881,7 @@ watch(pageSize, () => {
 // 过滤器变化时自动触发（关键词需要按回车）
 watch([levelFilter, axisKeysFilter, axisStateFilter, markMode], () => {
   if (suppressFilterLoad) return
-  console.log('Filters changed, resetting page to 1. Filters:', {
+  if (DEBUG) console.log('Filters changed, resetting page to 1. Filters:', {
     level: levelFilter.value,
     axisKeys: axisKeysFilter.value,
     axisState: axisStateFilter.value,

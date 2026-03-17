@@ -17,6 +17,18 @@ function navigateTo(pageId) {
     document.querySelectorAll('.nav-link').forEach(link => {
         link.classList.remove('active');
     });
+
+    const activeLink = document.querySelector(`.nav-link[href="/#${pageId}"]`);
+    if (activeLink) {
+        activeLink.classList.add('active');
+    }
+
+    if (pageId === 'devops') {
+        const devopsFrame = document.getElementById('devopsFrame');
+        if (devopsFrame && !devopsFrame.src) {
+            devopsFrame.src = devopsFrame.dataset.src || '';
+        }
+    }
 }
 
 // 初始化页面路由

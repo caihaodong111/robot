@@ -24,7 +24,13 @@ const routes = [
         path: 'alerts',
         name: 'Alerts',
         component: () => import('@/views/alerts/AlertsView.vue')
-      }
+      },
+
+      {
+        path: 'devops',
+        name: 'DevOps',
+        component: () => import('@/views/devops/DevOpsView.vue')
+      },
     ]
   }
 ]

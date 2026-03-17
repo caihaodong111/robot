@@ -187,6 +187,39 @@ class RobotComponentSerializer(serializers.ModelSerializer):
         )
 
 
+class RobotComponentListSerializer(serializers.ModelSerializer):
+    """机器人组件列表序列化器 - 用于减少列表加载字段量"""
+    group = serializers.CharField(source="group.key", read_only=True)
+    isHighRisk = serializers.BooleanField(source="is_high_risk", read_only=True)
+    referenceNo = serializers.CharField(source="reference", read_only=True)
+
+    class Meta:
+        model = RobotComponent
+        fields = (
+            "id",
+            "group",
+            "robot",
+            "shop",
+            "referenceNo",
+            "number",
+            "type",
+            "tech",
+            "mark",
+            "remark",
+            "a1",
+            "a2",
+            "a3",
+            "a4",
+            "a5",
+            "a6",
+            "a7",
+            "p_change",
+            "level",
+            "isHighRisk",
+            "updated_at",
+        )
+
+
 class RobotReferenceDictSerializer(serializers.ModelSerializer):
     class Meta:
         model = RobotReferenceDict
@@ -382,6 +415,39 @@ class RobotHighRiskSnapshotSerializer(serializers.ModelSerializer):
             "level",
             "isHighRisk",
             # 元数据
+            "created_at",
+            "updated_at",
+        )
+
+
+class RobotHighRiskSnapshotListSerializer(serializers.ModelSerializer):
+    """历史高风险机器人列表序列化器 - 用于减少列表加载字段量"""
+    group = serializers.CharField(source="group.key", read_only=True)
+    isHighRisk = serializers.BooleanField(source="is_high_risk", read_only=True)
+
+    class Meta:
+        model = RobotHighRiskSnapshot
+        fields = (
+            "id",
+            "group",
+            "robot",
+            "shop",
+            "reference",
+            "number",
+            "type",
+            "tech",
+            "mark",
+            "remark",
+            "a1",
+            "a2",
+            "a3",
+            "a4",
+            "a5",
+            "a6",
+            "a7",
+            "p_change",
+            "level",
+            "isHighRisk",
             "created_at",
             "updated_at",
         )

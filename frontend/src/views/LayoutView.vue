@@ -36,6 +36,13 @@
               <el-icon><TrendCharts /></el-icon>
               <span>Trajectory Check</span>
             </router-link>
+
+            <router-link to="/devops" class="nav-item" :class="{ active: route.path === '/devops' }">
+              <div class="active-indicator"></div>
+              <el-icon><Monitor /></el-icon>
+              <span>Technical Management</span>
+            </router-link>
+
           </nav>
 
           <div class="sidebar-footer">
@@ -59,7 +66,7 @@
 import { ref } from 'vue'
 import { useRoute, RouterView } from 'vue-router'
 import {
-  Odometer, Cpu, TrendCharts, Bell, View
+  Odometer, Cpu, TrendCharts, View, Monitor
 } from '@element-plus/icons-vue'
 
 const route = useRoute()

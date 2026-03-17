@@ -98,6 +98,21 @@ body {
     font-weight: 600;
 }
 
+.embedded-app {
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    background: #fff;
+    overflow: hidden;
+    min-height: 70vh;
+}
+
+.embedded-app iframe {
+    display: block;
+    width: 100%;
+    height: 70vh;
+    border: 0;
+}
+
 /* 设备卡片样式 */
 .device-card {
     transition: transform 0.2s;

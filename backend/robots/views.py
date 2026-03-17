@@ -16,10 +16,12 @@ from .models import RiskEvent, RobotComponent, RobotGroup, RobotHighRiskSnapshot
 from .serializers import (
     RiskEventSerializer,
     RobotComponentSerializer,
+    RobotComponentListSerializer,
     RobotGroupSerializer,
     BIRobotSerializer,
     GripperCheckSerializer,
     RobotHighRiskSnapshotSerializer,
+    RobotHighRiskSnapshotListSerializer,
     RobotReferenceDictSerializer,
     RefreshLogSerializer,
 )
@@ -231,6 +233,13 @@ class RobotComponentViewSet(
     queryset = RobotComponent.objects.select_related("group").all()
     serializer_class = RobotComponentSerializer
     pagination_class = StandardResultsSetPagination
+    
+    def get_serializer_class(self):
+        if self.action == "list":
+            tab = (self.request.query_params.get("tab") or "").strip()
+            if tab != "all":
+                return RobotComponentListSerializer
+        return super().get_serializer_class()
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -346,37 +355,98 @@ class RobotComponentViewSet(
 
     @action(detail=False, methods=["get"])
     def bi_robots(self, request):
-        """获取BI可视化机器人选择列表"""
-        # 获取车间过滤
-        group_key = request.query_params.get("group")
-        qs = self.get_queryset()
+        """
+        获取BI可视化机器人选择列表
 
+        设计原则（简化）：
+        - 选择车间（group）时：只返回主数据库中该车间的全部机器人（保证“车间全量”）。
+        - 手动输入 keyword 搜索时：优先在主数据库搜索并返回（带 group/shop 对照）。
+        - 如果主数据库搜索无结果：再去 PROGRAM CYCLE SYNC（SG）数据库按表名检索，
+          返回机器人但不提供车间对照（group_key/shop 为空），仍可直接生成 BI 图。
+        """
+        import re
+
+        def _get_sg_db_url():
+            sg_name = os.getenv("SG_DB_NAME")
+            sg_user = os.getenv("SG_DB_USER")
+            sg_password = os.getenv("SG_DB_PASSWORD")
+            sg_host = os.getenv("SG_DB_HOST")
+            sg_port = os.getenv("SG_DB_PORT") or "3306"
+
+            missing = [key for key, value in [
+                ("SG_DB_NAME", sg_name),
+                ("SG_DB_USER", sg_user),
+                ("SG_DB_PASSWORD", sg_password),
+                ("SG_DB_HOST", sg_host),
+            ] if not value]
+            if missing:
+                raise ValueError(f"Missing SG DB env vars: {', '.join(missing)}")
+
+            return f"mysql+pymysql://{sg_user}:{sg_password}@{sg_host}:{sg_port}/{sg_name}"
+
+        def _search_sg_robot_tables(keyword_value: str, limit: int = 200):
+            from sqlalchemy import create_engine, text
+            kw = (keyword_value or "").strip()
+            if not kw:
+                return []
+            kw_like = f"%{kw}%"
+
+            engine = create_engine(_get_sg_db_url())
+            with engine.connect() as conn:
+                # 使用 information_schema 避免全库 SHOW TABLES，支持模糊匹配
+                sg_db_name = os.getenv("SG_DB_NAME")
+                rows = conn.execute(
+                    text(
+                        "SELECT table_name "
+                        "FROM information_schema.tables "
+                        "WHERE table_schema = :schema AND table_name LIKE :kw "
+                        "ORDER BY table_name "
+                        "LIMIT :lim"
+                    ),
+                    {"schema": sg_db_name, "kw": kw_like, "lim": int(limit)},
+                ).fetchall()
+
+            tables = [row[0] for row in rows if row and row[0]]
+            tables = [t for t in tables if re.search(r"rb[_-]?\\d+", str(t), flags=re.IGNORECASE)]
+            return tables
+
+        group_key = (request.query_params.get("group") or "").strip()
+        keyword = (request.query_params.get("keyword") or "").strip()
+
+        # 1) 主数据库：group 过滤时返回“该车间全量机器人”；keyword 时返回匹配机器人
+        qs = self.get_queryset()
         if group_key:
             qs = qs.filter(group__key=group_key)
-
-        # 获取搜索关键词
-        keyword = (request.query_params.get("keyword") or "").strip()
         if keyword:
-            qs = qs.filter(
-                Q(robot__icontains=keyword)
-                | Q(shop__icontains=keyword)
-            )
+            qs = qs.filter(Q(robot__icontains=keyword) | Q(shop__icontains=keyword))
 
-        # 按robot去重并排序，同时包含group_key
         robots = qs.values("robot", "shop", "group__key").distinct().order_by("robot")
+        results = [{
+            "value": (r["robot"] or "").strip().lower(),
+            "label": f"{r['robot']}",
+            "robot_id": r["robot"],
+            "shop": r.get("shop", ""),
+            "group_key": r.get("group__key", ""),
+        } for r in robots]
 
-        # 手动构建返回数据
-        results = []
-        for r in robots:
-            results.append({
-                "value": r["robot"],  # BI使用的robot值
-                "label": f"{r['robot']}",
-                "robot_id": r["robot"],
-                "shop": r.get("shop", ""),
-                "group_key": r.get("group__key", ""),
-            })
+        # 2) 主数据库无结果时：仅在手动搜索(keyword)场景回退到 SG（不带车间对照）
+        if results or not keyword:
+            return Response({"results": results})
 
-        return Response({"results": results})
+        try:
+            tables = _search_sg_robot_tables(keyword)
+        except Exception as e:
+            logger.warning("SG DB robot search unavailable: %s", e)
+            return Response({"results": []})
+
+        sg_results = [{
+            "value": str(t).strip().lower(),
+            "label": str(t),
+            "robot_id": str(t),
+            "shop": "",
+            "group_key": "",
+        } for t in tables]
+        return Response({"results": sg_results})
 
     @action(detail=False, methods=["get"])
     def time_range(self, request):
@@ -401,6 +471,7 @@ class RobotComponentViewSet(
                 {"error": "缺少参数 robot，请提供机器人部件编号"},
                 status=status.HTTP_400_BAD_REQUEST
             )
+        table_name = str(table_name).strip().lower()
 
         try:
             # 获取数据库连接配置
@@ -698,7 +769,15 @@ def bi_view(request):
 
     # 从查询参数获取参数
     # 优先使用robot参数（来自MonitoringView的跳转），其次使用table参数
+    import re
+
     table_name = request.GET.get('robot', request.GET.get('table', 'as33_020rb_400'))
+    table_name = (table_name or '').strip().lower()
+    if not re.match(r'^[0-9a-z_-]+$', table_name):
+        return render(request, 'bi_error.html', {
+            'table_name': table_name,
+            'error': '非法的表名参数'
+        })
     # 检测是否为嵌入模式
     embed_mode = request.GET.get('embed', '0') == '1'
     # 注意：create_bi_charts 现在会自动获取数据库实际时间范围
@@ -889,6 +968,11 @@ class RobotHighRiskSnapshotViewSet(mixins.ListModelMixin, viewsets.GenericViewSe
     queryset = RobotHighRiskSnapshot.objects.all()
     serializer_class = RobotHighRiskSnapshotSerializer
     pagination_class = StandardResultsSetPagination
+
+    def get_serializer_class(self):
+        if self.action == "list":
+            return RobotHighRiskSnapshotListSerializer
+        return super().get_serializer_class()
 
     # 排除的车间 key 列表（与前端保持一致）
     EXCLUDED_GROUP_KEYS = ['', '(空)', '未分配']

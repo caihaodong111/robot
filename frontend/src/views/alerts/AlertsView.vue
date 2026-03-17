@@ -51,6 +51,7 @@
                 placeholder="请输入机器人名称搜索"
                 filterable
                 clearable
+                allow-create
                 remote
                 reserve-keyword
                 :remote-method="searchRobots"
@@ -259,7 +260,8 @@ const shortcuts = [
 
 const biUrl = computed(() => {
   const name = activeName.value.trim()
-  const baseUrl = name ? `/api/robots/bi/?table=${encodeURIComponent(name)}&embed=1` : ''
+  const tableName = name ? name.toLowerCase() : ''
+  const baseUrl = tableName ? `/api/robots/bi/?table=${encodeURIComponent(tableName)}&embed=1` : ''
   if (!baseUrl) return ''
   const url = new URL(baseUrl, window.location.origin)
   if (reloadToken.value) {
@@ -379,6 +381,11 @@ const handleRobotChange = (value) => {
     activeName.value = value
     currentRobotLabel.value = robot.label
     shouldLoad.value = false  // 重置加载状态，等待手动点击"加载分析"
+  } else {
+    // allow-create：手动输入的机器人名（可能只存在于 PROGRAM CYCLE SYNC 数据库）
+    activeName.value = value
+    currentRobotLabel.value = value
+    shouldLoad.value = false
   }
 }
 
@@ -450,35 +457,43 @@ const initFromQuery = async () => {
   const queryStartDate = route.query.start_date
   const queryEndDate = route.query.end_date
 
-  if (queryGroup && queryRobot) {
-    // 先设置车间
-    selectedGroup.value = queryGroup
+  const normalizedQueryRobot = typeof queryRobot === 'string' ? queryRobot.trim() : ''
 
-    // 加载该车间的所有机器人
+  if (!normalizedQueryRobot) return false
+
+  // group 可选：有则用于限定下拉列表；无也应允许直接按表名加载 BI
+  if (queryGroup && typeof queryGroup === 'string' && queryGroup.trim()) {
+    selectedGroup.value = queryGroup.trim()
     await searchRobots('')
 
-    // 找到并设置选中的机器人
-    const robot = robots.value.find(r => r.value === queryRobot)
+    const robot = robots.value.find(r => String(r.value).toLowerCase() === normalizedQueryRobot.toLowerCase())
     if (robot) {
       selectedRobot.value = robot.value
       activeName.value = robot.value
       currentRobotLabel.value = robot.label
-
-      // 如果有时间范围参数，设置时间范围并自动加载
-      if (queryStartDate && queryEndDate) {
-        timeRange.value = normalizeRangeToDayBounds([new Date(queryStartDate), new Date(queryEndDate)])
-        shouldLoad.value = true  // 自动加载
-        loadFrame(biUrl.value)
-      } else {
-        shouldLoad.value = false  // 没有时间范围，需要手动点击"加载分析"
-      }
+    } else {
+      selectedRobot.value = normalizedQueryRobot
+      activeName.value = normalizedQueryRobot
+      currentRobotLabel.value = normalizedQueryRobot
     }
-
-    // 清空URL参数，避免刷新后重新加载
-    router.replace({ query: {} })
-    return true
+  } else {
+    selectedRobot.value = normalizedQueryRobot
+    activeName.value = normalizedQueryRobot
+    currentRobotLabel.value = normalizedQueryRobot
   }
-  return false
+
+  // 如果有时间范围参数，设置时间范围；无则沿用默认 timeRange
+  if (queryStartDate && queryEndDate) {
+    timeRange.value = normalizeRangeToDayBounds([new Date(queryStartDate), new Date(queryEndDate)])
+  }
+
+  // 只要带了 robot，就自动加载 BI
+  shouldLoad.value = true
+  loadFrame(biUrl.value)
+
+  // 清空URL参数，避免刷新后重新加载
+  router.replace({ query: {} })
+  return true
 }
 
 const handleBiMessage = (event) => {
@@ -504,6 +519,15 @@ onUnmounted(() => {
   stopLogRotation()
   window.removeEventListener('message', handleBiMessage)
 })
+
+// 组件在同一路由下会复用（仅 query 变化不会触发 onMounted）
+watch(
+  () => route.query.robot,
+  async (robot, prevRobot) => {
+    if (!robot || robot === prevRobot) return
+    await initFromQuery()
+  }
+)
 
 const fetchBiLogs = async () => {
   try {
