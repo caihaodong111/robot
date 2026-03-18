@@ -683,12 +683,14 @@
 </template>
 
 <script setup>
-import { computed, ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { computed, ref, watch, nextTick, onMounted, onUnmounted, onActivated, onDeactivated } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { Refresh, Search, Close, Monitor, ArrowRight, ArrowLeft, Picture, Clock, Download } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { getRobotComponents, getRobotGroups, updateRobotComponent, getErrorTrendChart, importRobotComponents, getHighRiskHistories, getReferenceDict, refreshReferenceDict, getReferenceDictRefreshStatus, resolveReferenceNumber, verifyEditCredentials, getEditAuthStatus } from '@/api/robots'
 import request from '@/utils/request'
+
+defineOptions({ name: 'Devices' })
 
 const router = useRouter()
 const route = useRoute()
@@ -700,6 +702,45 @@ const referenceLoading = ref(false)
 const referenceRefreshing = ref(false)
 
 const drawerVisible = ref(false)
+
+const ROBOT_STATUS_VIEW_STATE_KEY = 'robot_status_view_state_v1'
+const VALID_TABS = new Set(['highRisk', 'all', 'history'])
+
+const firstQueryValue = (value) => (Array.isArray(value) ? value[0] : value)
+
+const normalizeTab = (value) => {
+  const tab = String(value || '')
+  return VALID_TABS.has(tab) ? tab : ''
+}
+
+const readRobotStatusViewState = () => {
+  try {
+    const raw = sessionStorage.getItem(ROBOT_STATUS_VIEW_STATE_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+const writeRobotStatusViewState = (patch) => {
+  try {
+    const current = readRobotStatusViewState()
+    const next = { ...current, ...patch, updatedAt: Date.now() }
+    sessionStorage.setItem(ROBOT_STATUS_VIEW_STATE_KEY, JSON.stringify(next))
+  } catch (e) {
+    if (DEBUG) console.warn('Failed to persist robot status view state:', e)
+  }
+}
+
+const syncRobotStatusRouteQuery = (group, tab) => {
+  const currentGroup = String(firstQueryValue(route.query.group) || '')
+  const currentTab = String(firstQueryValue(route.query.tab) || '')
+  if (!group) return
+  if (currentGroup === group && currentTab === tab) return
+  router.replace({ query: { ...route.query, group, tab } }).catch(() => {})
+}
 
 // 同步状态
 const syncing = ref(false)
@@ -716,17 +757,12 @@ const normalizeGroupName = (group) => {
   return group
 }
 
-// 优先使用 URL query 参数中的 group，否则使用第一个车间
-const getInitialGroup = () => {
-  const queryGroup = route.query.group
-  if (queryGroup) {
-    // 如果 URL 有 group 参数，返回空字符串等待数据加载
-    return ''
-  }
-  return '' // 等待数据加载后使用第一个车间
-}
-const selectedGroup = ref(getInitialGroup())
-const activeTab = ref('highRisk')
+const initialViewState = readRobotStatusViewState()
+const initialQueryGroup = String(firstQueryValue(route.query.group) || '')
+const initialQueryTab = normalizeTab(firstQueryValue(route.query.tab))
+
+const selectedGroup = ref(initialQueryGroup || String(initialViewState.group || ''))
+const activeTab = ref(initialQueryTab || normalizeTab(initialViewState.tab) || 'highRisk')
 const keyword = ref('')
 const levelFilter = ref([])
 const axisKeysFilter = ref([])
@@ -1690,12 +1726,18 @@ const loadGroups = async () => {
     loading.value = true
     const response = await getRobotGroups()
     groupsData.value = (response || []).map(normalizeGroupName)
-    const queryGroup = route.query.group
 
-    if (queryGroup && groupsData.value.find((g) => g.key === queryGroup)) {
-      selectedGroup.value = queryGroup
-    } else if (!selectedGroup.value && groupsData.value.length) {
+    const queryGroup = String(firstQueryValue(route.query.group) || '')
+    const storedGroup = String(readRobotStatusViewState().group || '')
+    const candidates = [queryGroup, selectedGroup.value, storedGroup].filter(Boolean)
+    const resolved = candidates.find((key) => groupsData.value.some((g) => g.key === key))
+
+    if (resolved) {
+      selectedGroup.value = resolved
+    } else if (groupsData.value.length) {
       selectedGroup.value = groupsData.value[0].key
+    } else {
+      selectedGroup.value = ''
     }
   } finally {
     loading.value = false
@@ -1771,16 +1813,26 @@ const loadRows = async () => {
 }
 
 // 初始化加载数据
+let isInitializing = true
 const initData = async () => {
-  // 检查并恢复同步状态
-  await checkAndRestoreSyncState()
+  isInitializing = true
+  try {
+    // 检查并恢复同步状态
+    await checkAndRestoreSyncState()
 
-  await loadGroups()
-  await loadRows()
-  await fetchLastSyncTime()
+    await loadGroups()
+    await loadRows()
+    await fetchLastSyncTime()
 
-  // 设置分页调试
-  setupPaginationDebug()
+    // 设置分页调试
+    setupPaginationDebug()
+  } finally {
+    if (selectedGroup.value) {
+      writeRobotStatusViewState({ group: selectedGroup.value, tab: activeTab.value })
+      syncRobotStatusRouteQuery(selectedGroup.value, activeTab.value)
+    }
+    isInitializing = false
+  }
 }
 
 // 检查并恢复同步状态
@@ -1869,7 +1921,11 @@ watch([selectedGroup, activeTab], () => {
   suppressFilterLoad = true
   levelFilter.value = activeTab.value === 'highRisk' ? ['H'] : []
   currentPage.value = 1
-  loadRows()
+  if (selectedGroup.value) {
+    writeRobotStatusViewState({ group: selectedGroup.value, tab: activeTab.value })
+    syncRobotStatusRouteQuery(selectedGroup.value, activeTab.value)
+  }
+  if (!isInitializing) loadRows()
   suppressFilterLoad = false
 })
 
@@ -1904,6 +1960,21 @@ initData()
 // 组件挂载时恢复登录状态
 onMounted(() => {
   restoreAuthState()
+})
+
+// 组件激活时恢复滚动位置（配合 KeepAlive 使用）
+onActivated(() => {
+  nextTick(() => {
+    const state = readRobotStatusViewState()
+    if (state.scrollTop !== undefined) {
+      window.scrollTo(0, state.scrollTop)
+    }
+  })
+})
+
+// 组件失活时保存滚动位置（配合 KeepAlive 使用）
+onDeactivated(() => {
+  writeRobotStatusViewState({ scrollTop: window.scrollY })
 })
 
 // 组件卸载时清理定时器

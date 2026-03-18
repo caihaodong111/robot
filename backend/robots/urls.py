@@ -53,6 +53,8 @@ router.register(r"high-risk-histories", RobotHighRiskSnapshotViewSet, basename="
 router.register(r"reference-dict", RobotReferenceDictViewSet, basename="robot-reference-dict")
 
 urlpatterns = [
+    # ViewSet 路由必须放在最前面，避免被其他路径拦截
+    path("", include(router.urls)),
     path("bi/", bi_view, name="robot-bi"),
     path("charts/<path:filename>", serve_chart, name="robot-chart"),
     path("last_sync_time/", get_last_sync_time, name="last-sync-time"),
@@ -66,5 +68,4 @@ urlpatterns = [
     path("auth/users/", list_edit_users, name="list-edit-users"),
     path("auth/change-password/", change_edit_password, name="change-edit-password"),
     path("auth/create-user/", create_edit_user, name="create-edit-user"),
-    path("", include(router.urls)),
 ]

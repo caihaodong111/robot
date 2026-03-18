@@ -356,13 +356,12 @@ class RobotComponentViewSet(
     @action(detail=False, methods=["get"])
     def bi_robots(self, request):
         """
-        获取BI可视化机器人选择列表
+        获取 BI 可视化机器人（表名）信息
 
-        设计原则（简化）：
-        - 选择车间（group）时：只返回主数据库中该车间的全部机器人（保证“车间全量”）。
-        - 手动输入 keyword 搜索时：优先在主数据库搜索并返回（带 group/shop 对照）。
-        - 如果主数据库搜索无结果：再去 PROGRAM CYCLE SYNC（SG）数据库按表名检索，
-          返回机器人但不提供车间对照（group_key/shop 为空），仍可直接生成 BI 图。
+        当前行为（PROGRAM CYCLE SYNC 专用）：
+        - 只查询 SG 数据库（SG_DB_*）。
+        - 只支持精确匹配（不做模糊匹配），大小写不敏感。
+        - 找不到则返回 404 错误。
         """
         import re
 
@@ -384,69 +383,60 @@ class RobotComponentViewSet(
 
             return f"mysql+pymysql://{sg_user}:{sg_password}@{sg_host}:{sg_port}/{sg_name}"
 
-        def _search_sg_robot_tables(keyword_value: str, limit: int = 200):
+        def _find_sg_table_exact(table_name: str):
             from sqlalchemy import create_engine, text
-            kw = (keyword_value or "").strip()
-            if not kw:
-                return []
-            kw_like = f"%{kw}%"
+            name = (table_name or "").strip()
+            if not name:
+                return None
 
             engine = create_engine(_get_sg_db_url())
             with engine.connect() as conn:
-                # 使用 information_schema 避免全库 SHOW TABLES，支持模糊匹配
+                # 使用 information_schema 避免全库 SHOW TABLES；精确匹配（大小写不敏感）
                 sg_db_name = os.getenv("SG_DB_NAME")
-                rows = conn.execute(
+                row = conn.execute(
                     text(
                         "SELECT table_name "
                         "FROM information_schema.tables "
-                        "WHERE table_schema = :schema AND table_name LIKE :kw "
-                        "ORDER BY table_name "
-                        "LIMIT :lim"
+                        "WHERE table_schema = :schema "
+                        "AND LOWER(table_name) = LOWER(:name) "
+                        "LIMIT 1"
                     ),
-                    {"schema": sg_db_name, "kw": kw_like, "lim": int(limit)},
-                ).fetchall()
+                    {"schema": sg_db_name, "name": name},
+                ).fetchone()
+            return row[0] if row and row[0] else None
 
-            tables = [row[0] for row in rows if row and row[0]]
-            tables = [t for t in tables if re.search(r"rb[_-]?\\d+", str(t), flags=re.IGNORECASE)]
-            return tables
-
-        group_key = (request.query_params.get("group") or "").strip()
         keyword = (request.query_params.get("keyword") or "").strip()
-
-        # 1) 主数据库：group 过滤时返回“该车间全量机器人”；keyword 时返回匹配机器人
-        qs = self.get_queryset()
-        if group_key:
-            qs = qs.filter(group__key=group_key)
-        if keyword:
-            qs = qs.filter(Q(robot__icontains=keyword) | Q(shop__icontains=keyword))
-
-        robots = qs.values("robot", "shop", "group__key").distinct().order_by("robot")
-        results = [{
-            "value": (r["robot"] or "").strip().lower(),
-            "label": f"{r['robot']}",
-            "robot_id": r["robot"],
-            "shop": r.get("shop", ""),
-            "group_key": r.get("group__key", ""),
-        } for r in robots]
-
-        # 2) 主数据库无结果时：仅在手动搜索(keyword)场景回退到 SG（不带车间对照）
-        if results or not keyword:
-            return Response({"results": results})
-
-        try:
-            tables = _search_sg_robot_tables(keyword)
-        except Exception as e:
-            logger.warning("SG DB robot search unavailable: %s", e)
+        if not keyword:
             return Response({"results": []})
 
-        sg_results = [{
-            "value": str(t).strip().lower(),
-            "label": str(t),
-            "robot_id": str(t),
-            "shop": "",
-            "group_key": "",
-        } for t in tables]
-        return Response({"results": sg_results})
+        if not re.match(r"^[0-9a-zA-Z_-]+$", keyword):
+            return Response({"detail": "非法的机器人/表名参数"}, status=400)
+
+        try:
+            sg_schema = os.getenv("SG_DB_NAME") or ""
+            table = _find_sg_table_exact(keyword)
+        except Exception as e:
+            logger.warning("SG DB table lookup unavailable: %s", e)
+            return Response({"detail": "SG 数据库不可用或连接失败"}, status=503)
+
+        if not table:
+            schema_hint = f"（schema={sg_schema}）" if sg_schema else ""
+            return Response({"detail": f"SG 数据库中未找到表: {keyword}{schema_hint}"}, status=404)
+
+        if not re.search(r"rb[_-]?\d+", str(table), flags=re.IGNORECASE):
+            return Response({"detail": f"表名不符合机器人命名规则: {table}"}, status=404)
+
+        return Response(
+            {
+                "results": [
+                    {
+                        "value": str(table).strip().lower(),
+                        "label": str(table).strip(),
+                        "robot_id": str(table).strip(),
+                    }
+                ]
+            }
+        )
 
     @action(detail=False, methods=["get"])
     def time_range(self, request):

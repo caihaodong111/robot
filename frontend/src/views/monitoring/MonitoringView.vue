@@ -803,8 +803,9 @@ const goToRobotBI = (robotName) => {
   if (robot && robot.group_key) {
     group = robot.group_key
   }
-  
-  const biUrl = `/api/robots/bi/?robot=${encodeURIComponent(robotName)}&group=${encodeURIComponent(group)}&embed=1`
+
+  // 使用完整的后端URL，确保开发环境下正确访问
+  const biUrl = `${API_BASE_URL}/api/robots/bi/?robot=${encodeURIComponent(robotName)}&group=${encodeURIComponent(group)}&embed=1`
   window.open(biUrl, '_blank')
 }
 

@@ -24,52 +24,21 @@
         </div>
         <div class="control-content">
           <div class="control-row">
-            <!-- 车间选择 -->
+            <!-- 机器人搜索 -->
             <div class="control-item compact-item entrance-fade-right-1">
-              <label><el-icon><Location /></el-icon> 目标车间</label>
-              <el-select
-                v-model="selectedGroup"
-                placeholder="请选择车间"
-                clearable
-                @change="handleGroupChange"
-                class="styled-select"
-              >
-                <el-option
-                  v-for="group in groups"
-                  :key="group.key"
-                  :label="group.name"
-                  :value="group.key"
-                />
-              </el-select>
-            </div>
-
-            <!-- 机器人选择 -->
-            <div class="control-item compact-item entrance-fade-right-2">
               <label><el-icon><Monitor /></el-icon> 机器人</label>
-              <el-select
-                v-model="selectedRobot"
-                placeholder="请输入机器人名称搜索"
-                filterable
+              <el-input
+                v-model="robotQuery"
+                placeholder="请输入机器人表名（PROGRAM CYCLE SYNC）"
                 clearable
-                allow-create
-                remote
-                reserve-keyword
-                :remote-method="searchRobots"
-                :loading="robotsLoading"
-                @change="handleRobotChange"
+                :disabled="isLoading"
+                @keyup.enter="handleRobotSearch"
                 class="styled-select"
-              >
-                <el-option
-                  v-for="robot in robots"
-                  :key="robot.value"
-                  :label="robot.label"
-                  :value="robot.value"
-                />
-              </el-select>
+              />
             </div>
 
             <!-- 时间范围选择器 -->
-            <div class="control-item compact-item time-range-control entrance-fade-right-3">
+            <div class="control-item compact-item time-range-control entrance-fade-right-2">
               <label><el-icon><Calendar /></el-icon> 时间范围</label>
               <el-date-picker
                 v-model="timeRange"
@@ -167,24 +136,23 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Location, Monitor, Search, PieChart, Calendar } from '@element-plus/icons-vue'
+import { Monitor, Search, PieChart, Calendar } from '@element-plus/icons-vue'
 import request from '@/utils/request'
+import { ElMessage } from 'element-plus'
+import { API_BASE_URL } from '@/config/appConfig'
 
 defineOptions({ name: 'Alerts' })
 
 const route = useRoute()
 const router = useRouter()
 
-const selectedGroup = ref('')
-const selectedRobot = ref('')
+const robotQuery = ref('')
 const activeName = ref('')
 const currentRobotLabel = ref('')
 const reloadToken = ref(0)
 const shouldLoad = ref(false)  // 控制是否加载 iframe
 const frameUrl = ref('')
 
-const groups = ref([])
-const robots = ref([])
 const robotsLoading = ref(false)
 const isLoading = ref(false)
 const isLoadHover = ref(false)
@@ -263,7 +231,8 @@ const biUrl = computed(() => {
   const tableName = name ? name.toLowerCase() : ''
   const baseUrl = tableName ? `/api/robots/bi/?table=${encodeURIComponent(tableName)}&embed=1` : ''
   if (!baseUrl) return ''
-  const url = new URL(baseUrl, window.location.origin)
+  // 使用 API_BASE_URL 而不是 window.location.origin，确保iframe指向后端服务器
+  const url = new URL(baseUrl, API_BASE_URL)
   if (reloadToken.value) {
     url.searchParams.set('_t', String(reloadToken.value))
   }
@@ -279,7 +248,8 @@ const biUrl = computed(() => {
     url.searchParams.set('start_date', formatDate(timeRange.value[0]))
     url.searchParams.set('end_date', formatDate(timeRange.value[1]))
   }
-  return url.pathname + url.search
+  // 返回完整的URL，确保iframe正确加载
+  return url.toString()
 })
 
 const loadFrame = (url) => {
@@ -291,101 +261,35 @@ const loadFrame = (url) => {
   startLoading()
 }
 
-// 加载车间列表
-const loadGroups = async () => {
-  try {
-    const response = await request.get('/robots/groups/')
-    groups.value = response
-  } catch (error) {
-    console.error('加载车间列表失败:', error)
-  }
-}
-
-// 车间变化时重新搜索机器人
-const handleGroupChange = async () => {
-  selectedRobot.value = ''
-  activeName.value = ''
-  currentRobotLabel.value = ''
-  isLoading.value = false
-  stopLogPolling()
-  stopLogRotation()
-  shouldLoad.value = false  // 重置加载状态
-
-  // 重新搜索机器人
-  await searchRobots('')
-}
-
-// 远程搜索机器人
-const searchRobots = async (query) => {
-  robotsLoading.value = true
-  try {
-    const params = {}
-    if (query) {
-      params.keyword = query
-    }
-    if (selectedGroup.value) {
-      params.group = selectedGroup.value
-    }
-
-    const response = await request.get('/robots/components/bi_robots/', { params })
-    let results = response.results || []
-
-    // 处理机器人名称，只保留括号前的内容
-    robots.value = results.map(robot => {
-      // 提取括号前的机器人名称
-      let cleanLabel = robot.label
-      if (cleanLabel.includes('(')) {
-        cleanLabel = cleanLabel.split('(')[0].trim()
-      }
-
-      return {
-        ...robot,
-        label: cleanLabel
-      }
-    })
-
-    // 如果有搜索关键词，在前端进一步过滤确保结果包含关键词
-    if (query) {
-      const lowerQuery = query.toLowerCase()
-      robots.value = robots.value.filter(robot =>
-        robot.label.toLowerCase().includes(lowerQuery)
-      )
-    }
-  } catch (error) {
-    console.error('搜索机器人失败:', error)
-    robots.value = []
-  } finally {
-    robotsLoading.value = false
-  }
-}
-
-// 机器人选择变化
-const handleRobotChange = (value) => {
-  if (!value) {
-    activeName.value = ''
-    currentRobotLabel.value = ''
-    isLoading.value = false
-    stopLogPolling()
-    stopLogRotation()
-    shouldLoad.value = false  // 重置加载状态
+const handleRobotSearch = async () => {
+  const query = robotQuery.value.trim()
+  if (!query) {
+    ElMessage.warning('请输入机器人表名')
     return
   }
 
-  const robot = robots.value.find(r => r.value === value)
-  if (robot) {
-    // 如果机器人有group_key信息且与当前选中车间不同，自动设置车间
-    if (robot.group_key && robot.group_key !== selectedGroup.value) {
-      selectedGroup.value = robot.group_key
+  robotsLoading.value = true
+  try {
+    const response = await request.get('/robots/components/bi_robots/', {
+      params: { keyword: query },
+      silent: true
+    })
+    const result = response?.results?.[0]
+    if (!result?.value) {
+      throw new Error('EMPTY_RESULT')
     }
 
-    activeName.value = value
-    currentRobotLabel.value = robot.label
-    shouldLoad.value = false  // 重置加载状态，等待手动点击"加载分析"
-  } else {
-    // allow-create：手动输入的机器人名（可能只存在于 PROGRAM CYCLE SYNC 数据库）
-    activeName.value = value
-    currentRobotLabel.value = value
+    activeName.value = String(result.value).trim()
+    currentRobotLabel.value = String(result.label || result.value).trim()
     shouldLoad.value = false
+  } catch (error) {
+    activeName.value = ''
+    currentRobotLabel.value = ''
+    shouldLoad.value = false
+    const detail = error?.response?.data?.detail
+    ElMessage.error(typeof detail === 'string' && detail.trim() ? detail : 'PROGRAM CYCLE SYNC 数据库中未找到该机器人表名')
+  } finally {
+    robotsLoading.value = false
   }
 }
 
@@ -452,7 +356,6 @@ const handleTimeRangeChange = (range) => {
 
 // 初始化：检查URL参数
 const initFromQuery = async () => {
-  const queryGroup = route.query.group
   const queryRobot = route.query.robot
   const queryStartDate = route.query.start_date
   const queryEndDate = route.query.end_date
@@ -461,26 +364,9 @@ const initFromQuery = async () => {
 
   if (!normalizedQueryRobot) return false
 
-  // group 可选：有则用于限定下拉列表；无也应允许直接按表名加载 BI
-  if (queryGroup && typeof queryGroup === 'string' && queryGroup.trim()) {
-    selectedGroup.value = queryGroup.trim()
-    await searchRobots('')
-
-    const robot = robots.value.find(r => String(r.value).toLowerCase() === normalizedQueryRobot.toLowerCase())
-    if (robot) {
-      selectedRobot.value = robot.value
-      activeName.value = robot.value
-      currentRobotLabel.value = robot.label
-    } else {
-      selectedRobot.value = normalizedQueryRobot
-      activeName.value = normalizedQueryRobot
-      currentRobotLabel.value = normalizedQueryRobot
-    }
-  } else {
-    selectedRobot.value = normalizedQueryRobot
-    activeName.value = normalizedQueryRobot
-    currentRobotLabel.value = normalizedQueryRobot
-  }
+  robotQuery.value = normalizedQueryRobot
+  await handleRobotSearch()
+  if (!activeName.value) return false
 
   // 如果有时间范围参数，设置时间范围；无则沿用默认 timeRange
   if (queryStartDate && queryEndDate) {
@@ -506,8 +392,6 @@ const handleBiMessage = (event) => {
 }
 
 onMounted(async () => {
-  await loadGroups()
-  // 等待groups加载后再初始化query参数
   await initFromQuery()
 
   // 监听来自iframe的postMessage（用于日期范围更新）
@@ -582,6 +466,14 @@ const currentLogLine = computed(() => {
 
 watch(displayLogs, () => {
   currentLogIndex.value = 0
+})
+
+watch(robotQuery, (val) => {
+  if (typeof val === 'string' && !val.trim()) {
+    activeName.value = ''
+    currentRobotLabel.value = ''
+    shouldLoad.value = false
+  }
 })
 </script>
 

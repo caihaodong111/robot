@@ -54,7 +54,7 @@
 
     <main class="app-main">
       <RouterView v-slot="{ Component }">
-        <KeepAlive :include="['Alerts', 'Monitoring']">
+        <KeepAlive :include="['Alerts', 'Monitoring', 'Devices']">
           <component :is="Component" />
         </KeepAlive>
       </RouterView>
