@@ -742,8 +742,6 @@ class RiskEventViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewset
                 "recent_alerts": RiskEventSerializer(recent, many=True).data,
             }
         )
-
-
 @xframe_options_exempt
 def bi_view(request):
     """
