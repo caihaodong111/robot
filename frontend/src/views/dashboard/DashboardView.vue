@@ -102,7 +102,7 @@
               class="data-cell ios-glass workshop-card entrance-scale-up-delay-1"
               v-for="(group, idx) in groupRows"
               :key="group.key"
-              @click="goToWorkshop(group.key)"
+              @click.capture="goToWorkshop(group.key)"
               :style="{ animationDelay: `${0.3 + idx * 0.05}s` }"
             >
               <div class="border-glow slow entrance-border-glow"></div>
@@ -920,6 +920,8 @@ watch(groupRows, () => {
 .workshop-mini-chart {
   width: 100%;
   height: 100%;
+  /* 让点击穿透到 workshop-card，避免 ECharts canvas 吞掉点击导致无法跳转 */
+  pointer-events: none;
 }
 
 .workshop-data-col {

@@ -1964,6 +1964,10 @@ onMounted(() => {
 
 // 组件激活时恢复滚动位置（配合 KeepAlive 使用）
 onActivated(() => {
+  const queryGroup = String(firstQueryValue(route.query.group) || '').trim()
+  if (queryGroup && queryGroup !== selectedGroup.value) {
+    selectedGroup.value = queryGroup
+  }
   nextTick(() => {
     const state = readRobotStatusViewState()
     if (state.scrollTop !== undefined) {

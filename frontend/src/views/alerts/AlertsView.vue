@@ -120,6 +120,7 @@
             </Transition>
 
             <iframe
+              v-if="shouldLoad && frameUrl"
               ref="biFrame"
               class="bi-frame"
               :src="frameUrl"
@@ -134,7 +135,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Monitor, Search, PieChart, Calendar } from '@element-plus/icons-vue'
 import request from '@/utils/request'
@@ -162,6 +163,8 @@ const logPollingTimer = ref(null)
 const logRotateTimer = ref(null)
 const currentLogIndex = ref(0)
 const lastStableFrameUrl = ref('')
+const initInProgress = ref(false)
+const lastInitSignature = ref('')
 
 const LOG_LIMIT = 8
 const LOG_POLL_INTERVAL = 4500
@@ -231,7 +234,6 @@ const biUrl = computed(() => {
   const tableName = name ? name.toLowerCase() : ''
   const baseUrl = tableName ? `/api/robots/bi/?table=${encodeURIComponent(tableName)}&embed=1` : ''
   if (!baseUrl) return ''
-  // 使用 API_BASE_URL 而不是 window.location.origin，确保iframe指向后端服务器
   const url = new URL(baseUrl, API_BASE_URL)
   if (reloadToken.value) {
     url.searchParams.set('_t', String(reloadToken.value))
@@ -377,9 +379,27 @@ const initFromQuery = async () => {
   shouldLoad.value = true
   loadFrame(biUrl.value)
 
-  // 清空URL参数，避免刷新后重新加载
-  router.replace({ query: {} })
   return true
+}
+
+const runInitFromQuery = async () => {
+  const robot = typeof route.query.robot === 'string' ? route.query.robot.trim() : ''
+  if (!robot) return
+  const signature = JSON.stringify({
+    robot,
+    start_date: route.query.start_date || '',
+    end_date: route.query.end_date || ''
+  })
+  if (initInProgress.value || signature === lastInitSignature.value) return
+  initInProgress.value = true
+  lastInitSignature.value = signature
+  try {
+    shouldLoad.value = false
+    frameUrl.value = ''
+    await initFromQuery()
+  } finally {
+    initInProgress.value = false
+  }
 }
 
 const handleBiMessage = (event) => {
@@ -392,10 +412,19 @@ const handleBiMessage = (event) => {
 }
 
 onMounted(async () => {
-  await initFromQuery()
-
   // 监听来自iframe的postMessage（用于日期范围更新）
   window.addEventListener('message', handleBiMessage)
+})
+
+onActivated(async () => {
+  await runInitFromQuery()
+})
+
+onDeactivated(() => {
+  stopLogPolling()
+  stopLogRotation()
+  isLoading.value = false
+  isLoadHover.value = false
 })
 
 onUnmounted(() => {
@@ -409,7 +438,7 @@ watch(
   () => route.query.robot,
   async (robot, prevRobot) => {
     if (!robot || robot === prevRobot) return
-    await initFromQuery()
+    await runInitFromQuery()
   }
 )
 

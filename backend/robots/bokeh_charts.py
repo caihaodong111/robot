@@ -103,7 +103,7 @@ def get_real_table_name(table_name, engine):
             if result and result[0]:
                 real_name = result[0]
                 if real_name != table_name:
-                    logger.info(f"表名自动修正: {table_name} -> {real_name}")
+                    logger.debug("表名自动修正: %s -> %s", table_name, real_name)
                 _TABLE_NAME_CACHE[lower_name] = real_name
                 return real_name
     except Exception as e:
@@ -179,10 +179,10 @@ def fetch_data_from_mysql(table_name, start_time, end_time, time_column, engine)
         chunk_size = 10000
         for chunk in pd.read_sql(text(base_sql), engine, params=params, chunksize=chunk_size):
             chunks.append(chunk)
-            logger.info(f"已读取 {len(chunk)} 行，总计 {sum(len(c) for c in chunks)} 行")
+            logger.debug("已读取 %s 行，总计 %s 行", len(chunk), sum(len(c) for c in chunks))
         if chunks:
             df = pd.concat(chunks, ignore_index=True)
-            logger.info(f"查询完成，共 {len(df)} 行")
+            logger.debug("查询完成，共 %s 行", len(df))
             return df
         return pd.DataFrame()
     except Exception as e:
@@ -231,7 +231,7 @@ def create_bi_charts(
     start_date=None,
     end_date=None,
 ):
-    """创建BI可视化图表 - 支持前端程序和轴切换"""
+    """创建BI可视化图表 - 首屏只计算默认 program，切换 program 触发重载再算。"""
 
     # 从Django配置获取数据库连接参数
     db_config = get_db_engine()
@@ -264,19 +264,22 @@ def create_bi_charts(
     if requested_start and requested_end:
         if requested_start > requested_end:
             requested_start, requested_end = requested_end, requested_start
-        start_time = requested_start
-        end_time = requested_end
-        logger.info(f"请求时间范围: {start_time} 到 {end_time}")
-    # 将请求范围收敛到数据库实际范围内，避免扫描无数据的大区间
-    if start_time < db_start_time:
-        start_time = db_start_time
-    if end_time > db_end_time:
-        end_time = db_end_time
-    if start_time > end_time:
-        start_time, end_time = end_time, start_time
+        logger.info(f"请求时间范围: {requested_start} 到 {requested_end}")
+        # 将请求范围收敛到数据库实际范围内，避免扫描无数据的大区间
+        start_time = max(requested_start, db_start_time)
+        end_time = min(requested_end, db_end_time)
+        if start_time > end_time:
+            logger.warning(
+                "请求时间范围与数据库无交集: requested=%s..%s, db=%s..%s",
+                requested_start,
+                requested_end,
+                db_start_time,
+                db_end_time,
+            )
+            return None, None, None, None, None
 
-    # 获取主数据
-    logger.info("准备获取主数据...")
+    # 获取主数据（仅当前 program 的数据）。先取 program 列表用于下拉框。
+    logger.info("准备获取 program 列表与主数据...")
     base_columns = ["Timestamp", "Name_C", "SNR_C", "P_name", "Tem_1"]
     axis_columns = []
     for cfg in AXIS_CONFIG.values():
@@ -299,48 +302,92 @@ def create_bi_charts(
             seen.add(col)
             selected_columns.append(col)
 
-    cache_key = (
-        f"bi:data:{CACHE_VERSION}:{table_name}:"
-        f"{start_time.strftime('%Y%m%d%H%M%S')}:{end_time.strftime('%Y%m%d%H%M%S')}:"
-        f"prog:{(program or 'ALL')}"
-    )
-    logger.info(f"缓存键: {cache_key}")
+    from sqlalchemy import text
 
-    # 安全获取缓存，避免阻塞
-    df_cached = None
+    programs_cache_key = (
+        f"bi:programs:{CACHE_VERSION}:{table_name}:"
+        f"{start_time.strftime('%Y%m%d%H%M%S')}:{end_time.strftime('%Y%m%d%H%M%S')}"
+    )
+    programs: list[str] = []
     if cache:
         try:
-            df_cached = cache.get(cache_key)
-            logger.info(f"缓存结果: {'hit' if df_cached is not None else 'miss'}")
+            cached_programs = cache.get(programs_cache_key)
+            if isinstance(cached_programs, (list, tuple)):
+                programs = [str(p) for p in cached_programs if p]
         except Exception as e:
-            logger.warning(f"缓存获取失败: {e}")
-            df_cached = None
+            logger.warning("program 列表缓存获取失败: %s", e)
+    if not programs:
+        try:
+            programs_sql = (
+                f"SELECT DISTINCT `Name_C` AS Name_C "
+                f"FROM `{table_name}` "
+                f"WHERE `{time_column}` BETWEEN :start_time AND :end_time "
+                f"ORDER BY `Name_C`;"
+            )
+            programs_df = pd.read_sql(
+                text(programs_sql),
+                engine,
+                params={
+                    "start_time": _format_datetime(start_time),
+                    "end_time": _format_datetime(end_time),
+                },
+            )
+            if not programs_df.empty and "Name_C" in programs_df.columns:
+                programs = [str(v) for v in programs_df["Name_C"].dropna().tolist() if str(v)]
+            if cache:
+                cache.set(programs_cache_key, programs, timeout=CACHE_TTL_SECONDS)
+        except Exception as e:
+            logger.warning("获取 program 列表失败: %s", e)
+
+    if not programs:
+        logger.warning("表 %s 在所选时间范围内没有 program 数据", table_name)
+        return None, None, None, None, None
+
+    # 确定默认 program / axis
+    default_program = program if program and program in programs else programs[0]
+    default_axis = axis if axis in AXIS_CONFIG else "A1"
+
+    data_cache_key = (
+        f"bi:data:{CACHE_VERSION}:{table_name}:"
+        f"{start_time.strftime('%Y%m%d%H%M%S')}:{end_time.strftime('%Y%m%d%H%M%S')}:"
+        f"prog:{default_program}"
+    )
+    logger.info("主数据缓存键: %s", data_cache_key)
+    df_prog = None
+    if cache:
+        try:
+            df_prog = cache.get(data_cache_key)
+        except Exception as e:
+            logger.warning("主数据缓存获取失败: %s", e)
+            df_prog = None
+    if df_prog is not None:
+        df_prog = df_prog.copy()
+        logger.info("主数据: cache hit (program=%s)", default_program)
     else:
-        logger.info("缓存未启用")
-    if df_cached is not None:
-        df_full = df_cached.copy()
-        logger.info("主数据: cache hit")
-    else:
-        logger.info("开始从数据库获取主数据...")
+        logger.info("开始从数据库获取主数据 (program=%s)...", default_program)
         fetch_start = time.perf_counter()
-        df_full = fetch_data_from_mysql(
+        df_prog = fetch_data_from_mysql(
             table_name,
             _format_datetime(start_time),
             _format_datetime(end_time),
             {
                 "time_column": time_column,
                 "columns": selected_columns,
-                "program": program,
+                "program": default_program,
             },
             engine,
         )
         logger.info("主数据: db fetch %.3fs", time.perf_counter() - fetch_start)
         if cache:
-            cache.set(cache_key, df_full.copy(), timeout=CACHE_TTL_SECONDS)
-    if df_full.empty:
-        logger.warning(f"表 {table_name} 没有数据")
+            try:
+                cache.set(data_cache_key, df_prog.copy(), timeout=CACHE_TTL_SECONDS)
+            except Exception as e:
+                logger.warning("主数据缓存写入失败: %s", e)
+
+    if df_prog is None or df_prog.empty:
+        logger.warning("表 %s program=%s 没有数据", table_name, default_program)
         return None, None, None, None, None
-    logger.info(f"加载数据条数: {len(df_full)}, 列数={len(df_full.columns)}")
+    logger.info("加载数据条数: %s, 列数=%s (program=%s)", len(df_prog), len(df_prog.columns), default_program)
 
     # 获取能量数据
     energy_cache_key = (
@@ -374,31 +421,18 @@ def create_bi_charts(
     columns_to_drop = ['A1_marker', 'A2_marker', 'A3_marker', 'A4_marker',
                        'A5_marker', 'A6_marker', 'A7_marker', 'SUB']
     for col in columns_to_drop:
-        if col in df_full.columns:
-            del df_full[col]
+        if col in df_prog.columns:
+            del df_prog[col]
 
-    df_full = df_full.drop_duplicates()
-    df_full['Time'] = pd.to_datetime(df_full['Timestamp']) + timedelta(hours=8)
-    df_full['Timestamp'] = df_full['Time'].astype(str)
-    df_full['SNR_C'] = df_full['SNR_C'].astype(int)
+    df_prog = df_prog.drop_duplicates()
+    df_prog["Time"] = pd.to_datetime(df_prog["Timestamp"]) + timedelta(hours=8)
+    df_prog["Timestamp"] = df_prog["Time"].astype(str)
+    df_prog["SNR_C"] = df_prog["SNR_C"].astype(int)
     for i in range(1, 8):
-        col = f'AxisP{i}' if i < 7 else 'AxisP7'
-        if col in df_full.columns:
-            df_full[col] = df_full[col].astype(float)
+        col = f"AxisP{i}"
+        if col in df_prog.columns:
+            df_prog[col] = df_prog[col].astype(float)
     logger.info("数据预处理: %.3fs", time.perf_counter() - preprocess_start)
-
-    # 获取程序选项
-    programs = df_full['Name_C'].unique().tolist()
-    logger.info(f"可用程序列表: {programs}")
-
-    # 确定默认程序
-    if program and program in programs:
-        default_program = program
-    else:
-        default_program = programs[0] if programs else 'N/A'
-
-    # 确定默认轴
-    default_axis = axis if axis in AXIS_CONFIG else 'A1'
 
     # 能量数据处理
     if not energy_full.empty:
@@ -407,44 +441,39 @@ def create_bi_charts(
         energy_full['LOSTENERGY'] = energy_full['LOSTENERGY'].astype(float)
         energy_full = energy_full.sort_values(by='TimeStamp2', ascending=True)
 
-    # ============ 为所有程序准备数据（避免轴维度重复计算） ============
-    program_sources = {}
-    program_agg_sources = {}
-    program_x_tex = {}
-
-    curr_cols = [AXIS_CONFIG[a]['curr'] for a in AXIS_CONFIG]
-    max_cols = [AXIS_CONFIG[a]['max_curr'] for a in AXIS_CONFIG]
-    min_cols = [AXIS_CONFIG[a]['min_curr'] for a in AXIS_CONFIG]
+    # ============ 仅为默认 program 计算数据（program 切换时重载页面再算） ============
+    curr_cols = [AXIS_CONFIG[a]["curr"] for a in AXIS_CONFIG]
+    max_cols = [AXIS_CONFIG[a]["max_curr"] for a in AXIS_CONFIG]
+    min_cols = [AXIS_CONFIG[a]["min_curr"] for a in AXIS_CONFIG]
 
     agg_start = time.perf_counter()
-    for prog in programs:
-        prog_data = df_full[df_full['Name_C'] == prog].copy()
-        prog_data = prog_data.sort_values(by=['SNR_C', 'Time'])
-        prog_data['sort'] = range(1, len(prog_data) + 1)
+    prog_data = df_prog.copy()
+    prog_data = prog_data.sort_values(by=["SNR_C", "Time"])
+    prog_data["sort"] = range(1, len(prog_data) + 1)
 
-        if prog_data.empty:
-            continue
+    # 聚合数据：一次性计算所有轴的分位与参考范围（轴切换可直接复用）
+    ref = prog_data.groupby("SNR_C")[max_cols + min_cols].last()
+    x_tex = prog_data["SNR_C"].sort_values(ascending=True).unique().astype(str)
 
-        # 聚合数据：一次性计算所有轴的分位与参考范围
-        ref = prog_data.groupby('SNR_C')[max_cols + min_cols].last()
-        x_tex = prog_data["SNR_C"].sort_values(ascending=True).unique().astype(str)
+    LQ = (
+        prog_data.groupby("SNR_C")[curr_cols]
+        .quantile(q=0.01, interpolation="nearest")
+        .rename(columns={c: f"{c}_LQ" for c in curr_cols})
+    )
+    HQ = (
+        prog_data.groupby("SNR_C")[curr_cols]
+        .quantile(q=0.99, interpolation="nearest")
+        .rename(columns={c: f"{c}_HQ" for c in curr_cols})
+    )
+    labeltext = prog_data.groupby("SNR_C")["P_name"].last()
 
-        LQ = prog_data.groupby('SNR_C')[curr_cols].quantile(
-            q=0.01, interpolation='nearest').rename(columns={c: f'{c}_LQ' for c in curr_cols})
-        HQ = prog_data.groupby('SNR_C')[curr_cols].quantile(
-            q=0.99, interpolation='nearest').rename(columns={c: f'{c}_HQ' for c in curr_cols})
+    Q = pd.merge(pd.merge(LQ, HQ, left_index=True, right_index=True, how="outer"), ref, left_index=True, right_index=True, how="inner")
+    Q = pd.merge(Q, labeltext, left_index=True, right_index=True, how="inner").reset_index()
+    Q["SNR_C"] = x_tex
 
-        labeltext = prog_data.groupby('SNR_C')['P_name'].last()
-
-        Q = pd.merge(pd.merge(LQ, HQ, left_index=True, right_index=True, how='outer'),
-                               ref, left_index=True, right_index=True, how='inner')
-        Q = pd.merge(Q, labeltext, left_index=True, right_index=True, how='inner').reset_index()
-        Q["SNR_C"] = x_tex
-
-        program_sources[prog] = ColumnDataSource(prog_data)
-        program_agg_sources[prog] = ColumnDataSource(Q)
-        program_x_tex[prog] = x_tex
-    logger.info("程序数据聚合: %.3fs", time.perf_counter() - agg_start)
+    source = ColumnDataSource(prog_data)
+    agg_source = ColumnDataSource(Q)
+    logger.info("程序数据聚合: %.3fs (program=%s)", time.perf_counter() - agg_start, default_program)
 
     # 能量数据源
     energy_source = ColumnDataSource(energy_full) if not energy_full.empty else ColumnDataSource(pd.DataFrame())
@@ -481,8 +510,8 @@ def create_bi_charts(
 
     # 从默认轴和程序获取初始数据
     default_config = AXIS_CONFIG[default_axis]
-    default_source_data = program_sources[default_program].data
-    default_agg_data = program_agg_sources[default_program].data
+    default_source_data = source.data
+    default_agg_data = agg_source.data
 
     # 创建代理数据源 - 使用固定的列名
     # 时间序列图表使用固定列名
@@ -525,8 +554,6 @@ def create_bi_charts(
     speed_col = default_config['speed']
     fol_col = default_config['fol']
     axisp_col = default_config['axisp']
-
-    x_tex = program_x_tex[default_program]
 
     # Hover工具定义 - 使用动态列名显示
     hover = HoverTool(tooltips=[
@@ -769,85 +796,80 @@ def create_bi_charts(
         EnergyP.legend.background_fill_alpha = 0.7
 
     # ============ 添加程序和轴切换的 JavaScript 回调 ============
-    # 使用代理数据源方法：复制数据到固定列名，无需修改渲染器属性
+    # 轴切换：复用当前 program 已加载的数据（纯前端更新）。
+    # program 切换：重载页面（后端重新查询/聚合该 program），避免首屏计算所有 program。
 
-    linkage_callback = CustomJS(args=dict(
-        program_select=program_select,
-        axis_select=axis_select,
-        program_sources=program_sources,
-        program_agg_sources=program_agg_sources,
-        program_x_tex=program_x_tex,
-        proxy_source=proxy_source,
-        proxy_agg_source=proxy_agg_source,
-        curr_plot=p_curr,
-        line_plot=line_plot,
-        axis_config_json=json.dumps(AXIS_CONFIG)
-    ), code="""
-    // 解析 AXIS_CONFIG
-    const AXIS_CONFIG = JSON.parse(axis_config_json);
+    axis_callback = CustomJS(
+        args=dict(
+            axis_select=axis_select,
+            source=source,
+            agg_source=agg_source,
+            proxy_source=proxy_source,
+            proxy_agg_source=proxy_agg_source,
+            curr_plot=p_curr,
+            line_plot=line_plot,
+            axis_config_json=json.dumps(AXIS_CONFIG),
+        ),
+        code="""
+        const AXIS_CONFIG = JSON.parse(axis_config_json);
+        const axis = axis_select.value;
+        const config = AXIS_CONFIG[axis] || AXIS_CONFIG["A1"];
 
-    // 获取当前选择的轴和程序
-    const axis = axis_select.value;
-    const program = program_select.value;
+        const currCol = config.curr;
+        const maxCurrCol = config.max_curr;
+        const minCurrCol = config.min_curr;
+        const torqueCol = config.torque;
+        const speedCol = config.speed;
+        const folCol = config.fol;
+        const axispCol = config.axisp;
 
-    // 获取当前轴的数据源和配置
-    const source = program_sources[program];
-    const aggSource = program_agg_sources[program];
-    const xTex = program_x_tex[program];
-    const config = AXIS_CONFIG[axis];
-    // 获取列名
-    const currCol = config.curr;
-    const maxCurrCol = config.max_curr;
-    const minCurrCol = config.min_curr;
-    const torqueCol = config.torque;
-    const speedCol = config.speed;
-    const folCol = config.fol;
-    const axispCol = config.axisp;
+        curr_plot.title.text = axis + " - Current Analysis";
 
-    // 更新图表标题
-    curr_plot.title.text = axis + " - Current Analysis";
-    line_plot.title.text = "Aggregate Analysis - " + program;
+        proxy_source.data['sort'] = source.data['sort'];
+        proxy_source.data['Timestamp'] = source.data['Timestamp'];
+        proxy_source.data['SNR_C'] = source.data['SNR_C'];
+        proxy_source.data['P_name'] = source.data['P_name'];
+        proxy_source.data['Time'] = source.data['Time'];
+        proxy_source.data['Tem_1'] = source.data['Tem_1'];
 
-    // 更新聚合分析图的 x_range
-    line_plot.x_range.factors = xTex;
+        proxy_source.data['curr_value'] = source.data[currCol] || [];
+        proxy_source.data['max_curr_value'] = source.data[maxCurrCol] || [];
+        proxy_source.data['min_curr_value'] = source.data[minCurrCol] || [];
+        proxy_source.data['torque_value'] = source.data[torqueCol] || [];
+        proxy_source.data['speed_value'] = source.data[speedCol] || [];
+        proxy_source.data['fol_value'] = source.data[folCol] || [];
+        proxy_source.data['axisp_value'] = source.data[axispCol] || [];
 
-    // === 更新代理数据源 - 从实际列复制数据到固定列名 ===
-    // 时间序列数据
-    proxy_source.data['sort'] = source.data['sort'];
-    proxy_source.data['Timestamp'] = source.data['Timestamp'];
-    proxy_source.data['SNR_C'] = source.data['SNR_C'];
-    proxy_source.data['P_name'] = source.data['P_name'];
-    proxy_source.data['Time'] = source.data['Time'];
-    proxy_source.data['Tem_1'] = source.data['Tem_1'];
+        proxy_agg_source.data['SNR_C'] = agg_source.data['SNR_C'];
+        proxy_agg_source.data['P_name'] = agg_source.data['P_name'];
+        proxy_agg_source.data['max_curr_value'] = agg_source.data[maxCurrCol] || [];
+        proxy_agg_source.data['min_curr_value'] = agg_source.data[minCurrCol] || [];
 
-    // 复制轴相关数据到固定列名
-    proxy_source.data['curr_value'] = source.data[currCol];
-    proxy_source.data['max_curr_value'] = source.data[maxCurrCol];
-    proxy_source.data['min_curr_value'] = source.data[minCurrCol];
-    proxy_source.data['torque_value'] = source.data[torqueCol];
-    proxy_source.data['speed_value'] = source.data[speedCol];
-    proxy_source.data['fol_value'] = source.data[folCol];
-    proxy_source.data['axisp_value'] = source.data[axispCol];
+        const lqCol = currCol + "_LQ";
+        const hqCol = currCol + "_HQ";
+        proxy_agg_source.data['lq_value'] = agg_source.data[lqCol] || [];
+        proxy_agg_source.data['hq_value'] = agg_source.data[hqCol] || [];
 
-    // 聚合数据
-    proxy_agg_source.data['SNR_C'] = aggSource.data['SNR_C'];
-    proxy_agg_source.data['P_name'] = aggSource.data['P_name'];
-    proxy_agg_source.data['max_curr_value'] = aggSource.data[maxCurrCol];
-    proxy_agg_source.data['min_curr_value'] = aggSource.data[minCurrCol];
+        proxy_source.change.emit();
+        proxy_agg_source.change.emit();
+        """,
+    )
+    axis_select.js_on_change("value", axis_callback)
 
-    // 查找并复制 LQ 和 HQ 数据
-    const lqCol = currCol + "_LQ";
-    const hqCol = currCol + "_HQ";
-    proxy_agg_source.data['lq_value'] = aggSource.data[lqCol] || [];
-    proxy_agg_source.data['hq_value'] = aggSource.data[hqCol] || [];
-
-    // 触发更新
-    proxy_source.change.emit();
-    proxy_agg_source.change.emit();
-    """)
-
-    program_select.js_on_change('value', linkage_callback)
-    axis_select.js_on_change('value', linkage_callback)
+    program_reload_callback = CustomJS(
+        args=dict(program_select=program_select, axis_select=axis_select),
+        code="""
+        try {
+          const overlay = document.getElementById('biLoadingOverlay');
+          if (overlay) overlay.style.display = 'flex';
+        } catch (e) {}
+        const url = new URL(window.location.href);
+        url.searchParams.set('program', program_select.value);
+        url.searchParams.set('axis', axis_select.value);
+        window.location.href = url.toString();
+        """,
+    )
+    program_select.js_on_change("value", program_reload_callback)
 
     # ============ 创建布局 ============
     from bokeh.layouts import row, column
@@ -918,7 +940,7 @@ def create_bi_charts(
     return script, div, {
         'table_name': table_name,
         'program_name': default_program,
-        'data_count': len(df_full),
+        'data_count': len(df_prog),
         'energy_count': len(energy_full),
         'programs': programs,
         'date_range': f"{start_time.strftime('%Y-%m-%d')} 至 {end_time.strftime('%Y-%m-%d')}",
