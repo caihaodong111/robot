@@ -3,7 +3,7 @@ import logging
 import os
 from django.conf import settings
 from django.core.cache import cache
-from django.http import JsonResponse
+from django.http import JsonResponse, StreamingHttpResponse
 from django.shortcuts import render
 from django.db.models import Count, Q
 from django.utils import timezone
@@ -27,24 +27,19 @@ from .serializers import (
     RefreshLogSerializer,
 )
 from .gripper_service import check_gripper_from_config
+from .gripper_check_state import (
+    get_gripper_check_latest,
+    get_gripper_check_status,
+    set_gripper_check_latest,
+    set_gripper_check_status,
+)
 from .error_trend_chart import generate_trend_chart, chart_exists
 from celery.result import AsyncResult
+from .tasks import gripper_check_task
+import json
+import time
 
 logger = logging.getLogger(__name__)
-GRIPPER_CHECK_STATUS_KEY = "gripper_check_status"
-GRIPPER_CHECK_STATUS_TTL = 60 * 60
-GRIPPER_CHECK_LATEST_KEY = "gripper_check_latest"
-GRIPPER_CHECK_LATEST_TTL = 60 * 60
-
-
-def set_gripper_check_status(status_value, error=None):
-    payload = {
-        "status": status_value,
-        "updated_at": timezone.now().isoformat(),
-    }
-    if error:
-        payload["error"] = error
-    cache.set(GRIPPER_CHECK_STATUS_KEY, payload, timeout=GRIPPER_CHECK_STATUS_TTL)
 
 DISCONNECTED_FIELDS = [
     "error1_c1",
@@ -884,30 +879,37 @@ class GripperCheckViewSet(viewsets.GenericViewSet):
                 'details': serializer.errors
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        try:
-            set_gripper_check_status("running")
-            # 执行检查
-            result = check_gripper_from_config(serializer.validated_data)
-            cache.set(GRIPPER_CHECK_LATEST_KEY, result, timeout=GRIPPER_CHECK_LATEST_TTL)
-            set_gripper_check_status("idle")
-            return Response(result)
-        except Exception as e:
-            set_gripper_check_status("failed", error=str(e))
-            return Response({
-                'success': False,
-                'error': str(e)
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        # 若已有任务在运行，则直接返回状态，避免重复触发重计算
+        current_status = get_gripper_check_status() or {}
+        if (current_status.get("status") or "").lower() == "running":
+            return Response(
+                {"success": True, "queued": True, **current_status},
+                status=status.HTTP_200_OK,
+            )
+
+        # celery 任务参数建议为可序列化对象（ISO 时间字符串）
+        task_payload = dict(serializer.validated_data)
+        for key in ("start_time", "end_time"):
+            if hasattr(task_payload.get(key), "isoformat"):
+                task_payload[key] = task_payload[key].isoformat()
+
+        async_result = gripper_check_task.delay(task_payload)
+        set_gripper_check_status("running", task_id=async_result.id)
+        return Response(
+            {"success": True, "queued": True, "task_id": async_result.id, "status": "running"},
+            status=status.HTTP_202_ACCEPTED,
+        )
 
     @action(detail=False, methods=['get'])
     def status(self, request):
-        payload = cache.get(GRIPPER_CHECK_STATUS_KEY)
+        payload = get_gripper_check_status()
         if not payload:
             return Response({"status": "idle"})
         return Response(payload)
 
     @action(detail=False, methods=['get'])
     def latest(self, request):
-        payload = cache.get(GRIPPER_CHECK_LATEST_KEY)
+        payload = get_gripper_check_latest()
         if not payload:
             return Response({"success": False, "error": "no-latest-result"})
         return Response(payload)
@@ -978,6 +980,55 @@ class GripperCheckViewSet(viewsets.GenericViewSet):
             'default_time_range_hours': 168,  # 7天
             'description': '关键轨迹检查用于检测机器人抓放点动作的电流异常'
         })
+
+
+@api_view(["GET"])
+def gripper_check_events(request):
+    """
+    Server-Sent Events: 推送关键轨迹检查状态与最终结果，避免前端轮询。
+
+    Query:
+        task_id: Celery task id（可选，但推荐传）
+    """
+    task_id = (request.GET.get("task_id") or "").strip()
+
+    def stream():
+        last_status = None
+        started_at = time.time()
+        timeout_seconds = 60 * 60  # 最长 1 小时
+
+        while True:
+            status_payload = get_gripper_check_status() or {"status": "idle"}
+            status_value = (status_payload.get("status") or "idle").lower()
+
+            # 若提供 task_id，则尽量等待对应任务结束；否则直接推当前状态
+            if task_id and status_payload.get("task_id") and status_payload.get("task_id") != task_id:
+                # 当前缓存是别的任务：若它处于 running，说明目标任务已被覆盖/不存在
+                if status_value == "running":
+                    yield f"event: status\ndata: {json.dumps(status_payload, ensure_ascii=False)}\n\n"
+                    yield "event: error\ndata: {\"error\":\"task_id_mismatch\"}\n\n"
+                    return
+
+            if status_value != last_status:
+                yield f"event: status\ndata: {json.dumps(status_payload, ensure_ascii=False)}\n\n"
+                last_status = status_value
+
+            if status_value in ("idle", "failed"):
+                latest = get_gripper_check_latest()
+                if latest:
+                    yield f"event: result\ndata: {json.dumps(latest, ensure_ascii=False)}\n\n"
+                return
+
+            if time.time() - started_at > timeout_seconds:
+                yield "event: error\ndata: {\"error\":\"timeout\"}\n\n"
+                return
+
+            time.sleep(1.5)
+
+    resp = StreamingHttpResponse(stream(), content_type="text/event-stream")
+    resp["Cache-Control"] = "no-cache"
+    resp["X-Accel-Buffering"] = "no"
+    return resp
 
 
 class RobotHighRiskSnapshotViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):

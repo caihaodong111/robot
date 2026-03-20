@@ -15,6 +15,30 @@ import traceback
 # 加载环境变量
 load_dotenv()
 
+DEFAULT_KEY_PATHS = ['R1/CO', 'R1/DO', 'R1/CN', 'R1/DN']
+
+
+def normalize_key_paths(key_paths):
+    """
+    将前端/配置传入的 key_paths 归一化为干净的字符串列表。
+    - 去除 None / 空字符串 / 纯空白
+    - 去掉首尾空格
+    - 若为空则回退到默认 key paths（与 config_template 保持一致）
+    """
+    cleaned = []
+    for item in (key_paths or []):
+        if item is None:
+            continue
+        value = str(item).strip()
+        if not value:
+            continue
+        cleaned.append(value)
+
+    if not cleaned:
+        return DEFAULT_KEY_PATHS.copy()
+
+    return cleaned[:4]
+
 
 def get_db_engine():
     """
@@ -77,6 +101,8 @@ def check_gripper(start_time, end_time, gripper_list, key_paths):
     engine = get_db_engine()
     time_column = 'Timestamp'
     GP = []  # 收集抓放点
+
+    key_paths = normalize_key_paths(key_paths)
 
     # 确保 key_paths 有4个元素，不足的填充为 None
     key1 = key_paths[0] if len(key_paths) > 0 else None
@@ -193,15 +219,16 @@ def check_gripper(start_time, end_time, gripper_list, key_paths):
         # 根据关键路径筛选数据
         matched_count = 0
         for key in [key1, key2, key3, key4]:
-            if key is not None and key == key:  # 检查不是NaN
+            key_str = None if key is None else str(key).strip()
+            if key_str and key_str == key_str:  # 非空且不是NaN
                 try:
-                    matched = data[data['P_name'].astype(str).str.contains(key, case=False, na=False)]
-                    print(f"[DEBUG] Key '{key}' matched {len(matched)} rows in table {rob}")
+                    matched = data[data['P_name'].astype(str).str.contains(key_str, case=False, na=False)]
+                    print(f"[DEBUG] Key '{key_str}' matched {len(matched)} rows in table {rob}")
                     matched_count += len(matched)
                     if not matched.empty:
                         GP.append(matched)
                 except Exception as e:
-                    print(f"[ERROR] Error filtering by key path '{key}': {e}")
+                    print(f"[ERROR] Error filtering by key path '{key_str}': {e}")
                     traceback.print_exc()
                     continue
 
@@ -250,7 +277,7 @@ def check_gripper_from_config(config_data):
             start_time=start_time,
             end_time=end_time,
             gripper_list=config_data['gripper_list'],
-            key_paths=config_data.get('key_paths', [])
+            key_paths=normalize_key_paths(config_data.get('key_paths', []))
         )
 
         # 转换为字典返回

@@ -136,6 +136,10 @@ celery -A iot_monitor worker -l info
 celery -A iot_monitor beat -l info
 ```
 
+### 关键轨迹检查（TRAJECTORY CHECK）
+
+关键轨迹检查通过 Celery 异步任务执行，依赖 Redis 作为 broker/cache。
+
 ## API接口
 
 ### 设备管理

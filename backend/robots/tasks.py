@@ -4,6 +4,7 @@ Celery 定时任务
 """
 from celery import shared_task
 from django.utils import timezone
+from django.utils import timezone
 import logging
 
 logger = logging.getLogger(__name__)
@@ -240,3 +241,34 @@ def import_robot_components_csv_task(file_path=None, folder_path=None, project=N
         source="manual",
         use_mysql_load_data=use_mysql_load_data,
     )
+
+
+@shared_task(bind=True)
+def gripper_check_task(self, config_data):
+    """
+    后台执行关键轨迹检查（TRAJECTORY CHECK）
+
+    Args:
+        config_data: dict，建议传 ISO 字符串时间（start_time/end_time）
+    """
+    from .gripper_check_state import set_gripper_check_latest, set_gripper_check_status
+    from .gripper_service import check_gripper_from_config
+
+    task_id = getattr(self.request, "id", None)
+    set_gripper_check_status("running", task_id=task_id)
+
+    try:
+        result = check_gripper_from_config(config_data)
+        set_gripper_check_latest(result)
+        set_gripper_check_status("idle", task_id=task_id)
+        return result
+    except Exception as exc:
+        set_gripper_check_status("failed", error=str(exc), task_id=task_id)
+        return {
+            "success": False,
+            "error": str(exc),
+            "count": 0,
+            "data": [],
+            "columns": [],
+            "updated_at": timezone.now().isoformat(),
+        }

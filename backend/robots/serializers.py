@@ -296,6 +296,11 @@ class GripperCheckSerializer(serializers.Serializer):
         child=serializers.CharField(),
         help_text="机器人表名列表"
     )
+    # 兼容脚本/历史参数：keyPath1~4（与 check_gripper_withmax.py 配置命名一致）
+    keyPath1 = serializers.CharField(required=False, allow_blank=True)
+    keyPath2 = serializers.CharField(required=False, allow_blank=True)
+    keyPath3 = serializers.CharField(required=False, allow_blank=True)
+    keyPath4 = serializers.CharField(required=False, allow_blank=True)
     key_paths = serializers.ListField(
         child=serializers.CharField(required=False, allow_blank=True),
         required=False,
@@ -314,6 +319,27 @@ class GripperCheckSerializer(serializers.Serializer):
                 raise serializers.ValidationError(
                     "结束时间必须大于开始时间"
                 )
+
+        # 归一化 key_paths：支持两种传参方式
+        # 1) key_paths: ["R1/CO", ...]
+        # 2) keyPath1~4: "R1/CO"（脚本风格）
+        raw_key_paths = attrs.get('key_paths') or []
+        if not raw_key_paths:
+            raw_key_paths = [
+                attrs.get('keyPath1'),
+                attrs.get('keyPath2'),
+                attrs.get('keyPath3'),
+                attrs.get('keyPath4'),
+            ]
+        normalized = []
+        for item in raw_key_paths:
+            if item is None:
+                continue
+            value = str(item).strip()
+            if not value:
+                continue
+            normalized.append(value)
+        attrs['key_paths'] = normalized
 
         return attrs
 

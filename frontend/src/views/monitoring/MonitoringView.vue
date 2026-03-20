@@ -395,14 +395,20 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   Download, Search, Location, Cpu, Calendar,
   Operation, Monitor, Warning
 } from '@element-plus/icons-vue'
 import { DEMO_MODE, API_BASE_URL } from '@/config/appConfig'
-import { getRobotGroups, getGripperRobotTables, executeGripperCheck, getGripperCheckStatus } from '@/api/robots'
+import {
+  getRobotGroups,
+  getGripperRobotTables,
+  executeGripperCheck,
+  getGripperCheckStatus,
+  getGripperCheckLatest
+} from '@/api/robots'
 import { useLayoutStore } from '@/stores/layout'
 
 defineOptions({ name: 'Monitoring' })
@@ -453,8 +459,9 @@ const showInput = () => {
 }
 
 const handleInputConfirm = () => {
-  if (inputValue.value && !activePaths.value.includes(inputValue.value)) {
-    activePaths.value.push(inputValue.value)
+  const nextValue = (inputValue.value || '').trim()
+  if (nextValue && !activePaths.value.includes(nextValue)) {
+    activePaths.value.push(nextValue)
   }
   inputVisible.value = false
   inputValue.value = ''
@@ -492,8 +499,11 @@ const pageSize = ref(15)
 const sortState = ref({ prop: 'robot', order: 'ascending' })
 const activeCheckId = ref(0)
 const canceledCheckId = ref(0)
+const activeTaskId = ref(localStorage.getItem('gripper_check_task_id') || '')
+const sseConnection = ref(null)
 const statusPollingTimer = ref(null)
-const STATUS_POLL_INTERVAL = 4000
+const STATUS_POLL_INTERVAL = 8000
+const statusRequestInFlight = ref(false)
 
 const canExecute = computed(() => selectedPlant.value && selectedRobots.value.length > 0 && timeRange.value?.length === 2)
 
@@ -531,7 +541,10 @@ const handlePlantChange = async () => {
 }
 
 // 远程搜索机器人
-const searchRobots = async (query) => {
+const robotSearchTimer = ref(null)
+const lastRobotSearchKey = ref('')
+
+const doSearchRobots = async (query) => {
   robotsLoading.value = true
   try {
     const params = {}
@@ -571,6 +584,21 @@ const searchRobots = async (query) => {
   }
 }
 
+// el-select remote-method 触发频率很高：做防抖，避免大量请求
+const searchRobots = (query) => {
+  const paramsKey = JSON.stringify({
+    q: (query || '').trim(),
+    group: selectedPlant.value || ''
+  })
+  if (paramsKey === lastRobotSearchKey.value) return
+  lastRobotSearchKey.value = paramsKey
+
+  if (robotSearchTimer.value) clearTimeout(robotSearchTimer.value)
+  robotSearchTimer.value = setTimeout(() => {
+    doSearchRobots((query || '').trim())
+  }, 250)
+}
+
 // 机器人选择变化，自动设置对应车间
 const handleRobotsChange = (value) => {
   if (value.length === 0) return
@@ -595,13 +623,18 @@ const executeCheck = async () => {
   startStatusPolling()
   checkResult.value = null
   errorMessage.value = ''
+  activeTaskId.value = ''
+  localStorage.removeItem('gripper_check_task_id')
 
   try {
+    const sanitizedKeyPaths = (activePaths.value || [])
+      .map(p => (p || '').trim())
+      .filter(Boolean)
     const payload = {
       start_time: timeRange.value[0].toISOString(),
       end_time: timeRange.value[1].toISOString(),
       gripper_list: selectedRobots.value,
-      key_paths: activePaths.value
+      key_paths: sanitizedKeyPaths
     }
 
     let result
@@ -621,8 +654,16 @@ const executeCheck = async () => {
       return
     }
 
-    checkResult.value = result
+    // 后端异步队列模式：先返回 queued/task_id，然后通过 status/latest 获取结果
+    if (!DEMO_MODE && result?.queued) {
+      activeTaskId.value = result.task_id || ''
+      if (activeTaskId.value) localStorage.setItem('gripper_check_task_id', activeTaskId.value)
+      ElMessage.success('诊断已开始，可切换页面后台运行')
+      startSse(activeTaskId.value)
+      return
+    }
 
+    checkResult.value = result
     if (checkResult.value.success) {
       ElMessage.success(`检查完成，发现 ${checkResult.value.count} 条记录`)
       currentPage.value = 1
@@ -635,8 +676,11 @@ const executeCheck = async () => {
     }
   } finally {
     if (canceledCheckId.value !== myCheckId && activeCheckId.value === myCheckId) {
-      checking.value = false
-      stopStatusPolling()
+      // 异步队列模式下保持 checking=true，由 status 轮询决定何时结束
+      if (DEMO_MODE || checkResult.value) {
+        checking.value = false
+        stopStatusPolling()
+      }
     }
   }
 }
@@ -652,6 +696,9 @@ const handleCancelCheck = () => {
   checking.value = false
   isCheckHover.value = false
   stopStatusPolling()
+  stopSse()
+  activeTaskId.value = ''
+  localStorage.removeItem('gripper_check_task_id')
 }
 
 const handleExecuteOrCancel = () => {
@@ -664,6 +711,9 @@ const handleExecuteOrCancel = () => {
 
 const fetchCheckStatus = async () => {
   if (!checking.value) return
+  if (document.visibilityState === 'hidden') return
+  if (statusRequestInFlight.value) return
+  statusRequestInFlight.value = true
   try {
     const resp = await getGripperCheckStatus()
     const statusValue = (resp?.status || '').toLowerCase()
@@ -671,13 +721,84 @@ const fetchCheckStatus = async () => {
       checking.value = false
       isCheckHover.value = false
       stopStatusPolling()
-      if (statusValue === 'failed' && resp?.error) {
-        errorMessage.value = resp.error
+      if (statusValue === 'failed') {
+        errorMessage.value = resp?.error || '检查失败'
+        localStorage.removeItem('gripper_check_task_id')
+        activeTaskId.value = ''
+        return
+      }
+
+      // idle：取最新结果展示
+      try {
+        const latest = await getGripperCheckLatest()
+        checkResult.value = latest
+        if (latest?.success) {
+          ElMessage.success(`检查完成，发现 ${latest.count} 条记录`)
+          currentPage.value = 1
+        } else if (latest?.error) {
+          errorMessage.value = latest.error
+        }
+      } finally {
+        localStorage.removeItem('gripper_check_task_id')
+        activeTaskId.value = ''
       }
     }
   } catch (error) {
     console.error('获取轨迹检查状态失败:', error)
+  } finally {
+    statusRequestInFlight.value = false
   }
+}
+
+const stopSse = () => {
+  if (sseConnection.value) {
+    try { sseConnection.value.close() } catch {}
+    sseConnection.value = null
+  }
+}
+
+const startSse = (taskId) => {
+  if (DEMO_MODE) return
+  const id = (taskId || '').trim()
+  if (!id) return
+  stopSse()
+
+  const url = `${API_BASE_URL}/api/robots/gripper-check/events/?task_id=${encodeURIComponent(id)}`
+  const es = new EventSource(url)
+  sseConnection.value = es
+
+  es.addEventListener('status', (evt) => {
+    try {
+      const payload = JSON.parse(evt.data || '{}')
+      const statusValue = (payload?.status || '').toLowerCase()
+      if (statusValue === 'failed' && payload?.error) errorMessage.value = payload.error
+    } catch {}
+  })
+
+  es.addEventListener('result', (evt) => {
+    try {
+      const latest = JSON.parse(evt.data || '{}')
+      checkResult.value = latest
+      if (latest?.success) {
+        ElMessage.success(`检查完成，发现 ${latest.count} 条记录`)
+        currentPage.value = 1
+      } else if (latest?.error) {
+        errorMessage.value = latest.error
+      }
+    } finally {
+      checking.value = false
+      stopStatusPolling()
+      stopSse()
+      localStorage.removeItem('gripper_check_task_id')
+      activeTaskId.value = ''
+    }
+  })
+
+  es.addEventListener('error', () => {
+    // SSE 失败时回退到轮询
+    stopSse()
+    if (checking.value) startStatusPolling()
+  })
 }
 
 const startStatusPolling = () => {
@@ -689,6 +810,12 @@ const stopStatusPolling = () => {
   if (!statusPollingTimer.value) return
   clearInterval(statusPollingTimer.value)
   statusPollingTimer.value = null
+}
+
+const handleVisibilityChange = () => {
+  if (!checking.value) return
+  if (document.visibilityState === 'hidden') stopStatusPolling()
+  else startStatusPolling()
 }
 
 // Helpers
@@ -811,10 +938,35 @@ const goToRobotBI = (robotName) => {
 
 onMounted(async () => {
   await loadPlantGroups()
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+  // 若上次诊断仍在运行/刚完成，恢复状态并在需要时拉取 latest
+  if (!DEMO_MODE && activeTaskId.value) {
+    checking.value = true
+    startSse(activeTaskId.value)
+    startStatusPolling()
+    fetchCheckStatus()
+  }
 })
 
 onUnmounted(() => {
   stopStatusPolling()
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
+  stopSse()
+})
+
+onDeactivated(() => {
+  stopStatusPolling()
+})
+
+onActivated(() => {
+  if (!DEMO_MODE && activeTaskId.value) {
+    checking.value = true
+    startSse(activeTaskId.value)
+    startStatusPolling()
+    fetchCheckStatus()
+    return
+  }
+  if (checking.value) startStatusPolling()
 })
 </script>
 

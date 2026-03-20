@@ -18,6 +18,7 @@ from .views import (
     get_bi_logs,
     get_refresh_logs,
     get_keypath_warnings,
+    gripper_check_events,
 )
 from .auth_views import (
     verify_edit_credentials,
@@ -63,6 +64,7 @@ urlpatterns = [
     path("bi_logs/", get_bi_logs, name="bi-logs"),
     path("refresh_logs/", get_refresh_logs, name="refresh-logs"),
     path("keypath-warnings/", get_keypath_warnings, name="keypath-warnings"),
+    path("gripper-check/events/", gripper_check_events, name="gripper-check-events"),
     # 编辑认证相关接口
     path("auth/verify/", verify_edit_credentials, name="verify-edit-credentials"),
     path("auth/status/", get_edit_auth_status, name="edit-auth-status"),
