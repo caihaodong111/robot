@@ -514,7 +514,6 @@ def create_bi_charts(
 
     # 聚合数据：一次性计算所有轴的分位与参考范围（轴切换可直接复用）
     ref = prog_data.groupby("SNR_C")[max_cols + min_cols].last()
-    x_tex = prog_data["SNR_C"].sort_values(ascending=True).unique().astype(str)
 
     LQ = (
         prog_data.groupby("SNR_C")[curr_cols]
@@ -528,9 +527,17 @@ def create_bi_charts(
     )
     labeltext = prog_data.groupby("SNR_C")["P_name"].last()
 
-    Q = pd.merge(pd.merge(LQ, HQ, left_index=True, right_index=True, how="outer"), ref, left_index=True, right_index=True, how="inner")
+    Q = pd.merge(
+        pd.merge(LQ, HQ, left_index=True, right_index=True, how="outer"),
+        ref,
+        left_index=True,
+        right_index=True,
+        how="inner",
+    )
     Q = pd.merge(Q, labeltext, left_index=True, right_index=True, how="inner").reset_index()
-    Q["SNR_C"] = x_tex
+    Q = Q.sort_values(by="SNR_C").reset_index(drop=True)
+    Q["SNR_C"] = Q["SNR_C"].astype(int).astype(str)
+    x_tex = Q["SNR_C"].tolist()
 
     source = ColumnDataSource(prog_data)
     agg_source = ColumnDataSource(Q)
@@ -998,6 +1005,10 @@ def create_bi_charts(
 
             curr_plot.title.text = axis + " - Current Analysis";
             line_plot.title.text = "Aggregate Analysis - " + nextProgram;
+            // Program 切换后 SNR_C 因子集合可能变化，必须同步更新 x_range，否则聚合线会错位/缺失。
+            if (line_plot.x_range && Array.isArray(agg_source.data['SNR_C'])) {
+              line_plot.x_range.factors = agg_source.data['SNR_C'];
+            }
 
             proxy_source.data['sort'] = source.data['sort'];
             proxy_source.data['Timestamp'] = source.data['Timestamp'];
@@ -1287,7 +1298,6 @@ def get_bi_program_payload(
     prog_data["sort"] = range(1, len(prog_data) + 1)
 
     ref = prog_data.groupby("SNR_C")[max_cols + min_cols].last()
-    x_tex = prog_data["SNR_C"].sort_values(ascending=True).unique().astype(str)
 
     LQ = (
         prog_data.groupby("SNR_C")[curr_cols]
@@ -1301,11 +1311,16 @@ def get_bi_program_payload(
     )
     labeltext = prog_data.groupby("SNR_C")["P_name"].last()
 
-    Q = (
-        pd.merge(pd.merge(LQ, HQ, left_index=True, right_index=True, how="outer"), ref, left_index=True, right_index=True, how="inner")
+    Q = pd.merge(
+        pd.merge(LQ, HQ, left_index=True, right_index=True, how="outer"),
+        ref,
+        left_index=True,
+        right_index=True,
+        how="inner",
     )
     Q = pd.merge(Q, labeltext, left_index=True, right_index=True, how="inner").reset_index()
-    Q["SNR_C"] = x_tex
+    Q = Q.sort_values(by="SNR_C").reset_index(drop=True)
+    Q["SNR_C"] = Q["SNR_C"].astype(int).astype(str)
 
     return {
         "ok": True,

@@ -746,7 +746,7 @@ def bi_view(request):
     支持embed参数：embed=1时返回纯净模板用于iframe嵌入
     """
     from .bokeh_charts import create_bi_charts
-    from bokeh.resources import CDN
+    from bokeh.resources import CDN, INLINE
     import logging
 
     logger = logging.getLogger(__name__)
@@ -793,9 +793,13 @@ def bi_view(request):
 
     logger.info(f"图表生成成功: script长度={len(script)}, div长度={len(div)}")
 
+    # NOTE: iframe嵌入场景经常处于内网/受限网络环境，CDN 资源可能无法加载，导致前端“空白但无报错”。
+    # embed=1 时改用 INLINE，避免依赖外网 bokehjs 资源。
+    bokeh_resources = (INLINE if embed_mode else CDN).render()
+
     context = {
         'table_name': table_name,
-        'bokeh_resources': CDN.render(),
+        'bokeh_resources': bokeh_resources,
         'bokeh_script': script,
         'bokeh_div': div,
         'chart_info': chart_info,
