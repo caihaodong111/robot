@@ -23,11 +23,30 @@ logger = logging.getLogger(__name__)
 DEFAULT_RANGE_DAYS = 30
 CACHE_TTL_SECONDS = 600
 CACHE_VERSION = 2
+_LOCAL_DF_CACHE: dict[str, tuple[float, "pd.DataFrame"]] = {}
 
 try:
     from django.core.cache import cache
 except Exception:  # pragma: no cover - optional when running outside Django
     cache = None
+
+
+def _local_df_cache_get(key: str):
+    item = _LOCAL_DF_CACHE.get(key)
+    if not item:
+        return None
+    expires_at, df = item
+    if expires_at <= time.time():
+        _LOCAL_DF_CACHE.pop(key, None)
+        return None
+    return df
+
+
+def _local_df_cache_set(key: str, df: "pd.DataFrame", ttl_seconds: int):
+    try:
+        _LOCAL_DF_CACHE[key] = (time.time() + int(ttl_seconds), df)
+    except Exception:
+        return
 
 # 轴配置 - A1到A7
 _TABLE_NAME_CACHE = {}  # 表名缓存 {lower_name: real_name}
@@ -248,6 +267,54 @@ def fetch_data_from_mysql(table_name, start_time, end_time, time_column, engine)
         return pd.DataFrame()
 
 
+def _preprocess_bi_dataframe(df: "pd.DataFrame") -> "pd.DataFrame":
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    df = df.copy()
+    # 删除无用列（存在才删，保持健壮）
+    columns_to_drop = [
+        "A1_marker",
+        "A2_marker",
+        "A3_marker",
+        "A4_marker",
+        "A5_marker",
+        "A6_marker",
+        "A7_marker",
+        "SUB",
+    ]
+    for col in columns_to_drop:
+        if col in df.columns:
+            del df[col]
+
+    df = df.drop_duplicates()
+
+    # 时间与类型处理（与 Digitaltwin_timefree.py 保持一致）
+    if "Timestamp" in df.columns:
+        df["Time"] = pd.to_datetime(df["Timestamp"]) + timedelta(hours=8)
+        df["Timestamp"] = df["Time"].astype(str)
+
+    if "SNR_C" in df.columns:
+        df["SNR_C"] = df["SNR_C"].astype(int)
+
+    for i in range(1, 8):
+        col = f"AxisP{i}"
+        if col in df.columns:
+            df[col] = df[col].astype(float)
+
+    # 轴相关列尽量转成 float，避免后续 quantile/绘图异常
+    for cfg in AXIS_CONFIG.values():
+        for key in ("curr", "max_curr", "min_curr", "torque", "speed", "fol", "axisp"):
+            col = cfg.get(key)
+            if col and col in df.columns:
+                try:
+                    df[col] = df[col].astype(float)
+                except Exception:
+                    continue
+
+    return df
+
+
 def _coerce_datetime(value):
     if not value:
         return None
@@ -315,22 +382,10 @@ def create_bi_charts(
     if requested_start and requested_end:
         if requested_start > requested_end:
             requested_start, requested_end = requested_end, requested_start
-        logger.info("请求时间范围: %s 到 %s", requested_start, requested_end)
-
-        # 显式请求时间范围：按表真实 MIN/MAX 收敛，避免“最近30天窗口”导致早期区间必定无交集。
-        db_min_time, db_max_time = get_table_time_bounds(table_name, engine, time_column=time_column)
-        logger.info("数据库真实时间边界: %s 到 %s", db_min_time, db_max_time)
-        start_time = max(requested_start, db_min_time)
-        end_time = min(requested_end, db_max_time)
-        if start_time > end_time:
-            logger.warning(
-                "请求时间范围与数据库无交集: requested=%s..%s, db=%s..%s",
-                requested_start,
-                requested_end,
-                db_min_time,
-                db_max_time,
-            )
-            return None, None, None, None, None
+        # 按产品要求：显式请求时不做“收敛”，直接按请求范围查；无数据则直接报错/返回空。
+        logger.info("请求时间范围(直接使用): %s 到 %s", requested_start, requested_end)
+        start_time = requested_start
+        end_time = requested_end
     else:
         # 未显式请求：使用最近窗口（默认 30 天），减少默认首屏的扫描压力。
         window_days = days if isinstance(days, int) and days > 0 else DEFAULT_RANGE_DAYS
@@ -365,6 +420,7 @@ def create_bi_charts(
 
     from sqlalchemy import text
 
+    # 按需查询：只取 program 列表（小查询）+ 默认 program 主数据（带 Name_C 过滤）。
     programs_cache_key = (
         f"bi:programs:{CACHE_VERSION}:{table_name}:"
         f"{start_time.strftime('%Y%m%d%H%M%S')}:{end_time.strftime('%Y%m%d%H%M%S')}"
@@ -377,14 +433,16 @@ def create_bi_charts(
                 programs = [str(p) for p in cached_programs if p]
         except Exception as e:
             logger.warning("program 列表缓存获取失败: %s", e)
+            programs = []
+
     if not programs:
         try:
             programs_sql = (
                 f"SELECT DISTINCT `Name_C` AS Name_C "
                 f"FROM `{table_name}` "
-                f"WHERE `{time_column}` BETWEEN :start_time AND :end_time "
-                f"ORDER BY `Name_C`;"
+                f"WHERE `{time_column}` BETWEEN :start_time AND :end_time"
             )
+            programs_fetch_start = time.perf_counter()
             programs_df = pd.read_sql(
                 text(programs_sql),
                 engine,
@@ -393,12 +451,16 @@ def create_bi_charts(
                     "end_time": _format_datetime(end_time),
                 },
             )
+            logger.info("program 列表: db fetch %.3fs", time.perf_counter() - programs_fetch_start)
             if not programs_df.empty and "Name_C" in programs_df.columns:
                 programs = [str(v) for v in programs_df["Name_C"].dropna().tolist() if str(v)]
+                programs.sort()
+                logger.info("可用程序列表: %s", len(programs))
             if cache:
                 cache.set(programs_cache_key, programs, timeout=CACHE_TTL_SECONDS)
         except Exception as e:
             logger.warning("获取 program 列表失败: %s", e)
+            programs = []
 
     if not programs:
         logger.warning("表 %s 在所选时间范围内没有 program 数据", table_name)
@@ -445,6 +507,10 @@ def create_bi_charts(
             except Exception as e:
                 logger.warning("主数据缓存写入失败: %s", e)
 
+    preprocess_start = time.perf_counter()
+    df_prog = _preprocess_bi_dataframe(df_prog)
+    logger.info("数据预处理: %.3fs", time.perf_counter() - preprocess_start)
+
     if df_prog is None or df_prog.empty:
         logger.warning("表 %s program=%s 没有数据", table_name, default_program)
         return None, None, None, None, None
@@ -477,23 +543,7 @@ def create_bi_charts(
         if cache:
             cache.set(energy_cache_key, energy_full.copy(), timeout=CACHE_TTL_SECONDS)
 
-    # ============ 数据预处理 ============
-    preprocess_start = time.perf_counter()
-    columns_to_drop = ['A1_marker', 'A2_marker', 'A3_marker', 'A4_marker',
-                       'A5_marker', 'A6_marker', 'A7_marker', 'SUB']
-    for col in columns_to_drop:
-        if col in df_prog.columns:
-            del df_prog[col]
-
-    df_prog = df_prog.drop_duplicates()
-    df_prog["Time"] = pd.to_datetime(df_prog["Timestamp"]) + timedelta(hours=8)
-    df_prog["Timestamp"] = df_prog["Time"].astype(str)
-    df_prog["SNR_C"] = df_prog["SNR_C"].astype(int)
-    for i in range(1, 8):
-        col = f"AxisP{i}"
-        if col in df_prog.columns:
-            df_prog[col] = df_prog[col].astype(float)
-    logger.info("数据预处理: %.3fs", time.perf_counter() - preprocess_start)
+    # df_full 已经做过统一预处理，这里无需重复处理
 
     # 能量数据处理
     if not energy_full.empty:
@@ -1197,11 +1247,9 @@ def get_bi_program_payload(
     if requested_start and requested_end:
         if requested_start > requested_end:
             requested_start, requested_end = requested_end, requested_start
-        db_min_time, db_max_time = get_table_time_bounds(table_name, engine, time_column=time_column)
-        start_time = max(requested_start, db_min_time)
-        end_time = min(requested_end, db_max_time)
-        if start_time > end_time:
-            return {"ok": False, "error": "请求时间范围与数据库无交集"}
+        # 按产品要求：显式请求时不做“收敛”，直接按请求范围查；无数据则返回错误。
+        start_time = requested_start
+        end_time = requested_end
     else:
         db_start_time, db_end_time = get_table_recent_range(table_name, engine)
         start_time = db_start_time
@@ -1244,6 +1292,7 @@ def get_bi_program_payload(
     if df_prog is not None:
         df_prog = df_prog.copy()
     else:
+        fetch_start = time.perf_counter()
         df_prog = fetch_data_from_mysql(
             table_name,
             _format_datetime(start_time),
@@ -1255,38 +1304,21 @@ def get_bi_program_payload(
             },
             engine,
         )
+        logger.info("主数据(用于program切换): db fetch %.3fs", time.perf_counter() - fetch_start)
         if cache:
             try:
                 cache.set(data_cache_key, df_prog.copy(), timeout=CACHE_TTL_SECONDS)
             except Exception as e:
                 logger.warning("主数据缓存写入失败: %s", e)
 
+    preprocess_start = time.perf_counter()
+    df_prog = _preprocess_bi_dataframe(df_prog)
+    logger.info("数据预处理(用于program切换): %.3fs", time.perf_counter() - preprocess_start)
+
     if df_prog is None or df_prog.empty:
         return {"ok": False, "error": "该 program 无数据"}
 
-    # 预处理（与 create_bi_charts 保持一致）
-    columns_to_drop = [
-        "A1_marker",
-        "A2_marker",
-        "A3_marker",
-        "A4_marker",
-        "A5_marker",
-        "A6_marker",
-        "A7_marker",
-        "SUB",
-    ]
-    for col in columns_to_drop:
-        if col in df_prog.columns:
-            del df_prog[col]
-
-    df_prog = df_prog.drop_duplicates()
-    df_prog["Time"] = pd.to_datetime(df_prog["Timestamp"]) + timedelta(hours=8)
-    df_prog["Timestamp"] = df_prog["Time"].astype(str)
-    df_prog["SNR_C"] = df_prog["SNR_C"].astype(int)
-    for i in range(1, 8):
-        col = f"AxisP{i}"
-        if col in df_prog.columns:
-            df_prog[col] = df_prog[col].astype(float)
+    # df_full 已经做过统一预处理，这里无需重复处理
 
     # 聚合（与 create_bi_charts 保持一致）
     curr_cols = [AXIS_CONFIG[a]["curr"] for a in AXIS_CONFIG]

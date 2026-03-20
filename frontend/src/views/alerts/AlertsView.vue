@@ -579,6 +579,11 @@ const enterView = async () => {
       selectedAxis.value = stored.axis
     }
   }
+  // keep-alive 场景：切走再回来时 iframe 可能仍在加载；恢复加载态的日志轮询/轮播
+  if (isLoading.value && loadingMode.value === 'full') {
+    startLogPolling()
+    startLogRotation()
+  }
   syncIframeState()
   requestIframeState()
 }
@@ -586,7 +591,6 @@ const enterView = async () => {
 const leaveView = () => {
   stopLogPolling()
   stopLogRotation()
-  isLoading.value = false
   isLoadHover.value = false
 }
 
