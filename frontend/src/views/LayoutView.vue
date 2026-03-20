@@ -54,10 +54,13 @@
 
     <main class="app-main">
       <RouterView v-slot="{ Component }">
-        <KeepAlive :include="['Alerts', 'Monitoring', 'Devices']">
-          <component :is="Component" />
+        <KeepAlive :include="['Monitoring', 'Devices']">
+          <component v-if="route.path !== '/alerts'" :is="Component" />
         </KeepAlive>
       </RouterView>
+      <KeepAlive>
+        <AlertsView v-show="route.path === '/alerts'" />
+      </KeepAlive>
     </main>
   </div>
 </template>
@@ -65,6 +68,7 @@
 <script setup>
 import { ref } from 'vue'
 import { useRoute, RouterView } from 'vue-router'
+import AlertsView from './alerts/AlertsView.vue'
 import {
   Odometer, Cpu, TrendCharts, View, Monitor
 } from '@element-plus/icons-vue'

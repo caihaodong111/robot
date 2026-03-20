@@ -274,6 +274,81 @@
     <!-- 图表脚本 -->
     {{ bokeh_script|safe }}
     {{ energy_script|safe }}
+    <script>
+        (function () {
+            const getDoc = () => {
+                if (window.Bokeh && Array.isArray(window.Bokeh.documents) && window.Bokeh.documents.length) {
+                    return window.Bokeh.documents[0];
+                }
+                return null;
+            };
+
+            const getModels = () => {
+                const doc = getDoc();
+                if (!doc || !doc.get_model_by_name) return null;
+                const programSelect = doc.get_model_by_name('program_select');
+                const axisSelect = doc.get_model_by_name('axis_select');
+                if (!programSelect || !axisSelect) return null;
+                return { programSelect, axisSelect };
+            };
+
+            const postState = (models) => {
+                if (!window.parent || window.parent === window) return;
+                window.parent.postMessage(
+                    { type: 'biState', program: models.programSelect.value, axis: models.axisSelect.value },
+                    '*'
+                );
+            };
+
+            const applyState = (models, payload) => {
+                const nextProgram = typeof payload.program === 'string' ? payload.program.trim() : '';
+                const nextAxis = typeof payload.axis === 'string' ? payload.axis.trim() : '';
+                if (nextProgram && nextProgram !== models.programSelect.value) {
+                    models.programSelect.value = nextProgram;
+                }
+                if (nextAxis && nextAxis !== models.axisSelect.value) {
+                    models.axisSelect.value = nextAxis;
+                }
+            };
+
+            const init = () => {
+                const models = getModels();
+                if (!models) return false;
+
+                // Initial sync to parent (so parent URL/query can reflect actual defaults)
+                postState(models);
+
+                // Allow parent to restore last selection without iframe reload.
+                window.addEventListener('message', (event) => {
+                    const data = event && event.data;
+                    if (!data || typeof data !== 'object') return;
+                    if (data.type === 'getBIState') {
+                        postState(models);
+                        return;
+                    }
+                    if (data.type !== 'setBIState') return;
+                    applyState(models, data);
+                });
+
+                return true;
+            };
+
+            const start = () => {
+                if (init()) return;
+                let tries = 0;
+                const timer = setInterval(() => {
+                    tries += 1;
+                    if (init() || tries >= 50) clearInterval(timer);
+                }, 100);
+            };
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', start);
+            } else {
+                start();
+            }
+        })();
+    </script>
     {% if energy_modal_html %}
     <script>
         (function () {

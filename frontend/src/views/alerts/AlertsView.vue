@@ -60,7 +60,7 @@
               type="primary"
               class="action-btn btn-entrance-2 load-analysis-btn"
               :class="{ 'is-cancel': isLoading && isLoadHover }"
-              :disabled="!activeName && !isLoading"
+              :disabled="(!activeName && !robotQuery.trim()) && !isLoading"
               @mouseenter="handleLoadHover(true)"
               @mouseleave="handleLoadHover(false)"
               @click="handleLoadOrCancel"
@@ -76,7 +76,7 @@
       <div class="bi-content entrance-delayed-fade">
         <div v-if="!shouldLoad" class="bi-empty-state ios-glass">
           <div class="empty-icon"><el-icon><PieChart /></el-icon></div>
-          <div class="empty-text">请选择车间和机器人后点击"加载分析"按钮</div>
+          <div class="empty-text">请输入机器人表名后点击"加载分析"按钮</div>
         </div>
 
         <!-- BI图表容器 -->
@@ -87,27 +87,40 @@
             <Transition name="fade">
               <div v-if="isLoading" class="bi-loading-overlay">
                 <div class="bi-loading-content">
-                  <!-- 加载动画 -->
-                  <div class="loading-spinner">
-                    <svg class="spinner" viewBox="0 0 50 50">
-                      <circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="4"></circle>
-                    </svg>
-                  </div>
-                  <!-- 加载文字 -->
-                  <div class="loading-message">
-                    <div class="loading-title">正在加载数据</div>
-                    <div class="loading-tip">后端日志同步中</div>
-                  </div>
-                  <div class="log-plain" :class="{ 'is-empty': !displayLogs.length }">
-                    <div v-if="displayLogs.length" class="log-single">
-                      <Transition name="log-fade" mode="out-in">
-                        <div :key="currentLogIndex" class="log-line">
-                          {{ currentLogLine }}
-                        </div>
-                      </Transition>
+                  <template v-if="loadingMode === 'full'">
+                    <!-- 加载动画 -->
+                    <div class="loading-spinner">
+                      <svg class="spinner" viewBox="0 0 50 50">
+                        <circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="4"></circle>
+                      </svg>
                     </div>
-                    <div v-else class="log-empty">暂无日志</div>
-                  </div>
+                    <!-- 加载文字 -->
+                    <div class="loading-message">
+                      <div class="loading-title">正在加载数据</div>
+                      <div class="loading-tip">后端日志同步中</div>
+                    </div>
+                    <div class="log-plain" :class="{ 'is-empty': !displayLogs.length }">
+                      <div v-if="displayLogs.length" class="log-single">
+                        <Transition name="log-fade" mode="out-in">
+                          <div :key="currentLogIndex" class="log-line">
+                            {{ currentLogLine }}
+                          </div>
+                        </Transition>
+                      </div>
+                      <div v-else class="log-empty">暂无日志</div>
+                    </div>
+                  </template>
+                  <template v-else>
+                    <div class="loading-spinner is-compact">
+                      <svg class="spinner" viewBox="0 0 50 50">
+                        <circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="4"></circle>
+                      </svg>
+                    </div>
+                    <div class="loading-message">
+                      <div class="loading-title">切换中...</div>
+                      <div class="loading-tip">保持当前画面，加载完成自动切换</div>
+                    </div>
+                  </template>
                 </div>
               </div>
             </Transition>
@@ -120,12 +133,22 @@
             </Transition>
 
             <iframe
-              v-if="shouldLoad && frameUrl"
-              ref="biFrame"
+              v-if="shouldLoad && primaryFrameUrl"
+              ref="primaryFrame"
               class="bi-frame"
-              :src="frameUrl"
+              :class="{ 'is-active': showPrimaryFrame }"
+              :src="primaryFrameUrl"
               title="程序周期同步视窗"
-              @load="handleFrameLoad"
+              @load="handleFrameLoad('primary')"
+            ></iframe>
+            <iframe
+              v-if="shouldLoad && secondaryFrameUrl"
+              ref="secondaryFrame"
+              class="bi-frame"
+              :class="{ 'is-active': !showPrimaryFrame }"
+              :src="secondaryFrameUrl"
+              title="程序周期同步视窗"
+              @load="handleFrameLoad('secondary')"
             ></iframe>
           </div>
         </div>
@@ -150,14 +173,21 @@ const router = useRouter()
 const robotQuery = ref('')
 const activeName = ref('')
 const currentRobotLabel = ref('')
+const selectedProgram = ref('')
+const selectedAxis = ref('')
 const reloadToken = ref(0)
 const shouldLoad = ref(false)  // 控制是否加载 iframe
-const frameUrl = ref('')
+const primaryFrameUrl = ref('')
+const secondaryFrameUrl = ref('')
+const showPrimaryFrame = ref(true)
+const loadingTarget = ref(null) // 'primary' | 'secondary' | null
+const loadingMode = ref('full') // 'full' | 'switch'
 
 const robotsLoading = ref(false)
 const isLoading = ref(false)
 const isLoadHover = ref(false)
-const biFrame = ref(null)
+const primaryFrame = ref(null)
+const secondaryFrame = ref(null)
 const biLogs = ref([])
 const logPollingTimer = ref(null)
 const logRotateTimer = ref(null)
@@ -165,6 +195,7 @@ const currentLogIndex = ref(0)
 const lastStableFrameUrl = ref('')
 const initInProgress = ref(false)
 const lastInitSignature = ref('')
+const isActiveRoute = computed(() => route.path === '/alerts')
 
 const LOG_LIMIT = 8
 const LOG_POLL_INTERVAL = 4500
@@ -229,6 +260,22 @@ const shortcuts = [
   }
 ]
 
+const formatDateParam = (date) => {
+  const d = new Date(date)
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const syncRouteQuery = (patch) => {
+  const next = { ...route.query, ...(patch || {}) }
+  for (const key of Object.keys(next)) {
+    if (next[key] === '' || next[key] == null) delete next[key]
+  }
+  router.replace({ query: next })
+}
+
 const biUrl = computed(() => {
   const name = activeName.value.trim()
   const tableName = name ? name.toLowerCase() : ''
@@ -240,26 +287,87 @@ const biUrl = computed(() => {
   }
   // 添加时间范围参数（从timeRange数组格式转换）
   if (timeRange.value && timeRange.value.length === 2) {
-    const formatDate = (date) => {
-      const d = new Date(date)
-      const year = d.getFullYear()
-      const month = String(d.getMonth() + 1).padStart(2, '0')
-      const day = String(d.getDate()).padStart(2, '0')
-      return `${year}-${month}-${day}`
-    }
-    url.searchParams.set('start_date', formatDate(timeRange.value[0]))
-    url.searchParams.set('end_date', formatDate(timeRange.value[1]))
+    url.searchParams.set('start_date', formatDateParam(timeRange.value[0]))
+    url.searchParams.set('end_date', formatDateParam(timeRange.value[1]))
   }
   // 返回完整的URL，确保iframe正确加载
   return url.toString()
 })
 
-const loadFrame = (url) => {
-  if (!url || url === frameUrl.value) return
-  if (frameUrl.value) {
-    lastStableFrameUrl.value = frameUrl.value
+const visibleFrameUrl = computed(() => (showPrimaryFrame.value ? primaryFrameUrl.value : secondaryFrameUrl.value))
+
+const getActiveFrameWindow = () => {
+  const frameEl = showPrimaryFrame.value ? primaryFrame.value : secondaryFrame.value
+  return frameEl?.contentWindow || null
+}
+
+const biStateStorageKey = computed(() => {
+  const robot = activeName.value?.trim() || ''
+  return robot ? `alerts:biState:${robot.toLowerCase()}` : 'alerts:biState:last'
+})
+
+const readStoredBiState = () => {
+  try {
+    const raw = sessionStorage.getItem(biStateStorageKey.value)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    const program = typeof parsed?.program === 'string' ? parsed.program.trim() : ''
+    const axis = typeof parsed?.axis === 'string' ? parsed.axis.trim() : ''
+    return { program, axis }
+  } catch {
+    return null
   }
-  frameUrl.value = url
+}
+
+const writeStoredBiState = (program, axis) => {
+  try {
+    sessionStorage.setItem(
+      biStateStorageKey.value,
+      JSON.stringify({ program: program || '', axis: axis || '' })
+    )
+  } catch {
+    // ignore
+  }
+}
+
+const syncIframeState = () => {
+  const win = getActiveFrameWindow()
+  if (!win) return
+  win.postMessage(
+    {
+      type: 'setBIState',
+      program: selectedProgram.value || '',
+      axis: selectedAxis.value || ''
+    },
+    '*'
+  )
+}
+
+const requestIframeState = () => {
+  const win = getActiveFrameWindow()
+  if (!win) return
+  win.postMessage({ type: 'getBIState' }, '*')
+}
+
+const loadFrame = (url, options = {}) => {
+  const nextUrl = typeof url === 'string' ? url.trim() : ''
+  if (!nextUrl) return
+  if (nextUrl === visibleFrameUrl.value) return
+
+  const target = showPrimaryFrame.value ? 'secondary' : 'primary'
+  loadingTarget.value = target
+  loadingMode.value = options?.mode === 'switch' ? 'switch' : 'full'
+
+  if (visibleFrameUrl.value) {
+    lastStableFrameUrl.value = visibleFrameUrl.value
+  }
+
+  if (target === 'primary') {
+    primaryFrameUrl.value = nextUrl
+  } else {
+    secondaryFrameUrl.value = nextUrl
+  }
+
   startLoading()
 }
 
@@ -283,11 +391,9 @@ const handleRobotSearch = async () => {
 
     activeName.value = String(result.value).trim()
     currentRobotLabel.value = String(result.label || result.value).trim()
-    shouldLoad.value = false
   } catch (error) {
     activeName.value = ''
     currentRobotLabel.value = ''
-    shouldLoad.value = false
     const detail = error?.response?.data?.detail
     ElMessage.error(typeof detail === 'string' && detail.trim() ? detail : 'PROGRAM CYCLE SYNC 数据库中未找到该机器人表名')
   } finally {
@@ -299,26 +405,62 @@ const handleRobotSearch = async () => {
 const startLoading = () => {
   isLoading.value = true
   isLoadHover.value = false
-  startLogPolling()
-  startLogRotation()
+  if (loadingMode.value === 'full') {
+    startLogPolling()
+    startLogRotation()
+  }
 }
 
-// iframe加载完成
-const handleFrameLoad = () => {
+// iframe加载完成（双缓冲：先加载隐藏iframe，加载完再切换显示）
+const handleFrameLoad = (slot) => {
+  if (!loadingTarget.value) return
+  if (slot !== loadingTarget.value) return
+
+  if (slot === 'primary') {
+    showPrimaryFrame.value = true
+    lastStableFrameUrl.value = primaryFrameUrl.value
+  } else if (slot === 'secondary') {
+    showPrimaryFrame.value = false
+    lastStableFrameUrl.value = secondaryFrameUrl.value
+  }
+
+  loadingTarget.value = null
   // 延迟一点关闭加载动画，确保内容已渲染
   setTimeout(() => {
     isLoading.value = false
     isLoadHover.value = false
     stopLogPolling()
     stopLogRotation()
+    syncIframeState()
+    requestIframeState()
   }, 500)
 }
 
 const handleLoad = () => {
-  if (!activeName.value) return
+  if (!activeName.value) {
+    const manual = robotQuery.value.trim()
+    if (!manual) return
+    activeName.value = manual
+    currentRobotLabel.value = manual
+  }
   shouldLoad.value = true  // 设置为 true，触发 iframe 加载
   reloadToken.value = Date.now()
-  loadFrame(biUrl.value)
+  if (timeRange.value && timeRange.value.length === 2) {
+    syncRouteQuery({
+      robot: activeName.value,
+      start_date: formatDateParam(timeRange.value[0]),
+      end_date: formatDateParam(timeRange.value[1]),
+      program: selectedProgram.value || '',
+      axis: selectedAxis.value || '',
+    })
+  } else {
+    syncRouteQuery({
+      robot: activeName.value,
+      program: selectedProgram.value || '',
+      axis: selectedAxis.value || '',
+    })
+  }
+  loadFrame(biUrl.value, { mode: 'full' })
 }
 
 const handleLoadHover = (val) => {
@@ -331,11 +473,14 @@ const handleCancel = () => {
   isLoadHover.value = false
   stopLogPolling()
   stopLogRotation()
-  if (lastStableFrameUrl.value) {
-    frameUrl.value = lastStableFrameUrl.value
-    shouldLoad.value = true
-  } else {
-    frameUrl.value = ''
+  loadingMode.value = 'full'
+  if (loadingTarget.value === 'primary') {
+    primaryFrameUrl.value = ''
+  } else if (loadingTarget.value === 'secondary') {
+    secondaryFrameUrl.value = ''
+  }
+  loadingTarget.value = null
+  if (!primaryFrameUrl.value && !secondaryFrameUrl.value) {
     shouldLoad.value = false
   }
 }
@@ -361,6 +506,8 @@ const initFromQuery = async () => {
   const queryRobot = route.query.robot
   const queryStartDate = route.query.start_date
   const queryEndDate = route.query.end_date
+  const queryProgram = route.query.program
+  const queryAxis = route.query.axis
 
   const normalizedQueryRobot = typeof queryRobot === 'string' ? queryRobot.trim() : ''
 
@@ -374,10 +521,12 @@ const initFromQuery = async () => {
   if (queryStartDate && queryEndDate) {
     timeRange.value = normalizeRangeToDayBounds([new Date(queryStartDate), new Date(queryEndDate)])
   }
+  selectedProgram.value = typeof queryProgram === 'string' ? queryProgram.trim() : ''
+  selectedAxis.value = typeof queryAxis === 'string' ? queryAxis.trim() : ''
 
   // 只要带了 robot，就自动加载 BI
   shouldLoad.value = true
-  loadFrame(biUrl.value)
+  loadFrame(biUrl.value, { mode: 'full' })
 
   return true
 }
@@ -388,14 +537,14 @@ const runInitFromQuery = async () => {
   const signature = JSON.stringify({
     robot,
     start_date: route.query.start_date || '',
-    end_date: route.query.end_date || ''
+    end_date: route.query.end_date || '',
+    program: route.query.program || '',
+    axis: route.query.axis || ''
   })
   if (initInProgress.value || signature === lastInitSignature.value) return
   initInProgress.value = true
   lastInitSignature.value = signature
   try {
-    shouldLoad.value = false
-    frameUrl.value = ''
     await initFromQuery()
   } finally {
     initInProgress.value = false
@@ -403,12 +552,42 @@ const runInitFromQuery = async () => {
 }
 
 const handleBiMessage = (event) => {
-  if (event.data && event.data.type === 'updateBIUrl') {
-    // 更新iframe的src来重新加载图表
-    if (biFrame.value) {
-      loadFrame(event.data.url)
+  if (!event?.data || typeof event.data !== 'object') return
+  if (event.data.type === 'updateBIUrl' && typeof event.data.url === 'string') {
+    // 兼容旧逻辑：更新iframe的src来重新加载图表
+    loadFrame(event.data.url, { mode: 'switch' })
+    return
+  }
+  if (event.data.type === 'biState') {
+    const program = typeof event.data.program === 'string' ? event.data.program.trim() : ''
+    const axis = typeof event.data.axis === 'string' ? event.data.axis.trim() : ''
+    selectedProgram.value = program
+    selectedAxis.value = axis
+    writeStoredBiState(program, axis)
+    syncRouteQuery({ program, axis })
+  }
+}
+
+const enterView = async () => {
+  if (!isActiveRoute.value) return
+  await runInitFromQuery()
+  // route.query 可能为空（侧边栏返回 /alerts 不带 query），优先用 sessionStorage 还原 program/axis
+  if (!selectedProgram.value && !selectedAxis.value) {
+    const stored = readStoredBiState()
+    if (stored) {
+      selectedProgram.value = stored.program
+      selectedAxis.value = stored.axis
     }
   }
+  syncIframeState()
+  requestIframeState()
+}
+
+const leaveView = () => {
+  stopLogPolling()
+  stopLogRotation()
+  isLoading.value = false
+  isLoadHover.value = false
 }
 
 onMounted(async () => {
@@ -417,14 +596,11 @@ onMounted(async () => {
 })
 
 onActivated(async () => {
-  await runInitFromQuery()
+  await enterView()
 })
 
 onDeactivated(() => {
-  stopLogPolling()
-  stopLogRotation()
-  isLoading.value = false
-  isLoadHover.value = false
+  leaveView()
 })
 
 onUnmounted(() => {
@@ -432,6 +608,18 @@ onUnmounted(() => {
   stopLogRotation()
   window.removeEventListener('message', handleBiMessage)
 })
+
+watch(
+  () => route.path,
+  async (path, prevPath) => {
+    if (path === prevPath) return
+    if (path === '/alerts') {
+      await enterView()
+    } else if (prevPath === '/alerts') {
+      leaveView()
+    }
+  }
+)
 
 // 组件在同一路由下会复用（仅 query 变化不会触发 onMounted）
 watch(
@@ -502,7 +690,23 @@ watch(robotQuery, (val) => {
     activeName.value = ''
     currentRobotLabel.value = ''
     shouldLoad.value = false
+    primaryFrameUrl.value = ''
+    secondaryFrameUrl.value = ''
+    showPrimaryFrame.value = true
+    loadingTarget.value = null
+    loadingMode.value = 'full'
+    selectedProgram.value = ''
+    selectedAxis.value = ''
+    syncRouteQuery({ robot: '', program: '', axis: '' })
   }
+})
+
+watch(activeName, (val, prev) => {
+  if (!val || val === prev) return
+  // 换机器人时，program/axis 选项集会变化，避免带入旧值
+  selectedProgram.value = ''
+  selectedAxis.value = ''
+  syncRouteQuery({ program: '', axis: '' })
 })
 </script>
 
@@ -910,10 +1114,20 @@ watch(robotQuery, (val) => {
 }
 
 .bi-frame {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   border: none;
   background: #000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms ease;
+}
+
+.bi-frame.is-active {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 /* === 加载遮罩层 === */
@@ -942,6 +1156,11 @@ watch(robotQuery, (val) => {
 .loading-spinner {
   width: 48px;
   height: 48px;
+}
+
+.loading-spinner.is-compact {
+  width: 40px;
+  height: 40px;
 }
 
 .spinner {

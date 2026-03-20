@@ -3,6 +3,7 @@ import logging
 import os
 from django.conf import settings
 from django.core.cache import cache
+from django.http import JsonResponse
 from django.shortcuts import render
 from django.db.models import Count, Q
 from django.utils import timezone
@@ -452,7 +453,7 @@ class RobotComponentViewSet(
                 "end_date": "2024-12-31"
             }
         """
-        from .bokeh_charts import get_table_recent_range, get_db_engine
+        from .bokeh_charts import get_table_time_bounds, get_db_engine
         from sqlalchemy import create_engine
 
         table_name = request.query_params.get("robot")
@@ -469,8 +470,8 @@ class RobotComponentViewSet(
             engine_url = f"mysql+pymysql://{db_config['user']}:{db_config['password']}@{db_config['host']}:{db_config['port']}/{db_config['database']}"
             engine = create_engine(engine_url)
 
-            # 获取最近时间范围
-            start_time, end_time = get_table_recent_range(table_name, engine)
+            # 获取真实时间边界（MIN/MAX）
+            start_time, end_time = get_table_time_bounds(table_name, engine)
 
             # 格式化为 YYYY-MM-DD
             start_date = start_time.strftime("%Y-%m-%d")
@@ -815,6 +816,34 @@ def bi_view(request):
     # 根据embed参数选择模板
     template_name = 'bi_embed.html' if embed_mode else 'bi.html'
     return render(request, template_name, context)
+
+
+@xframe_options_exempt
+def bi_program_data_view(request):
+    """
+    PROGRAM CYCLE SYNC: program_name 切换时无刷新更新数据。
+    返回指定 program 的 ColumnDataSource 数据（source / agg）。
+    """
+    from .bokeh_charts import get_bi_program_payload
+    import re
+
+    table_name = request.GET.get("robot", request.GET.get("table", ""))
+    table_name = (table_name or "").strip().lower()
+    if not re.match(r"^[0-9a-z_-]+$", table_name):
+        return JsonResponse({"ok": False, "error": "非法的表名参数"}, status=400)
+
+    program = request.GET.get("program", None)
+    start_date = request.GET.get("start_date", None)
+    end_date = request.GET.get("end_date", None)
+
+    payload = get_bi_program_payload(
+        table_name=table_name,
+        program=program,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    status_code = 200 if payload.get("ok") else 400
+    return JsonResponse(payload, status=status_code)
 
 
 class GripperCheckViewSet(viewsets.GenericViewSet):

@@ -114,7 +114,11 @@ def get_real_table_name(table_name, engine):
 
 
 def get_table_recent_range(table_name, engine, days=DEFAULT_RANGE_DAYS):
-    """获取数据库表最近时间范围（仅取MAX，避免全量MIN/MAX扫描）"""
+    """获取数据库表最近时间范围（仅取MAX，避免全量MIN/MAX扫描）
+
+    注意：这是“最近窗口”而不是表的真实最早/最晚时间范围。
+    如果前端显式传入 start/end，请使用 get_table_time_bounds() 取得真实边界。
+    """
     # 自动修正表名大小写
     real_table_name = get_real_table_name(table_name, engine)
     query = f"SELECT MAX(`Timestamp`) as max_time FROM `{real_table_name}`;"
@@ -130,6 +134,60 @@ def get_table_recent_range(table_name, engine, days=DEFAULT_RANGE_DAYS):
         logger.error(f"获取时间范围失败: {e}")
         end_time = datetime.now()
         return end_time - timedelta(days=days), end_time
+
+
+def get_table_time_bounds(table_name, engine, time_column: str = "Timestamp"):
+    """获取数据库表真实时间边界 (MIN/MAX)。
+
+    优先用 ORDER BY ... LIMIT 1（通常可走索引）来避免 MIN/MAX 的全表扫描风险。
+    失败时回退到 MIN/MAX 聚合。
+    """
+    real_table_name = get_real_table_name(table_name, engine)
+    from sqlalchemy import text
+
+    def _fetch_one(sql: str):
+        df = pd.read_sql(text(sql), engine)
+        if df.empty:
+            return None
+        value = df.iloc[0, 0]
+        return None if pd.isna(value) else value
+
+    try:
+        min_sql = (
+            f"SELECT `{time_column}` "
+            f"FROM `{real_table_name}` "
+            f"WHERE `{time_column}` IS NOT NULL "
+            f"ORDER BY `{time_column}` ASC "
+            f"LIMIT 1;"
+        )
+        max_sql = (
+            f"SELECT `{time_column}` "
+            f"FROM `{real_table_name}` "
+            f"WHERE `{time_column}` IS NOT NULL "
+            f"ORDER BY `{time_column}` DESC "
+            f"LIMIT 1;"
+        )
+        start_time = _fetch_one(min_sql)
+        end_time = _fetch_one(max_sql)
+        if start_time is None or end_time is None:
+            raise ValueError("empty bounds")
+        return start_time, end_time
+    except Exception as e:
+        logger.warning("ORDER BY 取边界失败，回退 MIN/MAX: %s", e)
+        try:
+            bounds_sql = (
+                f"SELECT MIN(`{time_column}`) AS min_time, MAX(`{time_column}`) AS max_time "
+                f"FROM `{real_table_name}`;"
+            )
+            df = pd.read_sql(text(bounds_sql), engine)
+            if df.empty or df["min_time"].isna()[0] or df["max_time"].isna()[0]:
+                now = datetime.now()
+                return now, now
+            return df["min_time"][0], df["max_time"][0]
+        except Exception as e2:
+            logger.error("获取真实时间边界失败: %s", e2)
+            now = datetime.now()
+            return now, now
 
 
 def fetch_data_from_mysql(table_name, start_time, end_time, time_column, engine):
@@ -253,30 +311,33 @@ def create_bi_charts(
     # 自动修正表名大小写（使用正确的表名进行后续所有操作）
     table_name = get_real_table_name(table_name, engine)
 
-    # 获取数据库最近时间范围
-    db_start_time, db_end_time = get_table_recent_range(table_name, engine)
-    logger.info(f"数据库时间范围: {db_start_time} 到 {db_end_time}")
-
-    start_time = db_start_time
-    end_time = db_end_time
-
     requested_start, requested_end = _normalize_date_bounds(start_date, end_date)
     if requested_start and requested_end:
         if requested_start > requested_end:
             requested_start, requested_end = requested_end, requested_start
-        logger.info(f"请求时间范围: {requested_start} 到 {requested_end}")
-        # 将请求范围收敛到数据库实际范围内，避免扫描无数据的大区间
-        start_time = max(requested_start, db_start_time)
-        end_time = min(requested_end, db_end_time)
+        logger.info("请求时间范围: %s 到 %s", requested_start, requested_end)
+
+        # 显式请求时间范围：按表真实 MIN/MAX 收敛，避免“最近30天窗口”导致早期区间必定无交集。
+        db_min_time, db_max_time = get_table_time_bounds(table_name, engine, time_column=time_column)
+        logger.info("数据库真实时间边界: %s 到 %s", db_min_time, db_max_time)
+        start_time = max(requested_start, db_min_time)
+        end_time = min(requested_end, db_max_time)
         if start_time > end_time:
             logger.warning(
                 "请求时间范围与数据库无交集: requested=%s..%s, db=%s..%s",
                 requested_start,
                 requested_end,
-                db_start_time,
-                db_end_time,
+                db_min_time,
+                db_max_time,
             )
             return None, None, None, None, None
+    else:
+        # 未显式请求：使用最近窗口（默认 30 天），减少默认首屏的扫描压力。
+        window_days = days if isinstance(days, int) and days > 0 else DEFAULT_RANGE_DAYS
+        db_start_time, db_end_time = get_table_recent_range(table_name, engine, days=window_days)
+        logger.info("数据库最近窗口: %s 到 %s (days=%s)", db_start_time, db_end_time, window_days)
+        start_time = db_start_time
+        end_time = db_end_time
 
     # 获取主数据（仅当前 program 的数据）。先取 program 列表用于下拉框。
     logger.info("准备获取 program 列表与主数据...")
@@ -493,6 +554,7 @@ def create_bi_charts(
         min_width=220,
         sizing_mode="stretch_width"
     )
+    program_select.name = "program_select"
 
     axis_select = Select(
         title="",  # 空标题，标签单独显示
@@ -502,6 +564,7 @@ def create_bi_charts(
         min_width=140,
         sizing_mode="stretch_width"
     )
+    axis_select.name = "axis_select"
 
     # ============ 创建图表 ============
     chart_create_start = time.perf_counter()
@@ -797,11 +860,12 @@ def create_bi_charts(
 
     # ============ 添加程序和轴切换的 JavaScript 回调 ============
     # 轴切换：复用当前 program 已加载的数据（纯前端更新）。
-    # program 切换：重载页面（后端重新查询/聚合该 program），避免首屏计算所有 program。
+    # program 切换：通过接口拉取数据并更新 ColumnDataSource，避免整页重载导致黑屏/样式闪烁。
 
     axis_callback = CustomJS(
         args=dict(
             axis_select=axis_select,
+            program_select=program_select,
             source=source,
             agg_source=agg_source,
             proxy_source=proxy_source,
@@ -852,21 +916,128 @@ def create_bi_charts(
 
         proxy_source.change.emit();
         proxy_agg_source.change.emit();
+
+        // Notify parent to persist selections (without reloading).
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage(
+            { type: 'biState', program: program_select.value, axis: axis_select.value },
+            '*'
+          );
+        }
         """,
     )
     axis_select.js_on_change("value", axis_callback)
 
     program_reload_callback = CustomJS(
-        args=dict(program_select=program_select, axis_select=axis_select),
+        args=dict(
+            program_select=program_select,
+            axis_select=axis_select,
+            source=source,
+            agg_source=agg_source,
+            proxy_source=proxy_source,
+            proxy_agg_source=proxy_agg_source,
+            curr_plot=p_curr,
+            line_plot=line_plot,
+            axis_config_json=json.dumps(AXIS_CONFIG),
+        ),
         code="""
-        try {
-          const overlay = document.getElementById('biLoadingOverlay');
-          if (overlay) overlay.style.display = 'flex';
-        } catch (e) {}
+        const AXIS_CONFIG = JSON.parse(axis_config_json);
+
+        const nextProgram = program_select.value;
+        const axis = axis_select.value;
+        const config = AXIS_CONFIG[axis] || AXIS_CONFIG["A1"];
+
         const url = new URL(window.location.href);
-        url.searchParams.set('program', program_select.value);
-        url.searchParams.set('axis', axis_select.value);
-        window.location.href = url.toString();
+        url.searchParams.set('program', nextProgram);
+        url.searchParams.set('axis', axis);
+
+        // Update URL without reload (for deep-linking / refresh).
+        try {
+          window.history.replaceState({}, '', url.toString());
+        } catch (e) {}
+
+        const overlay = document.getElementById('biLoadingOverlay');
+        if (overlay) overlay.style.display = 'flex';
+
+        // Notify parent to persist selections (without reloading).
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage(
+            { type: 'biState', program: nextProgram, axis: axis },
+            '*'
+          );
+        }
+
+        // Prevent out-of-order responses from rapid switching.
+        const requestId = Date.now().toString(36) + Math.random().toString(36).slice(2);
+        window.__biProgramRequestId = requestId;
+
+        const dataUrl = new URL('/api/robots/bi_program_data/', window.location.origin);
+        dataUrl.searchParams.set('table', url.searchParams.get('table') || url.searchParams.get('robot') || '');
+        dataUrl.searchParams.set('program', nextProgram);
+        if (url.searchParams.get('start_date')) dataUrl.searchParams.set('start_date', url.searchParams.get('start_date'));
+        if (url.searchParams.get('end_date')) dataUrl.searchParams.set('end_date', url.searchParams.get('end_date'));
+
+        fetch(dataUrl.toString(), { method: 'GET', credentials: 'same-origin' })
+          .then((res) => res.json())
+          .then((payload) => {
+            if (window.__biProgramRequestId !== requestId) return;
+            if (!payload || !payload.ok) throw new Error((payload && payload.error) || 'PROGRAM_DATA_FAILED');
+
+            // Replace backing sources (used for axis switching).
+            source.data = payload.source || {};
+            agg_source.data = payload.agg || {};
+
+            // Refresh proxy sources for current axis.
+            const currCol = config.curr;
+            const maxCurrCol = config.max_curr;
+            const minCurrCol = config.min_curr;
+            const torqueCol = config.torque;
+            const speedCol = config.speed;
+            const folCol = config.fol;
+            const axispCol = config.axisp;
+
+            curr_plot.title.text = axis + " - Current Analysis";
+            line_plot.title.text = "Aggregate Analysis - " + nextProgram;
+
+            proxy_source.data['sort'] = source.data['sort'];
+            proxy_source.data['Timestamp'] = source.data['Timestamp'];
+            proxy_source.data['SNR_C'] = source.data['SNR_C'];
+            proxy_source.data['P_name'] = source.data['P_name'];
+            proxy_source.data['Time'] = source.data['Time'];
+            proxy_source.data['Tem_1'] = source.data['Tem_1'];
+
+            proxy_source.data['curr_value'] = source.data[currCol] || [];
+            proxy_source.data['max_curr_value'] = source.data[maxCurrCol] || [];
+            proxy_source.data['min_curr_value'] = source.data[minCurrCol] || [];
+            proxy_source.data['torque_value'] = source.data[torqueCol] || [];
+            proxy_source.data['speed_value'] = source.data[speedCol] || [];
+            proxy_source.data['fol_value'] = source.data[folCol] || [];
+            proxy_source.data['axisp_value'] = source.data[axispCol] || [];
+
+            proxy_agg_source.data['SNR_C'] = agg_source.data['SNR_C'];
+            proxy_agg_source.data['P_name'] = agg_source.data['P_name'];
+            proxy_agg_source.data['max_curr_value'] = agg_source.data[maxCurrCol] || [];
+            proxy_agg_source.data['min_curr_value'] = agg_source.data[minCurrCol] || [];
+
+            const lqCol = currCol + "_LQ";
+            const hqCol = currCol + "_HQ";
+            proxy_agg_source.data['lq_value'] = agg_source.data[lqCol] || [];
+            proxy_agg_source.data['hq_value'] = agg_source.data[hqCol] || [];
+
+            source.change.emit();
+            agg_source.change.emit();
+            proxy_source.change.emit();
+            proxy_agg_source.change.emit();
+          })
+          .catch((err) => {
+            // Fallback: reload the page if dynamic update fails.
+            try { console.error('program switch failed', err); } catch (e) {}
+            window.location.href = url.toString();
+          })
+          .finally(() => {
+            if (window.__biProgramRequestId !== requestId) return;
+            if (overlay) overlay.style.display = 'none';
+          });
         """,
     )
     program_select.js_on_change("value", program_reload_callback)
@@ -945,3 +1116,199 @@ def create_bi_charts(
         'programs': programs,
         'date_range': f"{start_time.strftime('%Y-%m-%d')} 至 {end_time.strftime('%Y-%m-%d')}",
     }, energy_modal_html, energy_script_content
+
+
+def _to_jsonable_value(value):
+    if value is None:
+        return None
+    if isinstance(value, (str, int, float, bool)):
+        return value
+    item = getattr(value, "item", None)
+    if callable(item):
+        try:
+            return item()
+        except Exception:
+            pass
+    return str(value)
+
+
+def _dataframe_to_jsonable_dict(df: "pd.DataFrame") -> dict:
+    if df is None:
+        return {}
+    if df.empty:
+        return {col: [] for col in df.columns}
+    safe_df = df.copy()
+    safe_df = safe_df.where(pd.notnull(safe_df), None)
+    payload = safe_df.to_dict(orient="list")
+    for key, values in payload.items():
+        payload[key] = [_to_jsonable_value(v) for v in values]
+    return payload
+
+
+def get_bi_program_payload(
+    table_name: str,
+    program: str,
+    start_date: str | None = None,
+    end_date: str | None = None,
+):
+    """
+    获取指定 program 的数据与聚合结果，用于前端无刷新切换 program_name。
+    返回 dict:
+      { ok: bool, error?: str, source?: dict, agg?: dict }
+    """
+    # 从Django配置获取数据库连接参数
+    db_config = get_db_engine()
+    user = db_config["user"]
+    password = db_config["password"]
+    host = db_config["host"]
+    port = db_config["port"]
+    database = db_config["database"]
+    time_column = "Timestamp"
+
+    try:
+        engine = create_engine(f"mysql+pymysql://{user}:{password}@{host}:{port}/{database}")
+    except Exception as e:
+        logger.error("数据库连接失败: %s", e)
+        return {"ok": False, "error": "数据库连接失败"}
+
+    table_name = (table_name or "").strip().lower()
+    program = (program or "").strip()
+    if not table_name:
+        return {"ok": False, "error": "缺少 table 参数"}
+    if not program:
+        return {"ok": False, "error": "缺少 program 参数"}
+
+    # 自动修正表名大小写（使用正确的表名进行后续所有操作）
+    table_name = get_real_table_name(table_name, engine)
+
+    # 获取时间范围：显式请求时按真实边界收敛；否则用最近窗口。
+    requested_start, requested_end = _normalize_date_bounds(start_date, end_date)
+    if requested_start and requested_end:
+        if requested_start > requested_end:
+            requested_start, requested_end = requested_end, requested_start
+        db_min_time, db_max_time = get_table_time_bounds(table_name, engine, time_column=time_column)
+        start_time = max(requested_start, db_min_time)
+        end_time = min(requested_end, db_max_time)
+        if start_time > end_time:
+            return {"ok": False, "error": "请求时间范围与数据库无交集"}
+    else:
+        db_start_time, db_end_time = get_table_recent_range(table_name, engine)
+        start_time = db_start_time
+        end_time = db_end_time
+
+    # 选取需要的列（与 create_bi_charts 保持一致）
+    base_columns = ["Timestamp", "Name_C", "SNR_C", "P_name", "Tem_1"]
+    axis_columns = []
+    for cfg in AXIS_CONFIG.values():
+        axis_columns.extend(
+            [
+                cfg["curr"],
+                cfg["max_curr"],
+                cfg["min_curr"],
+                cfg["torque"],
+                cfg["speed"],
+                cfg["fol"],
+                cfg["axisp"],
+            ]
+        )
+    seen = set()
+    selected_columns = []
+    for col in base_columns + axis_columns:
+        if col and col not in seen:
+            seen.add(col)
+            selected_columns.append(col)
+
+    data_cache_key = (
+        f"bi:data:{CACHE_VERSION}:{table_name}:"
+        f"{start_time.strftime('%Y%m%d%H%M%S')}:{end_time.strftime('%Y%m%d%H%M%S')}:"
+        f"prog:{program}"
+    )
+    df_prog = None
+    if cache:
+        try:
+            df_prog = cache.get(data_cache_key)
+        except Exception as e:
+            logger.warning("主数据缓存获取失败: %s", e)
+            df_prog = None
+    if df_prog is not None:
+        df_prog = df_prog.copy()
+    else:
+        df_prog = fetch_data_from_mysql(
+            table_name,
+            _format_datetime(start_time),
+            _format_datetime(end_time),
+            {
+                "time_column": time_column,
+                "columns": selected_columns,
+                "program": program,
+            },
+            engine,
+        )
+        if cache:
+            try:
+                cache.set(data_cache_key, df_prog.copy(), timeout=CACHE_TTL_SECONDS)
+            except Exception as e:
+                logger.warning("主数据缓存写入失败: %s", e)
+
+    if df_prog is None or df_prog.empty:
+        return {"ok": False, "error": "该 program 无数据"}
+
+    # 预处理（与 create_bi_charts 保持一致）
+    columns_to_drop = [
+        "A1_marker",
+        "A2_marker",
+        "A3_marker",
+        "A4_marker",
+        "A5_marker",
+        "A6_marker",
+        "A7_marker",
+        "SUB",
+    ]
+    for col in columns_to_drop:
+        if col in df_prog.columns:
+            del df_prog[col]
+
+    df_prog = df_prog.drop_duplicates()
+    df_prog["Time"] = pd.to_datetime(df_prog["Timestamp"]) + timedelta(hours=8)
+    df_prog["Timestamp"] = df_prog["Time"].astype(str)
+    df_prog["SNR_C"] = df_prog["SNR_C"].astype(int)
+    for i in range(1, 8):
+        col = f"AxisP{i}"
+        if col in df_prog.columns:
+            df_prog[col] = df_prog[col].astype(float)
+
+    # 聚合（与 create_bi_charts 保持一致）
+    curr_cols = [AXIS_CONFIG[a]["curr"] for a in AXIS_CONFIG]
+    max_cols = [AXIS_CONFIG[a]["max_curr"] for a in AXIS_CONFIG]
+    min_cols = [AXIS_CONFIG[a]["min_curr"] for a in AXIS_CONFIG]
+
+    prog_data = df_prog.copy()
+    prog_data = prog_data.sort_values(by=["SNR_C", "Time"])
+    prog_data["sort"] = range(1, len(prog_data) + 1)
+
+    ref = prog_data.groupby("SNR_C")[max_cols + min_cols].last()
+    x_tex = prog_data["SNR_C"].sort_values(ascending=True).unique().astype(str)
+
+    LQ = (
+        prog_data.groupby("SNR_C")[curr_cols]
+        .quantile(q=0.01, interpolation="nearest")
+        .rename(columns={c: f"{c}_LQ" for c in curr_cols})
+    )
+    HQ = (
+        prog_data.groupby("SNR_C")[curr_cols]
+        .quantile(q=0.99, interpolation="nearest")
+        .rename(columns={c: f"{c}_HQ" for c in curr_cols})
+    )
+    labeltext = prog_data.groupby("SNR_C")["P_name"].last()
+
+    Q = (
+        pd.merge(pd.merge(LQ, HQ, left_index=True, right_index=True, how="outer"), ref, left_index=True, right_index=True, how="inner")
+    )
+    Q = pd.merge(Q, labeltext, left_index=True, right_index=True, how="inner").reset_index()
+    Q["SNR_C"] = x_tex
+
+    return {
+        "ok": True,
+        "source": _dataframe_to_jsonable_dict(prog_data),
+        "agg": _dataframe_to_jsonable_dict(Q),
+    }
