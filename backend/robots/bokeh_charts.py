@@ -394,7 +394,8 @@ def create_bi_charts(
         start_time = db_start_time
         end_time = db_end_time
 
-    # 获取主数据（仅当前 program 的数据）。先取 program 列表用于下拉框。
+    # 获取主数据（仅当前 program 的数据）。注意：program 列表 DISTINCT 查询在大表/无索引时会非常慢，
+    # 为了避免首屏阻塞，这里先确定一个默认 program 出图，program 列表改为前端异步拉取。
     logger.info("准备获取 program 列表与主数据...")
     base_columns = ["Timestamp", "Name_C", "SNR_C", "P_name", "Tem_1"]
     axis_columns = []
@@ -420,54 +421,37 @@ def create_bi_charts(
 
     from sqlalchemy import text
 
-    # 按需查询：只取 program 列表（小查询）+ 默认 program 主数据（带 Name_C 过滤）。
-    programs_cache_key = (
-        f"bi:programs:{CACHE_VERSION}:{table_name}:"
-        f"{start_time.strftime('%Y%m%d%H%M%S')}:{end_time.strftime('%Y%m%d%H%M%S')}"
-    )
-    programs: list[str] = []
-    if cache:
+    # 确定默认 program / axis：优先用 URL 参数 program；否则取任意一个匹配记录的 Name_C（LIMIT 1），避免 DISTINCT。
+    default_program = (program or "").strip() or None
+    if not default_program:
         try:
-            cached_programs = cache.get(programs_cache_key)
-            if isinstance(cached_programs, (list, tuple)):
-                programs = [str(p) for p in cached_programs if p]
-        except Exception as e:
-            logger.warning("program 列表缓存获取失败: %s", e)
-            programs = []
-
-    if not programs:
-        try:
-            programs_sql = (
-                f"SELECT DISTINCT `Name_C` AS Name_C "
+            any_program_sql = (
+                f"SELECT `Name_C` AS Name_C "
                 f"FROM `{table_name}` "
-                f"WHERE `{time_column}` BETWEEN :start_time AND :end_time"
+                f"WHERE `{time_column}` BETWEEN :start_time AND :end_time "
+                f"AND `Name_C` IS NOT NULL AND `Name_C` <> '' "
+                f"LIMIT 1"
             )
-            programs_fetch_start = time.perf_counter()
-            programs_df = pd.read_sql(
-                text(programs_sql),
+            any_df = pd.read_sql(
+                text(any_program_sql),
                 engine,
                 params={
                     "start_time": _format_datetime(start_time),
                     "end_time": _format_datetime(end_time),
                 },
             )
-            logger.info("program 列表: db fetch %.3fs", time.perf_counter() - programs_fetch_start)
-            if not programs_df.empty and "Name_C" in programs_df.columns:
-                programs = [str(v) for v in programs_df["Name_C"].dropna().tolist() if str(v)]
-                programs.sort()
-                logger.info("可用程序列表: %s", len(programs))
-            if cache:
-                cache.set(programs_cache_key, programs, timeout=CACHE_TTL_SECONDS)
+            if not any_df.empty and "Name_C" in any_df.columns:
+                default_program = str(any_df["Name_C"].iloc[0])
         except Exception as e:
-            logger.warning("获取 program 列表失败: %s", e)
-            programs = []
+            logger.warning("获取默认 program 失败: %s", e)
 
-    if not programs:
+    if not default_program:
         logger.warning("表 %s 在所选时间范围内没有 program 数据", table_name)
         return None, None, None, None, None
 
-    # 确定默认 program / axis
-    default_program = program if program and program in programs else programs[0]
+    # 首屏仅提供默认 program 作为选项，完整列表由前端异步填充
+    programs = [default_program]
+
     default_axis = axis if axis in AXIS_CONFIG else "A1"
 
     data_cache_key = (
