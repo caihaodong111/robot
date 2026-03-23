@@ -2,21 +2,22 @@
 Bokeh图表生成模块 - 静态嵌入Django使用
 支持前端控件联动（程序切换、轴切换）
 """
-from bokeh.plotting import figure
+import json
+import logging
+import re
+import time
+import uuid
+from datetime import datetime, timedelta
+
+import pandas as pd
+from bokeh.embed import components
+from bokeh.events import ButtonClick
 from bokeh.models import (
     ColumnDataSource, HoverTool, Select,
     CustomJS, LabelSet, BoxAnnotation, Band, DatePicker, Range1d
 )
-from bokeh.events import ButtonClick
-from bokeh.embed import components
-import pandas as pd
-import re
-import json
-from datetime import datetime, timedelta
-import time
+from bokeh.plotting import figure
 from sqlalchemy import create_engine
-import logging
-import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,10 @@ DEFAULT_RANGE_DAYS = 30
 CACHE_TTL_SECONDS = 600
 CACHE_VERSION = 2
 _LOCAL_DF_CACHE: dict[str, tuple[float, "pd.DataFrame"]] = {}
+
+# Program 切换内存缓存：{cache_key: (df_full, energy_full, timestamp, table_name, time_range)}
+# 用于快速切换 program，避免重新查询数据库
+_PROGRAM_DATA_CACHE: dict[str, tuple] = {}
 
 try:
     from django.core.cache import cache
@@ -47,6 +52,37 @@ def _local_df_cache_set(key: str, df: "pd.DataFrame", ttl_seconds: int):
         _LOCAL_DF_CACHE[key] = (time.time() + int(ttl_seconds), df)
     except Exception:
         return
+
+
+# Program 数据缓存管理（用于快速切换 program）
+def _program_data_cache_key(table_name: str, start_date: str, end_date: str) -> str:
+    """生成 program 数据缓存键"""
+    return f"program_data:{table_name}:{start_date}:{end_date}"
+
+
+def _program_data_cache_get(table_name: str, start_date: str, end_date: str):
+    """从缓存获取 program 数据"""
+    key = _program_data_cache_key(table_name, start_date, end_date)
+    item = _PROGRAM_DATA_CACHE.get(key)
+    if not item:
+        return None
+    timestamp, df_full, energy_full = item
+    # 检查是否过期（10分钟）
+    if time.time() - timestamp > 600:
+        _PROGRAM_DATA_CACHE.pop(key, None)
+        return None
+    return df_full, energy_full
+
+
+def _program_data_cache_set(table_name: str, start_date: str, end_date: str, df_full, energy_full):
+    """缓存 program 数据"""
+    key = _program_data_cache_key(table_name, start_date, end_date)
+    _PROGRAM_DATA_CACHE[key] = (time.time(), df_full, energy_full)
+
+
+def _program_data_cache_clear():
+    """清空 program 数据缓存"""
+    _PROGRAM_DATA_CACHE.clear()
 
 # 轴配置 - A1到A7
 _TABLE_NAME_CACHE = {}  # 表名缓存 {lower_name: real_name}
@@ -210,9 +246,13 @@ def get_table_time_bounds(table_name, engine, time_column: str = "Timestamp"):
 
 
 def fetch_data_from_mysql(table_name, start_time, end_time, time_column, engine):
-    """从MySQL获取数据"""
-    # 自动修正表名大小写
-    real_table_name = get_real_table_name(table_name, engine)
+    """从MySQL获取数据 - 优化版本：直接使用表名，仅在必要时查询真实表名"""
+    # 直接使用传入的表名（前端现在传入正确大小写）
+    # 仅当表名全为小写时才查询真实表名（向后兼容）
+    real_table_name = table_name
+    if table_name == table_name.lower():
+        # 只有当表名全小写时才查询（容错机制）
+        real_table_name = get_real_table_name(table_name, engine)
 
     columns = None
     program = None
@@ -228,89 +268,67 @@ def fetch_data_from_mysql(table_name, start_time, end_time, time_column, engine)
         safe_cols = [str(c) for c in columns if c]
         select_cols = ", ".join(f"`{c.replace('`', '')}`" for c in safe_cols)
 
+    # 与 Digitaltwin_timefree.py 一致：使用字符串拼接，不在 SQL 层过滤 program
     base_sql = (
         f"SELECT {select_cols} "
         f"FROM `{real_table_name}` "
-        f"WHERE `{time_column}` BETWEEN :start_time AND :end_time"
+        f"WHERE `{time_column}` BETWEEN '{start_time}' AND '{end_time}';"
     )
-    params = {"start_time": start_time, "end_time": end_time}
-    if program:
-        base_sql += " AND `Name_C` = :program"
-        params["program"] = program
-    base_sql += ";"
 
     try:
-        # 使用 chunksize 分批读取，避免内存溢出和超时
-        from sqlalchemy import text
-
+        # 一次性读取数据，与 Digitaltwin_timefree.py 保持一致
         logger.info(
-            "执行查询: table=%s, time_col=%s, cols=%s, program=%s, range=%s..%s",
+            "执行查询: table=%s, time_col=%s, cols=%s, range=%s..%s",
             real_table_name,
             time_column,
             "ALL" if select_cols == "*" else len(columns),
-            program or "ALL",
             start_time,
             end_time,
         )
-        chunks = []
-        chunk_size = 10000
-        for chunk in pd.read_sql(text(base_sql), engine, params=params, chunksize=chunk_size):
-            chunks.append(chunk)
-            logger.debug("已读取 %s 行，总计 %s 行", len(chunk), sum(len(c) for c in chunks))
-        if chunks:
-            df = pd.concat(chunks, ignore_index=True)
-            logger.debug("查询完成，共 %s 行", len(df))
-            return df
-        return pd.DataFrame()
+        # 直接使用字符串 SQL，与 Digitaltwin_timefree.py 一致
+        df = pd.read_sql(base_sql, engine)
+        logger.debug("查询完成，共 %s 行", len(df))
+        return df
     except Exception as e:
         logger.error(f"获取数据失败: {e}")
         return pd.DataFrame()
 
 
 def _preprocess_bi_dataframe(df: "pd.DataFrame") -> "pd.DataFrame":
+    """数据预处理 - 采用 Digitaltwin_timefree.py 的简洁风格"""
     if df is None or df.empty:
         return pd.DataFrame()
 
-    df = df.copy()
-    # 删除无用列（存在才删，保持健壮）
-    columns_to_drop = [
-        "A1_marker",
-        "A2_marker",
-        "A3_marker",
-        "A4_marker",
-        "A5_marker",
-        "A6_marker",
-        "A7_marker",
-        "SUB",
-    ]
-    for col in columns_to_drop:
-        if col in df.columns:
-            del df[col]
+    # 直接删除列，不做检查（与 Digitaltwin_timefree.py 一致）
+    # 使用 try-except 来处理列不存在的情况
+    try:
+        del df['A1_marker'], df['A2_marker'], df['A3_marker'], df['A4_marker'], \
+            df['A5_marker'], df['A6_marker'], df['A7_marker'], df['SUB']
+    except Exception:
+        pass  # 列不存在时忽略
 
+    # 数据去重
     df = df.drop_duplicates()
 
-    # 时间与类型处理（与 Digitaltwin_timefree.py 保持一致）
-    if "Timestamp" in df.columns:
-        df["Time"] = pd.to_datetime(df["Timestamp"]) + timedelta(hours=8)
-        df["Timestamp"] = df["Time"].astype(str)
+    # 时间处理（与 Digitaltwin_timefree.py 一致）
+    df['Time'] = pd.to_datetime(df['Timestamp']) + timedelta(hours=8)
+    df['Timestamp'] = df['Time'].astype(str)
 
-    if "SNR_C" in df.columns:
-        df["SNR_C"] = df["SNR_C"].astype(int)
+    # 类型转换（直接转换，不做检查）
+    df['SNR_C'] = df['SNR_C'].astype(int)
 
+    # AxisP 批量转换（直接转换）
     for i in range(1, 8):
-        col = f"AxisP{i}"
+        col = f'AxisP{i}'
         if col in df.columns:
             df[col] = df[col].astype(float)
 
-    # 轴相关列尽量转成 float，避免后续 quantile/绘图异常
+    # 轴相关列转换（直接转换，不做异常处理）
     for cfg in AXIS_CONFIG.values():
         for key in ("curr", "max_curr", "min_curr", "torque", "speed", "fol", "axisp"):
             col = cfg.get(key)
             if col and col in df.columns:
-                try:
-                    df[col] = df[col].astype(float)
-                except Exception:
-                    continue
+                df[col] = df[col].astype(float)
 
     return df
 
@@ -375,141 +393,68 @@ def create_bi_charts(
         logger.error(f"数据库连接失败: {e}")
         return None, None, None, None, None
 
-    # 自动修正表名大小写（使用正确的表名进行后续所有操作）
-    table_name = get_real_table_name(table_name, engine)
+    # 直接使用传入的表名，不再查询真实表名
+    # table_name 保持原样
 
+    # 直接使用传入的时间范围，与 Digitaltwin_timefree.py 保持一致
     requested_start, requested_end = _normalize_date_bounds(start_date, end_date)
     if requested_start and requested_end:
         if requested_start > requested_end:
             requested_start, requested_end = requested_end, requested_start
-        # 按产品要求：显式请求时不做“收敛”，直接按请求范围查；无数据则直接报错/返回空。
-        logger.info("请求时间范围(直接使用): %s 到 %s", requested_start, requested_end)
         start_time = requested_start
         end_time = requested_end
     else:
-        # 未显式请求：使用最近窗口（默认 30 天），减少默认首屏的扫描压力。
-        window_days = days if isinstance(days, int) and days > 0 else DEFAULT_RANGE_DAYS
-        db_start_time, db_end_time = get_table_recent_range(table_name, engine, days=window_days)
-        logger.info("数据库最近窗口: %s 到 %s (days=%s)", db_start_time, db_end_time, window_days)
-        start_time = db_start_time
-        end_time = db_end_time
+        # 默认使用最近 7 天，与 Digitaltwin_timefree.py 保持一致
+        end_time = datetime.now()
+        start_time = end_time - timedelta(days=7)
 
-    # 获取主数据（仅当前 program 的数据）。先取 program 列表用于下拉框。
-    logger.info("准备获取 program 列表与主数据...")
-    base_columns = ["Timestamp", "Name_C", "SNR_C", "P_name", "Tem_1"]
-    axis_columns = []
-    for cfg in AXIS_CONFIG.values():
-        axis_columns.extend(
-            [
-                cfg["curr"],
-                cfg["max_curr"],
-                cfg["min_curr"],
-                cfg["torque"],
-                cfg["speed"],
-                cfg["fol"],
-                cfg["axisp"],
-            ]
-        )
-    # 保留顺序：基础列在前，其余去重后追加
-    seen = set()
-    selected_columns = []
-    for col in base_columns + axis_columns:
-        if col and col not in seen:
-            seen.add(col)
-            selected_columns.append(col)
+    logger.info("请求时间范围: %s 到 %s", start_time, end_time)
 
-    from sqlalchemy import text
+    # 与 Digitaltwin_timefree.py 一致：先查全量数据，再在 Python 中过滤
+    logger.info("开始从数据库获取全量数据...")
+    fetch_start = time.perf_counter()
 
-    # 按需查询：只取 program 列表（小查询）+ 默认 program 主数据（带 Name_C 过滤）。
-    programs_cache_key = (
-        f"bi:programs:{CACHE_VERSION}:{table_name}:"
-        f"{start_time.strftime('%Y%m%d%H%M%S')}:{end_time.strftime('%Y%m%d%H%M%S')}"
+    # 构建需要的列（与 Digitaltwin_timefree.py 一致，使用 SELECT *）
+    df_full = fetch_data_from_mysql(
+        table_name,
+        _format_datetime(start_time),
+        _format_datetime(end_time),
+        time_column,  # 传递字符串，不使用 dict
+        engine,
     )
-    programs: list[str] = []
-    if cache:
-        try:
-            cached_programs = cache.get(programs_cache_key)
-            if isinstance(cached_programs, (list, tuple)):
-                programs = [str(p) for p in cached_programs if p]
-        except Exception as e:
-            logger.warning("program 列表缓存获取失败: %s", e)
-            programs = []
+    logger.info("全量数据: db fetch %.3fs, 行数=%s", time.perf_counter() - fetch_start, len(df_full))
 
-    if not programs:
-        try:
-            programs_sql = (
-                f"SELECT DISTINCT `Name_C` AS Name_C "
-                f"FROM `{table_name}` "
-                f"WHERE `{time_column}` BETWEEN :start_time AND :end_time"
-            )
-            programs_fetch_start = time.perf_counter()
-            programs_df = pd.read_sql(
-                text(programs_sql),
-                engine,
-                params={
-                    "start_time": _format_datetime(start_time),
-                    "end_time": _format_datetime(end_time),
-                },
-            )
-            logger.info("program 列表: db fetch %.3fs", time.perf_counter() - programs_fetch_start)
-            if not programs_df.empty and "Name_C" in programs_df.columns:
-                programs = [str(v) for v in programs_df["Name_C"].dropna().tolist() if str(v)]
-                programs.sort()
-                logger.info("可用程序列表: %s", len(programs))
-            if cache:
-                cache.set(programs_cache_key, programs, timeout=CACHE_TTL_SECONDS)
-        except Exception as e:
-            logger.warning("获取 program 列表失败: %s", e)
-            programs = []
+    if df_full.empty:
+        logger.warning("表 %s 在所选时间范围内没有数据", table_name)
+        return None, None, None, None, None
 
-    if not programs:
-        logger.warning("表 %s 在所选时间范围内没有 program 数据", table_name)
+    # 数据预处理
+    preprocess_start = time.perf_counter()
+    df_full = _preprocess_bi_dataframe(df_full)
+    logger.info("数据预处理: %.3fs", time.perf_counter() - preprocess_start)
+
+    # 缓存全量数据（用于快速切换 program）
+    start_date_str = start_time.strftime('%Y-%m-%d')
+    end_date_str = end_time.strftime('%Y-%m-%d')
+    _program_data_cache_set(table_name, start_date_str, end_date_str, df_full, None)
+    logger.info("数据已缓存到内存，用于快速切换 program")
+
+    # 在 Python 中获取 program 列表和过滤数据（与 Digitaltwin_timefree.py 一致）
+    c_opt = df_full['Name_C'].unique().tolist()
+    c_opt.sort()
+    logger.info("可用程序列表: %s", len(c_opt))
+
+    if not c_opt:
+        logger.warning("没有 program 数据")
         return None, None, None, None, None
 
     # 确定默认 program / axis
-    default_program = program if program and program in programs else programs[0]
+    default_program = program if program and program in c_opt else c_opt[0]
     default_axis = axis if axis in AXIS_CONFIG else "A1"
 
-    data_cache_key = (
-        f"bi:data:{CACHE_VERSION}:{table_name}:"
-        f"{start_time.strftime('%Y%m%d%H%M%S')}:{end_time.strftime('%Y%m%d%H%M%S')}:"
-        f"prog:{default_program}"
-    )
-    logger.info("主数据缓存键: %s", data_cache_key)
-    df_prog = None
-    if cache:
-        try:
-            df_prog = cache.get(data_cache_key)
-        except Exception as e:
-            logger.warning("主数据缓存获取失败: %s", e)
-            df_prog = None
-    if df_prog is not None:
-        df_prog = df_prog.copy()
-        logger.info("主数据: cache hit (program=%s)", default_program)
-    else:
-        logger.info("开始从数据库获取主数据 (program=%s)...", default_program)
-        fetch_start = time.perf_counter()
-        df_prog = fetch_data_from_mysql(
-            table_name,
-            _format_datetime(start_time),
-            _format_datetime(end_time),
-            {
-                "time_column": time_column,
-                "columns": selected_columns,
-                "program": default_program,
-            },
-            engine,
-        )
-        logger.info("主数据: db fetch %.3fs", time.perf_counter() - fetch_start)
-        if cache:
-            try:
-                cache.set(data_cache_key, df_prog.copy(), timeout=CACHE_TTL_SECONDS)
-            except Exception as e:
-                logger.warning("主数据缓存写入失败: %s", e)
-
-    preprocess_start = time.perf_counter()
-    df_prog = _preprocess_bi_dataframe(df_prog)
-    logger.info("数据预处理: %.3fs", time.perf_counter() - preprocess_start)
+    # 在 Python 中过滤 program（与 Digitaltwin_timefree.py 一致）
+    df_prog = df_full[df_full['Name_C'] == default_program].copy()
+    logger.info("程序 %s 数据条数: %s", default_program, len(df_prog))
 
     if df_prog is None or df_prog.empty:
         logger.warning("表 %s program=%s 没有数据", table_name, default_program)
@@ -523,7 +468,8 @@ def create_bi_charts(
     )
     energy_cached = cache.get(energy_cache_key) if cache else None
     if energy_cached is not None:
-        energy_full = energy_cached.copy()
+        # 缓存命中，直接使用（与 Digitaltwin_timefree.py 保持一致）
+        energy_full = energy_cached
         logger.info("能量数据: cache hit")
     else:
         energy_query = (
@@ -541,7 +487,8 @@ def create_bi_charts(
             logger.warning(f"能量数据获取失败: {e}")
             energy_full = pd.DataFrame()
         if cache:
-            cache.set(energy_cache_key, energy_full.copy(), timeout=CACHE_TTL_SECONDS)
+            # 直接存储，不 copy（与 Digitaltwin_timefree.py 保持一致）
+            cache.set(energy_cache_key, energy_full, timeout=CACHE_TTL_SECONDS)
 
     # df_full 已经做过统一预处理，这里无需重复处理
 
@@ -551,6 +498,10 @@ def create_bi_charts(
         energy_full['ENERGY'] = energy_full['ENERGY'].astype(float)
         energy_full['LOSTENERGY'] = energy_full['LOSTENERGY'].astype(float)
         energy_full = energy_full.sort_values(by='TimeStamp2', ascending=True)
+
+    # 更新缓存（包含 energy 数据）
+    _program_data_cache_set(table_name, start_date_str, end_date_str, df_full, energy_full)
+    logger.info("缓存已更新（包含 energy 数据）")
 
     # ============ 仅为默认 program 计算数据（program 切换时重载页面再算） ============
     curr_cols = [AXIS_CONFIG[a]["curr"] for a in AXIS_CONFIG]
@@ -562,32 +513,25 @@ def create_bi_charts(
     prog_data = prog_data.sort_values(by=["SNR_C", "Time"])
     prog_data["sort"] = range(1, len(prog_data) + 1)
 
-    # 聚合数据：一次性计算所有轴的分位与参考范围（轴切换可直接复用）
+    # 聚合数据（采用 Digitaltwin_timefree.py 的方式）
     ref = prog_data.groupby("SNR_C")[max_cols + min_cols].last()
 
-    LQ = (
-        prog_data.groupby("SNR_C")[curr_cols]
-        .quantile(q=0.01, interpolation="nearest")
-        .rename(columns={c: f"{c}_LQ" for c in curr_cols})
+    LQ = prog_data.groupby("SNR_C")[curr_cols].quantile(q=0.01, interpolation="nearest").rename(
+        columns={c: f"{c}_LQ" for c in curr_cols}
     )
-    HQ = (
-        prog_data.groupby("SNR_C")[curr_cols]
-        .quantile(q=0.99, interpolation="nearest")
-        .rename(columns={c: f"{c}_HQ" for c in curr_cols})
+    HQ = prog_data.groupby("SNR_C")[curr_cols].quantile(q=0.99, interpolation="nearest").rename(
+        columns={c: f"{c}_HQ" for c in curr_cols}
     )
     labeltext = prog_data.groupby("SNR_C")["P_name"].last()
 
-    Q = pd.merge(
-        pd.merge(LQ, HQ, left_index=True, right_index=True, how="outer"),
-        ref,
-        left_index=True,
-        right_index=True,
-        how="inner",
-    )
-    Q = pd.merge(Q, labeltext, left_index=True, right_index=True, how="inner").reset_index()
-    Q = Q.sort_values(by="SNR_C").reset_index(drop=True)
-    Q["SNR_C"] = Q["SNR_C"].astype(int).astype(str)
-    x_tex = Q["SNR_C"].tolist()
+    # 使用 Digitaltwin_timefree.py 的 merge 方式
+    Q = pd.merge(pd.merge(pd.merge(LQ, HQ, left_on=['SNR_C'], right_index=True, how='outer'),
+                          ref, left_on=['SNR_C'], right_index=True, how='inner'),
+                 labeltext, left_on=['SNR_C'], right_index=True, how='inner').reset_index()
+
+    # 生成 x_tex（与 Digitaltwin_timefree.py 一致）
+    x_tex = prog_data["SNR_C"].sort_values(ascending=True).unique().astype(str)
+    Q["SNR_C"] = x_tex
 
     source = ColumnDataSource(prog_data)
     agg_source = ColumnDataSource(Q)
@@ -606,7 +550,7 @@ def create_bi_charts(
     program_select = Select(
         title="",  # 空标题，标签单独显示
         value=default_program,
-        options=programs,
+        options=c_opt,  # 使用 c_opt 替代 programs
         width=260,
         min_width=220,
         sizing_mode="stretch_width"
@@ -735,7 +679,8 @@ def create_bi_charts(
         min_border_right=10,
         min_border_top=20,
         min_border_bottom=10,
-        margin=(5, 10, 5, 10)
+        margin=(5, 10, 5, 10),
+        output_backend='webgl'
     )
     p_curr.step(x='sort', y='min_curr_value', source=proxy_source, line_width=2, mode="center", color='red', legend_label='Min Current')
     p_curr.step(x='sort', y='max_curr_value', source=proxy_source, line_width=2, mode="center", color='red', legend_label='Max Current')
@@ -757,7 +702,8 @@ def create_bi_charts(
         min_border_right=10,
         min_border_top=20,
         min_border_bottom=10,
-        margin=(5, 10, 5, 10)
+        margin=(5, 10, 5, 10),
+        output_backend='webgl'
     )
     p_temp.scatter(x='sort', y='Tem_1', source=proxy_source, size=2, color='orange', legend_label='Temperature')
     p_temp.legend.location = 'top_right'
@@ -776,7 +722,8 @@ def create_bi_charts(
         min_border_right=10,
         min_border_top=20,
         min_border_bottom=10,
-        margin=(5, 10, 5, 10)
+        margin=(5, 10, 5, 10),
+        output_backend='webgl'
     )
     p_pos.scatter(x='sort', y='axisp_value', source=proxy_source, size=2, color='green', legend_label='Position')
     p_pos.legend.location = 'top_right'
@@ -795,7 +742,8 @@ def create_bi_charts(
         min_border_right=10,
         min_border_top=20,
         min_border_bottom=10,
-        margin=(5, 10, 5, 10)
+        margin=(5, 10, 5, 10),
+        output_backend='webgl'
     )
     p_speed.scatter(x='sort', y='speed_value', source=proxy_source, size=2, color='blue', legend_label='Speed')
     p_speed.legend.location = 'top_right'
@@ -814,7 +762,8 @@ def create_bi_charts(
         min_border_right=10,
         min_border_top=20,
         min_border_bottom=10,
-        margin=(5, 10, 5, 10)
+        margin=(5, 10, 5, 10),
+        output_backend='webgl'
     )
     p_fol.scatter(x='sort', y='fol_value', source=proxy_source, size=2, color='lime', legend_label='Following Error')
     p_fol.legend.location = 'top_right'
@@ -833,7 +782,8 @@ def create_bi_charts(
         min_border_right=10,
         min_border_top=20,
         min_border_bottom=10,
-        margin=(5, 10, 5, 10)
+        margin=(5, 10, 5, 10),
+        output_backend='webgl'
     )
     p_torque.scatter(x='sort', y='torque_value', source=proxy_source, size=2, color='sienna', legend_label='Torque')
     p_torque.legend.location = 'top_right'
@@ -854,7 +804,8 @@ def create_bi_charts(
         min_border_right=10,
         min_border_top=20,
         min_border_bottom=40,
-        margin=(5, 10, 5, 10)
+        margin=(5, 10, 5, 10),
+        output_backend='webgl'
     )
 
     hover_line = HoverTool(
@@ -906,7 +857,8 @@ def create_bi_charts(
             min_border_left=40,
             min_border_right=10,
             min_border_top=20,
-            min_border_bottom=40
+            min_border_bottom=40,
+            output_backend='webgl'
         )
         EnergyP.line(x="TimeStamp2", y="ENERGY", source=energy_source,
                      line_color="orange", line_width=2, legend_label="Energy Consumption", alpha=1)
@@ -1174,7 +1126,7 @@ def create_bi_charts(
         'program_name': default_program,
         'data_count': len(df_prog),
         'energy_count': len(energy_full),
-        'programs': programs,
+        'programs': c_opt,  # 使用 c_opt 替代 programs
         'date_range': f"{start_time.strftime('%Y-%m-%d')} 至 {end_time.strftime('%Y-%m-%d')}",
     }, energy_modal_html, energy_script_content
 
@@ -1232,95 +1184,67 @@ def get_bi_program_payload(
         logger.error("数据库连接失败: %s", e)
         return {"ok": False, "error": "数据库连接失败"}
 
-    table_name = (table_name or "").strip().lower()
+    table_name = (table_name or "").strip()
     program = (program or "").strip()
     if not table_name:
         return {"ok": False, "error": "缺少 table 参数"}
     if not program:
         return {"ok": False, "error": "缺少 program 参数"}
 
-    # 自动修正表名大小写（使用正确的表名进行后续所有操作）
-    table_name = get_real_table_name(table_name, engine)
-
-    # 获取时间范围：显式请求时按真实边界收敛；否则用最近窗口。
+    # 直接使用传入的表名和时间范围，与 Digitaltwin_timefree.py 保持一致
     requested_start, requested_end = _normalize_date_bounds(start_date, end_date)
     if requested_start and requested_end:
         if requested_start > requested_end:
             requested_start, requested_end = requested_end, requested_start
-        # 按产品要求：显式请求时不做“收敛”，直接按请求范围查；无数据则返回错误。
         start_time = requested_start
         end_time = requested_end
     else:
-        db_start_time, db_end_time = get_table_recent_range(table_name, engine)
-        start_time = db_start_time
-        end_time = db_end_time
+        # 默认使用最近 7 天
+        end_time = datetime.now()
+        start_time = end_time - timedelta(days=7)
 
-    # 选取需要的列（与 create_bi_charts 保持一致）
-    base_columns = ["Timestamp", "Name_C", "SNR_C", "P_name", "Tem_1"]
-    axis_columns = []
-    for cfg in AXIS_CONFIG.values():
-        axis_columns.extend(
-            [
-                cfg["curr"],
-                cfg["max_curr"],
-                cfg["min_curr"],
-                cfg["torque"],
-                cfg["speed"],
-                cfg["fol"],
-                cfg["axisp"],
-            ]
-        )
-    seen = set()
-    selected_columns = []
-    for col in base_columns + axis_columns:
-        if col and col not in seen:
-            seen.add(col)
-            selected_columns.append(col)
+    # 生成缓存键
+    start_date_str = start_time.strftime('%Y-%m-%d')
+    end_date_str = end_time.strftime('%Y-%m-%d')
 
-    data_cache_key = (
-        f"bi:data:{CACHE_VERSION}:{table_name}:"
-        f"{start_time.strftime('%Y%m%d%H%M%S')}:{end_time.strftime('%Y%m%d%H%M%S')}:"
-        f"prog:{program}"
-    )
-    df_prog = None
-    if cache:
-        try:
-            df_prog = cache.get(data_cache_key)
-        except Exception as e:
-            logger.warning("主数据缓存获取失败: %s", e)
-            df_prog = None
-    if df_prog is not None:
-        df_prog = df_prog.copy()
+    # 先检查缓存（与 Digitaltwin_timefree.py 一致：数据已在内存）
+    cached_data = _program_data_cache_get(table_name, start_date_str, end_date_str)
+    df_full = None
+    from_cache = False
+
+    if cached_data is not None:
+        df_full, energy_full = cached_data
+        from_cache = True
+        logger.info("program切换: 从内存缓存读取数据，行数=%s", len(df_full))
     else:
+        # 缓存未命中，查询数据库
         fetch_start = time.perf_counter()
-        df_prog = fetch_data_from_mysql(
+        df_full = fetch_data_from_mysql(
             table_name,
             _format_datetime(start_time),
             _format_datetime(end_time),
-            {
-                "time_column": time_column,
-                "columns": selected_columns,
-                "program": program,
-            },
+            time_column,  # 传递字符串，不使用 dict
             engine,
         )
-        logger.info("主数据(用于program切换): db fetch %.3fs", time.perf_counter() - fetch_start)
-        if cache:
-            try:
-                cache.set(data_cache_key, df_prog.copy(), timeout=CACHE_TTL_SECONDS)
-            except Exception as e:
-                logger.warning("主数据缓存写入失败: %s", e)
+        logger.info("program切换全量数据: db fetch %.3fs, 行数=%s", time.perf_counter() - fetch_start, len(df_full))
 
-    preprocess_start = time.perf_counter()
-    df_prog = _preprocess_bi_dataframe(df_prog)
-    logger.info("数据预处理(用于program切换): %.3fs", time.perf_counter() - preprocess_start)
+        if df_full.empty:
+            return {"ok": False, "error": "该 program 无数据"}
+
+        # 数据预处理（只在从数据库查询时需要）
+        df_full = _preprocess_bi_dataframe(df_full)
+        # 缓存预处理后的数据
+        _program_data_cache_set(table_name, start_date_str, end_date_str, df_full, None)
+
+    # 数据已经预处理过（无论是从缓存还是数据库），直接过滤 program
+    # 与 Digitaltwin_timefree.py 一致：从内存数据中过滤
+    agg_start = time.perf_counter()
+    df_prog = df_full[df_full['Name_C'] == program].copy()
 
     if df_prog is None or df_prog.empty:
         return {"ok": False, "error": "该 program 无数据"}
 
-    # df_full 已经做过统一预处理，这里无需重复处理
-
-    # 聚合（与 create_bi_charts 保持一致）
+    # 聚合计算（与 Digitaltwin_timefree.py 一致）
     curr_cols = [AXIS_CONFIG[a]["curr"] for a in AXIS_CONFIG]
     max_cols = [AXIS_CONFIG[a]["max_curr"] for a in AXIS_CONFIG]
     min_cols = [AXIS_CONFIG[a]["min_curr"] for a in AXIS_CONFIG]
@@ -1331,28 +1255,27 @@ def get_bi_program_payload(
 
     ref = prog_data.groupby("SNR_C")[max_cols + min_cols].last()
 
-    LQ = (
-        prog_data.groupby("SNR_C")[curr_cols]
-        .quantile(q=0.01, interpolation="nearest")
-        .rename(columns={c: f"{c}_LQ" for c in curr_cols})
+    LQ = prog_data.groupby("SNR_C")[curr_cols].quantile(q=0.01, interpolation="nearest").rename(
+        columns={c: f"{c}_LQ" for c in curr_cols}
     )
-    HQ = (
-        prog_data.groupby("SNR_C")[curr_cols]
-        .quantile(q=0.99, interpolation="nearest")
-        .rename(columns={c: f"{c}_HQ" for c in curr_cols})
+    HQ = prog_data.groupby("SNR_C")[curr_cols].quantile(q=0.99, interpolation="nearest").rename(
+        columns={c: f"{c}_HQ" for c in curr_cols}
     )
     labeltext = prog_data.groupby("SNR_C")["P_name"].last()
 
-    Q = pd.merge(
-        pd.merge(LQ, HQ, left_index=True, right_index=True, how="outer"),
-        ref,
-        left_index=True,
-        right_index=True,
-        how="inner",
-    )
-    Q = pd.merge(Q, labeltext, left_index=True, right_index=True, how="inner").reset_index()
-    Q = Q.sort_values(by="SNR_C").reset_index(drop=True)
-    Q["SNR_C"] = Q["SNR_C"].astype(int).astype(str)
+    # 使用 Digitaltwin_timefree.py 的 merge 方式
+    Q = pd.merge(pd.merge(pd.merge(LQ, HQ, left_on=['SNR_C'], right_index=True, how='outer'),
+                          ref, left_on=['SNR_C'], right_index=True, how='inner'),
+                 labeltext, left_on=['SNR_C'], right_index=True, how='inner').reset_index()
+
+    # 生成 x_tex（与 Digitaltwin_timefree.py 一致）
+    x_tex = prog_data["SNR_C"].sort_values(ascending=True).unique().astype(str)
+    Q["SNR_C"] = x_tex
+
+    # 日志：显示聚合计算时间
+    cache_status = "缓存" if from_cache else "数据库"
+    logger.info("program切换完成: 数据来源=%s, 聚合=%.3fs (program=%s)",
+                cache_status, time.perf_counter() - agg_start, program)
 
     return {
         "ok": True,

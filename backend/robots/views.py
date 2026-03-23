@@ -426,7 +426,7 @@ class RobotComponentViewSet(
             {
                 "results": [
                     {
-                        "value": str(table).strip().lower(),
+                        "value": str(table).strip(),
                         "label": str(table).strip(),
                         "robot_id": str(table).strip(),
                     }
@@ -457,7 +457,7 @@ class RobotComponentViewSet(
                 {"error": "缺少参数 robot，请提供机器人部件编号"},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        table_name = str(table_name).strip().lower()
+        table_name = str(table_name).strip()
 
         try:
             # 获取数据库连接配置
@@ -756,8 +756,8 @@ def bi_view(request):
     import re
 
     table_name = request.GET.get('robot', request.GET.get('table', 'as33_020rb_400'))
-    table_name = (table_name or '').strip().lower()
-    if not re.match(r'^[0-9a-z_-]+$', table_name):
+    table_name = (table_name or '').strip()
+    if not re.match(r'^[0-9a-zA-Z_-]+$', table_name):
         return render(request, 'bi_error.html', {
             'table_name': table_name,
             'error': '非法的表名参数'
@@ -827,8 +827,8 @@ def bi_program_data_view(request):
     import re
 
     table_name = request.GET.get("robot", request.GET.get("table", ""))
-    table_name = (table_name or "").strip().lower()
-    if not re.match(r"^[0-9a-z_-]+$", table_name):
+    table_name = (table_name or "").strip()
+    if not re.match(r"^[0-9a-zA-Z_-]+$", table_name):
         return JsonResponse({"ok": False, "error": "非法的表名参数"}, status=400)
 
     program = request.GET.get("program", None)

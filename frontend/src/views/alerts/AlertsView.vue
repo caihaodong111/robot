@@ -198,11 +198,11 @@ const lastInitSignature = ref('')
 const isActiveRoute = computed(() => route.path === '/alerts')
 
 const LOG_LIMIT = 8
-const LOG_POLL_INTERVAL = 4500
+const LOG_POLL_INTERVAL = 30000
 const LOG_ROTATE_INTERVAL = 1600
 
 // 时间范围选择器状态（数组格式：[开始日期, 结束日期]）
-const DEFAULT_TIME_SPAN_DAYS = 7
+const DEFAULT_TIME_SPAN_DAYS = 30
 const toDayStart = (date) => {
   const d = new Date(date)
   d.setHours(0, 0, 0, 0)
@@ -278,7 +278,7 @@ const syncRouteQuery = (patch) => {
 
 const biUrl = computed(() => {
   const name = activeName.value.trim()
-  const tableName = name ? name.toLowerCase() : ''
+  const tableName = name || ''
   const baseUrl = tableName ? `/api/robots/bi/?table=${encodeURIComponent(tableName)}&embed=1` : ''
   if (!baseUrl) return ''
   const url = new URL(baseUrl, API_BASE_URL)
