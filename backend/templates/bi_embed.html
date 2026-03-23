@@ -315,6 +315,38 @@
                 const models = getModels();
                 if (!models) return false;
 
+                // Lazy-load program options to avoid blocking first render on heavy DISTINCT query.
+                try {
+                    const url = new URL(window.location.href);
+                    const table = url.searchParams.get('table') || url.searchParams.get('robot') || '';
+                    const start = url.searchParams.get('start_date') || '';
+                    const end = url.searchParams.get('end_date') || '';
+                    if (table && start && end && (!Array.isArray(models.programSelect.options) || models.programSelect.options.length <= 1)) {
+                        const apiUrl = new URL('/api/robots/bi_programs/', window.location.origin);
+                        apiUrl.searchParams.set('table', table);
+                        apiUrl.searchParams.set('start_date', start);
+                        apiUrl.searchParams.set('end_date', end);
+                        fetch(apiUrl.toString())
+                            .then((r) => r.json())
+                            .then((payload) => {
+                                if (!payload || !payload.ok || !Array.isArray(payload.programs)) return;
+                                const programs = payload.programs
+                                    .filter((p) => typeof p === 'string')
+                                    .map((p) => p.trim())
+                                    .filter(Boolean);
+                                if (!programs.length) return;
+                                const current = models.programSelect.value;
+                                models.programSelect.options = programs;
+                                if (current && programs.includes(current)) {
+                                    models.programSelect.value = current;
+                                } else if (models.programSelect.value !== programs[0]) {
+                                    models.programSelect.value = programs[0];
+                                }
+                            })
+                            .catch(() => {});
+                    }
+                } catch (e) {}
+
                 // Initial sync to parent (so parent URL/query can reflect actual defaults)
                 postState(models);
 

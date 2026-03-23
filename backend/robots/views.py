@@ -845,6 +845,70 @@ def bi_program_data_view(request):
     return JsonResponse(payload, status=status_code)
 
 
+@xframe_options_exempt
+def bi_programs_view(request):
+    """
+    返回指定 robot/table 在时间范围内的 program(Name_C) 列表。
+    为避免首屏阻塞，BI 页面会延迟调用此接口填充下拉选项。
+    """
+    from .bokeh_charts import get_db_engine, get_real_table_name, _normalize_date_bounds, _format_datetime
+    from sqlalchemy import create_engine, text
+    import logging
+    import re
+    import pandas as pd
+
+    logger = logging.getLogger(__name__)
+
+    table_name = request.GET.get("robot", request.GET.get("table", ""))
+    table_name = (table_name or "").strip().lower()
+    if not re.match(r"^[0-9a-z_-]+$", table_name):
+        return JsonResponse({"ok": False, "error": "非法的表名参数"}, status=400)
+
+    start_date = request.GET.get("start_date", None)
+    end_date = request.GET.get("end_date", None)
+    requested_start, requested_end = _normalize_date_bounds(start_date, end_date)
+    if not requested_start or not requested_end:
+        return JsonResponse({"ok": False, "error": "缺少 start_date/end_date"}, status=400)
+    if requested_start > requested_end:
+        requested_start, requested_end = requested_end, requested_start
+
+    db_config = get_db_engine()
+    try:
+        engine = create_engine(
+            f"mysql+pymysql://{db_config['user']}:{db_config['password']}@{db_config['host']}:{db_config['port']}/{db_config['database']}"
+        )
+    except Exception as e:
+        logger.warning("数据库连接失败: %s", e)
+        return JsonResponse({"ok": False, "error": "数据库连接失败"}, status=500)
+
+    real_table = get_real_table_name(table_name, engine)
+    time_column = "Timestamp"
+
+    try:
+        programs_sql = (
+            f"SELECT DISTINCT `Name_C` AS Name_C "
+            f"FROM `{real_table}` "
+            f"WHERE `{time_column}` BETWEEN :start_time AND :end_time "
+            f"AND `Name_C` IS NOT NULL AND `Name_C` <> ''"
+        )
+        df = pd.read_sql(
+            text(programs_sql),
+            engine,
+            params={
+                "start_time": _format_datetime(requested_start),
+                "end_time": _format_datetime(requested_end),
+            },
+        )
+        programs = []
+        if not df.empty and "Name_C" in df.columns:
+            programs = [str(v) for v in df["Name_C"].dropna().tolist() if str(v)]
+            programs.sort()
+        return JsonResponse({"ok": True, "programs": programs})
+    except Exception as e:
+        logger.warning("获取 program 列表失败: %s", e)
+        return JsonResponse({"ok": False, "error": "获取 program 列表失败"}, status=500)
+
+
 class GripperCheckViewSet(viewsets.GenericViewSet):
     """
     关键轨迹检查API ViewSet
