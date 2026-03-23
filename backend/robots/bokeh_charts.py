@@ -295,40 +295,29 @@ def fetch_data_from_mysql(table_name, start_time, end_time, time_column, engine)
 
 
 def _preprocess_bi_dataframe(df: "pd.DataFrame") -> "pd.DataFrame":
-    """数据预处理 - 采用 Digitaltwin_timefree.py 的简洁风格"""
+    """数据预处理 - 完全采用 Digitaltwin_timefree.py 的方式"""
     if df is None or df.empty:
         return pd.DataFrame()
 
-    # 直接删除列，不做检查（与 Digitaltwin_timefree.py 一致）
-    # 使用 try-except 来处理列不存在的情况
-    try:
-        del df['A1_marker'], df['A2_marker'], df['A3_marker'], df['A4_marker'], \
-            df['A5_marker'], df['A6_marker'], df['A7_marker'], df['SUB']
-    except Exception:
-        pass  # 列不存在时忽略
+    # 与 Digitaltwin_timefree.py 完全一致：直接操作，不检查
+    del df['A1_marker'], df['A2_marker'], df['A3_marker'], df['A4_marker'], \
+        df['A5_marker'], df['A6_marker'], df['A7_marker'], df['SUB']
 
-    # 数据去重
     df = df.drop_duplicates()
 
-    # 时间处理（与 Digitaltwin_timefree.py 一致）
     df['Time'] = pd.to_datetime(df['Timestamp']) + timedelta(hours=8)
     df['Timestamp'] = df['Time'].astype(str)
 
-    # 类型转换（直接转换，不做检查）
     df['SNR_C'] = df['SNR_C'].astype(int)
 
-    # AxisP 批量转换（直接转换）
-    for i in range(1, 8):
-        col = f'AxisP{i}'
-        if col in df.columns:
-            df[col] = df[col].astype(float)
-
-    # 轴相关列转换（直接转换，不做异常处理）
-    for cfg in AXIS_CONFIG.values():
-        for key in ("curr", "max_curr", "min_curr", "torque", "speed", "fol", "axisp"):
-            col = cfg.get(key)
-            if col and col in df.columns:
-                df[col] = df[col].astype(float)
+    # 与 Digitaltwin_timefree.py 完全一致：直接转换，不循环检查
+    df['AxisP1'] = df['AxisP1'].astype(float)
+    df['AxisP2'] = df['AxisP2'].astype(float)
+    df['AxisP3'] = df['AxisP3'].astype(float)
+    df['AxisP4'] = df['AxisP4'].astype(float)
+    df['AxisP5'] = df['AxisP5'].astype(float)
+    df['AxisP6'] = df['AxisP6'].astype(float)
+    df['AxisP7'] = df['AxisP7'].astype(float)
 
     return df
 
@@ -440,20 +429,20 @@ def create_bi_charts(
     logger.info("数据已缓存到内存，用于快速切换 program")
 
     # 在 Python 中获取 program 列表和过滤数据（与 Digitaltwin_timefree.py 一致）
-    c_opt = df_full['Name_C'].unique().tolist()
-    c_opt.sort()
+    c_opt = df_full['Name_C'].unique()
     logger.info("可用程序列表: %s", len(c_opt))
 
     if not c_opt:
         logger.warning("没有 program 数据")
         return None, None, None, None, None
 
-    # 确定默认 program / axis
+    # 确定默认 program / axis（与 Digitaltwin_timefree.py 一致）
     default_program = program if program and program in c_opt else c_opt[0]
     default_axis = axis if axis in AXIS_CONFIG else "A1"
 
     # 在 Python 中过滤 program（与 Digitaltwin_timefree.py 一致）
-    df_prog = df_full[df_full['Name_C'] == default_program].copy()
+    # 直接过滤，不复制（避免大数据复制开销）
+    df_prog = df_full[df_full['Name_C'] == default_program]
     logger.info("程序 %s 数据条数: %s", default_program, len(df_prog))
 
     if df_prog is None or df_prog.empty:
@@ -504,24 +493,27 @@ def create_bi_charts(
     logger.info("缓存已更新（包含 energy 数据）")
 
     # ============ 仅为默认 program 计算数据（program 切换时重载页面再算） ============
-    curr_cols = [AXIS_CONFIG[a]["curr"] for a in AXIS_CONFIG]
-    max_cols = [AXIS_CONFIG[a]["max_curr"] for a in AXIS_CONFIG]
-    min_cols = [AXIS_CONFIG[a]["min_curr"] for a in AXIS_CONFIG]
-
     agg_start = time.perf_counter()
-    prog_data = df_prog.copy()
+    prog_data = df_prog  # 直接使用，不复制（与 Digitaltwin_timefree.py 一致）
     prog_data = prog_data.sort_values(by=["SNR_C", "Time"])
     prog_data["sort"] = range(1, len(prog_data) + 1)
 
-    # 聚合数据（采用 Digitaltwin_timefree.py 的方式）
-    ref = prog_data.groupby("SNR_C")[max_cols + min_cols].last()
+    # 聚合数据（与 Digitaltwin_timefree.py 完全一致：直接写死列名）
+    ref = prog_data.groupby("SNR_C")[['MAXCurr_A1','MAXCurr_A2','MAXCurr_A3','MAXCurr_A4',
+                                      'MAXCurr_A5','MAXCurr_A6','MAXCurr_E1',
+                                      'MinCurr_A1','MinCurr_A2','MinCurr_A3','MinCurr_A4',
+                                      'MinCurr_A5','MinCurr_A6','MinCurr_E1']].last()
 
-    LQ = prog_data.groupby("SNR_C")[curr_cols].quantile(q=0.01, interpolation="nearest").rename(
-        columns={c: f"{c}_LQ" for c in curr_cols}
-    )
-    HQ = prog_data.groupby("SNR_C")[curr_cols].quantile(q=0.99, interpolation="nearest").rename(
-        columns={c: f"{c}_HQ" for c in curr_cols}
-    )
+    LQ = prog_data.groupby("SNR_C")[['Curr_A1','Curr_A2','Curr_A3','Curr_A4',
+                                          'Curr_A5','Curr_A6','Curr_E1']].quantile(q=0.01, interpolation='nearest').rename(
+        columns={'Curr_A1': 'Curr_A1_LQ', 'Curr_A2': 'Curr_A2_LQ', 'Curr_A3': 'Curr_A3_LQ',
+                 'Curr_A4': 'Curr_A4_LQ', 'Curr_A5': 'Curr_A5_LQ', 'Curr_A6': 'Curr_A6_LQ',
+                 'Curr_E1': 'Curr_E1_LQ'})
+    HQ = prog_data.groupby("SNR_C")[['Curr_A1','Curr_A2','Curr_A3','Curr_A4',
+                                          'Curr_A5','Curr_A6','Curr_E1']].quantile(q=0.99, interpolation='nearest').rename(
+        columns={'Curr_A1': 'Curr_A1_HQ', 'Curr_A2': 'Curr_A2_HQ', 'Curr_A3': 'Curr_A3_HQ',
+                 'Curr_A4': 'Curr_A4_HQ', 'Curr_A5': 'Curr_A5_HQ', 'Curr_A6': 'Curr_A6_HQ',
+                 'Curr_E1': 'Curr_E1_HQ'})
     labeltext = prog_data.groupby("SNR_C")["P_name"].last()
 
     # 使用 Digitaltwin_timefree.py 的 merge 方式
@@ -1239,28 +1231,32 @@ def get_bi_program_payload(
     # 数据已经预处理过（无论是从缓存还是数据库），直接过滤 program
     # 与 Digitaltwin_timefree.py 一致：从内存数据中过滤
     agg_start = time.perf_counter()
-    df_prog = df_full[df_full['Name_C'] == program].copy()
+    df_prog = df_full[df_full['Name_C'] == program]  # 不复制，直接过滤
 
     if df_prog is None or df_prog.empty:
         return {"ok": False, "error": "该 program 无数据"}
 
-    # 聚合计算（与 Digitaltwin_timefree.py 一致）
-    curr_cols = [AXIS_CONFIG[a]["curr"] for a in AXIS_CONFIG]
-    max_cols = [AXIS_CONFIG[a]["max_curr"] for a in AXIS_CONFIG]
-    min_cols = [AXIS_CONFIG[a]["min_curr"] for a in AXIS_CONFIG]
-
-    prog_data = df_prog.copy()
+    # 聚合计算（与 Digitaltwin_timefree.py 完全一致）
+    prog_data = df_prog  # 直接使用，不复制
     prog_data = prog_data.sort_values(by=["SNR_C", "Time"])
     prog_data["sort"] = range(1, len(prog_data) + 1)
 
-    ref = prog_data.groupby("SNR_C")[max_cols + min_cols].last()
+    # 聚合数据（与 Digitaltwin_timefree.py 完全一致：直接写死列名）
+    ref = prog_data.groupby("SNR_C")[['MAXCurr_A1','MAXCurr_A2','MAXCurr_A3','MAXCurr_A4',
+                                      'MAXCurr_A5','MAXCurr_A6','MAXCurr_E1',
+                                      'MinCurr_A1','MinCurr_A2','MinCurr_A3','MinCurr_A4',
+                                      'MinCurr_A5','MinCurr_A6','MinCurr_E1']].last()
 
-    LQ = prog_data.groupby("SNR_C")[curr_cols].quantile(q=0.01, interpolation="nearest").rename(
-        columns={c: f"{c}_LQ" for c in curr_cols}
-    )
-    HQ = prog_data.groupby("SNR_C")[curr_cols].quantile(q=0.99, interpolation="nearest").rename(
-        columns={c: f"{c}_HQ" for c in curr_cols}
-    )
+    LQ = prog_data.groupby("SNR_C")[['Curr_A1','Curr_A2','Curr_A3','Curr_A4',
+                                          'Curr_A5','Curr_A6','Curr_E1']].quantile(q=0.01, interpolation='nearest').rename(
+        columns={'Curr_A1': 'Curr_A1_LQ', 'Curr_A2': 'Curr_A2_LQ', 'Curr_A3': 'Curr_A3_LQ',
+                 'Curr_A4': 'Curr_A4_LQ', 'Curr_A5': 'Curr_A5_LQ', 'Curr_A6': 'Curr_A6_LQ',
+                 'Curr_E1': 'Curr_E1_LQ'})
+    HQ = prog_data.groupby("SNR_C")[['Curr_A1','Curr_A2','Curr_A3','Curr_A4',
+                                          'Curr_A5','Curr_A6','Curr_E1']].quantile(q=0.99, interpolation='nearest').rename(
+        columns={'Curr_A1': 'Curr_A1_HQ', 'Curr_A2': 'Curr_A2_HQ', 'Curr_A3': 'Curr_A3_HQ',
+                 'Curr_A4': 'Curr_A4_HQ', 'Curr_A5': 'Curr_A5_HQ', 'Curr_A6': 'Curr_A6_HQ',
+                 'Curr_E1': 'Curr_E1_HQ'})
     labeltext = prog_data.groupby("SNR_C")["P_name"].last()
 
     # 使用 Digitaltwin_timefree.py 的 merge 方式

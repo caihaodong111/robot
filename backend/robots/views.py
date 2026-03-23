@@ -860,8 +860,8 @@ def bi_programs_view(request):
     logger = logging.getLogger(__name__)
 
     table_name = request.GET.get("robot", request.GET.get("table", ""))
-    table_name = (table_name or "").strip().lower()
-    if not re.match(r"^[0-9a-z_-]+$", table_name):
+    table_name = (table_name or "").strip()
+    if not re.match(r"^[0-9a-zA-Z_-]+$", table_name):
         return JsonResponse({"ok": False, "error": "非法的表名参数"}, status=400)
 
     start_date = request.GET.get("start_date", None)
