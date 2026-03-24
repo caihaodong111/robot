@@ -802,10 +802,22 @@ def bi_view(request):
     # 优先走 Bokeh Server（Digitaltwin_timefree.py 思路）：常驻进程 + 内存交互更新
     # 开关：BI_BOKEH_SERVER_URL 存在时默认启用；render=static 可强制回退静态 components。
     import os
+    from django.conf import settings
 
-    bokeh_server_url = (os.getenv("BI_BOKEH_SERVER_URL") or "").strip()
+    bokeh_server_url = (
+        (os.getenv("BI_BOKEH_SERVER_URL") or "").strip()
+        or (getattr(settings, "BI_BOKEH_SERVER_URL", "") or "").strip()
+    )
+    if not bokeh_server_url:
+        # 自动推导：与当前请求相同 host，不同端口（默认 5008）
+        request_host = (request.get_host() or "").split(":", 1)[0].strip()
+        bi_bokeh_port = int(getattr(settings, "BI_BOKEH_SERVER_PORT", 5008))
+        scheme = "https" if request.is_secure() else "http"
+        if request_host:
+            bokeh_server_url = f"{scheme}://{request_host}:{bi_bokeh_port}/"
+
     force_static = request.GET.get("render", "").strip().lower() == "static"
-    use_bokeh_server = bool(bokeh_server_url) and not force_static
+    use_bokeh_server = bool(getattr(settings, "BI_BOKEH_USE_SERVER", True)) and bool(bokeh_server_url) and not force_static
 
     try:
         if use_bokeh_server:

@@ -218,6 +218,13 @@ CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
 
 # Celery Beat 定时任务配置
+
+# BI Bokeh Server（无需手动 export 环境变量）
+# - Django 侧：未显式配置 URL 时，会自动用当前请求 host + 端口拼出 URL
+# - Bokeh 侧：`run_bi_bokeh_server` 已内置常用 allow_websocket_origin 默认值
+BI_BOKEH_USE_SERVER = os.getenv("BI_BOKEH_USE_SERVER", "1") == "1"
+BI_BOKEH_SERVER_PORT = int(os.getenv("BI_BOKEH_SERVER_PORT", "5008"))
+BI_BOKEH_SERVER_URL = (os.getenv("BI_BOKEH_SERVER_URL") or "").strip() or None
 CELERY_BEAT_SCHEDULE = {
     'auto-sync-robot-data-daily': {
         'task': 'robots.tasks.auto_sync_robot_data',
