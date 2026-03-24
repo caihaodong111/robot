@@ -13,6 +13,7 @@ from .views import (
     RobotHighRiskSnapshotViewSet,
     RobotReferenceDictViewSet,
     bi_view,
+    bi_cancel_view,
     bi_program_data_view,
     bi_programs_view,
     get_last_sync_time,
@@ -59,6 +60,7 @@ urlpatterns = [
     # ViewSet 路由必须放在最前面，避免被其他路径拦截
     path("", include(router.urls)),
     path("bi/", bi_view, name="robot-bi"),
+    path("bi_cancel/", bi_cancel_view, name="robot-bi-cancel"),
     path("bi_program_data/", bi_program_data_view, name="robot-bi-program-data"),
     path("bi_programs/", bi_programs_view, name="robot-bi-programs"),
     path("charts/<path:filename>", serve_chart, name="robot-chart"),

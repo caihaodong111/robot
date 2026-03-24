@@ -8,6 +8,7 @@ from django.shortcuts import render
 from django.db.models import Count, Q
 from django.utils import timezone
 from django.views.decorators.clickjacking import xframe_options_exempt
+from django.views.decorators.http import require_GET
 from rest_framework import mixins, viewsets, status
 from rest_framework.decorators import action, api_view
 from rest_framework.pagination import PageNumberPagination
@@ -38,6 +39,9 @@ from celery.result import AsyncResult
 from .tasks import gripper_check_task
 import json
 import time
+import uuid
+
+from .bi_jobs import BiCancelledError, bi_job_registry
 
 logger = logging.getLogger(__name__)
 
@@ -739,6 +743,14 @@ class RiskEventViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewset
             }
         )
 @xframe_options_exempt
+@require_GET
+def bi_cancel_view(request):
+    job_id = (request.GET.get("job_id") or "").strip()
+    cancelled = bi_job_registry.cancel(job_id)
+    return JsonResponse({"ok": True, "job_id": job_id, "cancelled": cancelled})
+
+
+@xframe_options_exempt
 def bi_view(request):
     """
     BI可视化页面 - 使用Bokeh components静态嵌入
@@ -762,6 +774,20 @@ def bi_view(request):
             'table_name': table_name,
             'error': '非法的表名参数'
         })
+
+    raw_job_id = (request.GET.get("job_id") or "").strip()
+    job_id = ""
+    if raw_job_id and re.match(r"^[0-9a-zA-Z_-]{1,128}$", raw_job_id):
+        job_id = raw_job_id
+    elif raw_job_id:
+        job_id = uuid.uuid4().hex
+
+    if job_id:
+        bi_job_registry.register(job_id)
+
+    def cancel_check():
+        if job_id and bi_job_registry.is_cancelled(job_id):
+            raise BiCancelledError()
     # 检测是否为嵌入模式
     embed_mode = request.GET.get('embed', '0') == '1'
     # 注意：create_bi_charts 现在会自动获取数据库实际时间范围
@@ -773,48 +799,91 @@ def bi_view(request):
 
     logger.info(f"BI页面请求: table={table_name}, program={program}, axis={axis}, start={start_date}, end={end_date}, embed={embed_mode}")
 
-    # 生成Bokeh图表（函数内部会获取数据库实际时间范围）
-    # 传递轴和程序参数，只生成需要的图表
-    script, div, chart_info, energy_modal_html, energy_script = create_bi_charts(
-        table_name,
-        axis=axis,
-        program=program,
-        start_date=start_date,
-        end_date=end_date,
-    )
+    # 优先走 Bokeh Server（Digitaltwin_timefree.py 思路）：常驻进程 + 内存交互更新
+    # 开关：BI_BOKEH_SERVER_URL 存在时默认启用；render=static 可强制回退静态 components。
+    import os
 
-    if script is None:
-        # 数据获取失败或无数据
-        logger.error("图表生成失败: 返回None")
-        return render(request, 'bi_error.html', {
-            'table_name': table_name,
-            'error': '无法获取数据，请检查数据库连接或表名是否正确'
-        })
+    bokeh_server_url = (os.getenv("BI_BOKEH_SERVER_URL") or "").strip()
+    force_static = request.GET.get("render", "").strip().lower() == "static"
+    use_bokeh_server = bool(bokeh_server_url) and not force_static
 
-    logger.info(f"图表生成成功: script长度={len(script)}, div长度={len(div)}")
+    try:
+        if use_bokeh_server:
+            from bokeh.embed import server_document
 
-    # NOTE: iframe嵌入场景经常处于内网/受限网络环境，CDN 资源可能无法加载，导致前端“空白但无报错”。
-    # embed=1 时改用 INLINE，避免依赖外网 bokehjs 资源。
-    bokeh_resources = (INLINE if embed_mode else CDN).render()
+            cancel_check()
+            arguments = {
+                "table": table_name,
+                "program": program or "",
+                "axis": axis or "",
+                "start_date": start_date or "",
+                "end_date": end_date or "",
+            }
+            server_script = server_document(bokeh_server_url, arguments=arguments)
+            return render(
+                request,
+                "bi_server_embed.html",
+                {
+                    "table_name": table_name,
+                    "bokeh_server_script": server_script,
+                },
+            )
 
-    context = {
-        'table_name': table_name,
-        'bokeh_resources': bokeh_resources,
-        'bokeh_script': script,
-        'bokeh_div': div,
-        'chart_info': chart_info,
-        'energy_modal_html': energy_modal_html,
-        'energy_script': energy_script,
-        # 传递控件值到模板，用于设置默认选择
-        'selected_program': program,
-        'selected_axis': axis,
-        'selected_start_date': start_date,
-        'selected_end_date': end_date,
-    }
+    # 静态嵌入（旧逻辑）：每次请求重建并 components 序列化
+        script, div, chart_info, energy_modal_html, energy_script = create_bi_charts(
+            table_name,
+            axis=axis,
+            program=program,
+            start_date=start_date,
+            end_date=end_date,
+            cancel_check=cancel_check,
+        )
 
-    # 根据embed参数选择模板
-    template_name = 'bi_embed.html' if embed_mode else 'bi.html'
-    return render(request, template_name, context)
+        if script is None:
+            logger.error("图表生成失败: 返回None")
+            return render(
+                request,
+                "bi_error.html",
+                {
+                    "table_name": table_name,
+                    "error": "无法获取数据，请检查数据库连接或表名是否正确",
+                },
+            )
+
+        logger.info(f"图表生成成功: script长度={len(script)}, div长度={len(div)}")
+
+        # NOTE: iframe嵌入场景经常处于内网/受限网络环境，CDN 资源可能无法加载，导致前端“空白但无报错”。
+        bokeh_resources = (INLINE if embed_mode else CDN).render()
+
+        context = {
+            "table_name": table_name,
+            "bokeh_resources": bokeh_resources,
+            "bokeh_script": script,
+            "bokeh_div": div,
+            "chart_info": chart_info,
+            "energy_modal_html": energy_modal_html,
+            "energy_script": energy_script,
+            "selected_program": program,
+            "selected_axis": axis,
+            "selected_start_date": start_date,
+            "selected_end_date": end_date,
+        }
+
+        template_name = "bi_embed.html" if embed_mode else "bi.html"
+        return render(request, template_name, context)
+    except BiCancelledError:
+        logger.info("BI 图生成已取消: table=%s job_id=%s", table_name, job_id)
+        return render(
+            request,
+            "bi_error.html",
+            {
+                "table_name": table_name,
+                "error": "已取消生成",
+            },
+        )
+    finally:
+        if job_id:
+            bi_job_registry.unregister(job_id)
 
 
 @xframe_options_exempt

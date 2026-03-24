@@ -1,5 +1,5 @@
 <template>
-  <div class="bi-viewport">
+  <div class="bi-viewport" :class="{ 'is-maximized': isMaximized }">
     <!-- 背景流光特效 -->
     <div class="space-ambient">
       <div class="nebula blue"></div>
@@ -7,11 +7,26 @@
       <div class="scan-grid"></div>
     </div>
 
+    <el-button
+      v-show="isMaximized"
+      type="primary"
+      size="small"
+      class="restore-fab"
+      @click="toggleMaximize"
+    >
+      还原
+    </el-button>
+
     <div class="layout-wrapper">
       <!-- Header Section -->
       <header class="page-header entrance-slide-in">
         <div class="title-area">
           <h1 class="ios-title">PROGRAM CYCLE SYNC<span class="subtitle">程序周期同步视窗</span></h1>
+        </div>
+        <div class="header-actions">
+          <el-button type="primary" size="small" class="maximize-btn" @click="toggleMaximize">
+            {{ isMaximized ? '还原' : '放大' }}
+          </el-button>
         </div>
       </header>
 
@@ -31,7 +46,9 @@
                 v-model="robotQuery"
                 placeholder="请输入机器人表名（PROGRAM CYCLE SYNC）"
                 clearable
-                :disabled="isLoading"
+                :disabled="robotsLoading"
+                :readonly="isLoading"
+                @clear="handleRobotClear"
                 @keyup.enter="handleRobotSearch"
                 class="styled-select"
               />
@@ -83,55 +100,6 @@
         <div v-else class="bi-card ios-glass">
           <div class="border-glow"></div>
           <div class="bi-frame-wrapper">
-            <!-- 加载遮罩层 -->
-            <Transition name="fade">
-              <div v-if="isLoading" class="bi-loading-overlay">
-                <div class="bi-loading-content">
-                  <template v-if="loadingMode === 'full'">
-                    <!-- 加载动画 -->
-                    <div class="loading-spinner">
-                      <svg class="spinner" viewBox="0 0 50 50">
-                        <circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="4"></circle>
-                      </svg>
-                    </div>
-                    <!-- 加载文字 -->
-                    <div class="loading-message">
-                      <div class="loading-title">正在加载数据</div>
-                      <div class="loading-tip">后端日志同步中</div>
-                    </div>
-                    <div class="log-plain" :class="{ 'is-empty': !displayLogs.length }">
-                      <div v-if="displayLogs.length" class="log-single">
-                        <Transition name="log-fade" mode="out-in">
-                          <div :key="currentLogIndex" class="log-line">
-                            {{ currentLogLine }}
-                          </div>
-                        </Transition>
-                      </div>
-                      <div v-else class="log-empty">暂无日志</div>
-                    </div>
-                  </template>
-                  <template v-else>
-                    <div class="loading-spinner is-compact">
-                      <svg class="spinner" viewBox="0 0 50 50">
-                        <circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="4"></circle>
-                      </svg>
-                    </div>
-                    <div class="loading-message">
-                      <div class="loading-title">切换中...</div>
-                      <div class="loading-tip">保持当前画面，加载完成自动切换</div>
-                    </div>
-                  </template>
-                </div>
-              </div>
-            </Transition>
-
-            <!-- 加载进度条 -->
-            <Transition name="slide-down">
-              <div v-if="isLoading" class="bi-progress-bar">
-                <div class="progress-fill"></div>
-              </div>
-            </Transition>
-
             <iframe
               v-if="shouldLoad && primaryFrameUrl"
               ref="primaryFrame"
@@ -188,6 +156,7 @@ const isLoading = ref(false)
 const isLoadHover = ref(false)
 const primaryFrame = ref(null)
 const secondaryFrame = ref(null)
+const loadingJobId = ref('')
 const biLogs = ref([])
 const logPollingTimer = ref(null)
 const logRotateTimer = ref(null)
@@ -195,11 +164,13 @@ const currentLogIndex = ref(0)
 const lastStableFrameUrl = ref('')
 const initInProgress = ref(false)
 const lastInitSignature = ref('')
+const isMaximized = ref(false)
 const isActiveRoute = computed(() => route.path === '/alerts')
 
 const LOG_LIMIT = 8
 const LOG_POLL_INTERVAL = 30000
 const LOG_ROTATE_INTERVAL = 1600
+const LOG_LOAD_POLL_INTERVAL = 2000  // 加载时使用更短的轮询间隔
 
 // 时间范围选择器状态（数组格式：[开始日期, 结束日期]）
 const DEFAULT_TIME_SPAN_DAYS = 30
@@ -266,6 +237,51 @@ const formatDateParam = (date) => {
   const month = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
+}
+
+const generateJobId = () => {
+  try {
+    const randomUUID = globalThis?.crypto?.randomUUID
+    if (typeof randomUUID === 'function') return randomUUID()
+  } catch {
+    // ignore
+  }
+  return `${Date.now()}_${Math.random().toString(16).slice(2)}`
+}
+
+const toAbsoluteUrl = (raw) => {
+  try {
+    return new URL(raw, globalThis?.location?.origin || 'http://localhost')
+  } catch {
+    return null
+  }
+}
+
+const stripBiJobId = (raw) => {
+  const u = toAbsoluteUrl(raw)
+  if (!u) return raw
+  u.searchParams.delete('job_id')
+  return u.toString()
+}
+
+const withBiJobId = (raw, jobId) => {
+  const id = (jobId || '').trim()
+  if (!id) return raw
+  const u = toAbsoluteUrl(raw)
+  if (!u) return raw
+  if (!u.pathname.includes('/api/robots/bi/')) return raw
+  u.searchParams.set('job_id', id)
+  return u.toString()
+}
+
+const cancelBiJob = async (jobId) => {
+  const id = (jobId || '').trim()
+  if (!id) return
+  try {
+    await request.get('/robots/bi_cancel/', { params: { job_id: id }, silent: true })
+  } catch {
+    // ignore
+  }
 }
 
 const syncRouteQuery = (patch) => {
@@ -352,7 +368,11 @@ const requestIframeState = () => {
 const loadFrame = (url, options = {}) => {
   const nextUrl = typeof url === 'string' ? url.trim() : ''
   if (!nextUrl) return
-  if (nextUrl === visibleFrameUrl.value) return
+  if (stripBiJobId(nextUrl) === stripBiJobId(visibleFrameUrl.value)) return
+
+  const jobId = generateJobId()
+  loadingJobId.value = jobId
+  const nextUrlWithJob = withBiJobId(nextUrl, jobId)
 
   const target = showPrimaryFrame.value ? 'secondary' : 'primary'
   loadingTarget.value = target
@@ -363,9 +383,9 @@ const loadFrame = (url, options = {}) => {
   }
 
   if (target === 'primary') {
-    primaryFrameUrl.value = nextUrl
+    primaryFrameUrl.value = nextUrlWithJob
   } else {
-    secondaryFrameUrl.value = nextUrl
+    secondaryFrameUrl.value = nextUrlWithJob
   }
 
   startLoading()
@@ -401,14 +421,20 @@ const handleRobotSearch = async () => {
   }
 }
 
+const toggleMaximize = () => {
+  isMaximized.value = !isMaximized.value
+}
+
+const handleKeyDown = (e) => {
+  if (e?.key === 'Escape' && isMaximized.value) {
+    isMaximized.value = false
+  }
+}
+
 // 开始加载动画
 const startLoading = () => {
   isLoading.value = true
   isLoadHover.value = false
-  if (loadingMode.value === 'full') {
-    startLogPolling()
-    startLogRotation()
-  }
 }
 
 // iframe加载完成（双缓冲：先加载隐藏iframe，加载完再切换显示）
@@ -429,8 +455,9 @@ const handleFrameLoad = (slot) => {
   setTimeout(() => {
     isLoading.value = false
     isLoadHover.value = false
+    loadingJobId.value = ''
+    // 停止日志轮询
     stopLogPolling()
-    stopLogRotation()
     syncIframeState()
     requestIframeState()
   }, 500)
@@ -460,6 +487,8 @@ const handleLoad = () => {
       axis: selectedAxis.value || '',
     })
   }
+  // 启动日志轮询以追踪加载状态
+  startLogPolling()
   loadFrame(biUrl.value, { mode: 'full' })
 }
 
@@ -468,12 +497,15 @@ const handleLoadHover = (val) => {
   isLoadHover.value = val
 }
 
-const handleCancel = () => {
+const handleCancel = async () => {
+  const jobId = loadingJobId.value
   isLoading.value = false
   isLoadHover.value = false
-  stopLogPolling()
-  stopLogRotation()
   loadingMode.value = 'full'
+  loadingJobId.value = ''
+  cancelBiJob(jobId)
+  // 停止日志轮询
+  stopLogPolling()
   if (loadingTarget.value === 'primary') {
     primaryFrameUrl.value = ''
   } else if (loadingTarget.value === 'secondary') {
@@ -485,12 +517,27 @@ const handleCancel = () => {
   }
 }
 
-const handleLoadOrCancel = () => {
+const handleLoadOrCancel = async () => {
   if (isLoading.value) {
-    handleCancel()
+    await handleCancel()
     return
   }
   handleLoad()
+}
+
+const handleRobotClear = async () => {
+  if (isLoading.value) {
+    await handleCancel()
+  }
+  // 清空展示态，避免继续看到旧图
+  activeName.value = ''
+  currentRobotLabel.value = ''
+  selectedProgram.value = ''
+  selectedAxis.value = ''
+  primaryFrameUrl.value = ''
+  secondaryFrameUrl.value = ''
+  shouldLoad.value = false
+  syncRouteQuery({ robot: '', program: '', axis: '', start_date: '', end_date: '' })
 }
 
 // 时间范围变化处理
@@ -597,6 +644,7 @@ const leaveView = () => {
 onMounted(async () => {
   // 监听来自iframe的postMessage（用于日期范围更新）
   window.addEventListener('message', handleBiMessage)
+  window.addEventListener('keydown', handleKeyDown)
 })
 
 onActivated(async () => {
@@ -611,6 +659,7 @@ onUnmounted(() => {
   stopLogPolling()
   stopLogRotation()
   window.removeEventListener('message', handleBiMessage)
+  window.removeEventListener('keydown', handleKeyDown)
 })
 
 watch(
@@ -648,7 +697,9 @@ const fetchBiLogs = async () => {
 const startLogPolling = () => {
   fetchBiLogs()
   if (logPollingTimer.value) return
-  logPollingTimer.value = setInterval(fetchBiLogs, LOG_POLL_INTERVAL)
+  // 根据加载状态使用不同的轮询间隔
+  const interval = isLoading.value ? LOG_LOAD_POLL_INTERVAL : LOG_POLL_INTERVAL
+  logPollingTimer.value = setInterval(fetchBiLogs, interval)
 }
 
 const stopLogPolling = () => {
@@ -675,6 +726,57 @@ const displayLogs = computed(() => {
   const stripPrefix = (line) =>
     line.replace(/^INFO\\s+\\d{4}-\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}:\\d{2},\\d+\\s+/, '')
   return biLogs.value.map(stripPrefix)
+})
+
+// 解析 BI 加载状态
+const biLoadStatus = computed(() => {
+  const logs = displayLogs.value
+  if (!logs.length) return { stage: 'idle', message: '' }
+
+  // 从后往前查找最新的 BI LOAD 日志
+  for (let i = logs.length - 1; i >= 0; i--) {
+    const line = logs[i]
+    if (line.includes('[BI LOAD COMPLETE]')) {
+      return { stage: 'complete', message: 'BI 图加载完成' }
+    }
+    if (line.includes('[BI LOAD] Creating charts')) {
+      return { stage: 'creating', message: '正在生成图表...' }
+    }
+    if (line.includes('[BI LOAD] Energy data fetched')) {
+      return { stage: 'energy', message: '正在获取能耗数据...' }
+    }
+    if (line.includes('[BI LOAD] Aggregation computed')) {
+      return { stage: 'aggregation', message: '正在生成图表...' }
+    }
+    if (line.includes('[BI LOAD] Computing aggregation')) {
+      return { stage: 'aggregating', message: '正在计算聚合数据...' }
+    }
+    if (line.includes('[BI LOAD] Data preprocessed')) {
+      return { stage: 'preprocessed', message: '正在计算聚合数据...' }
+    }
+    if (line.includes('[BI LOAD] Data fetched')) {
+      return { stage: 'preprocessing', message: '正在处理数据...' }
+    }
+    if (line.includes('[BI LOAD] Fetching data')) {
+      return { stage: 'fetching', message: '正在从数据库获取数据...' }
+    }
+    if (line.includes('[BI LOAD START]')) {
+      return { stage: 'started', message: '正在开始加载...' }
+    }
+  }
+
+  // 检查是否有错误
+  for (let i = logs.length - 1; i >= 0; i--) {
+    const line = logs[i]
+    if (line.includes('[BI LOAD] No data found')) {
+      return { stage: 'error', message: '未找到数据' }
+    }
+    if (line.includes('[BI LOAD] No program data')) {
+      return { stage: 'error', message: '该 program 无数据' }
+    }
+  }
+
+  return { stage: 'idle', message: '' }
 })
 
 const currentLogLine = computed(() => {
@@ -711,6 +813,19 @@ watch(activeName, (val, prev) => {
   selectedProgram.value = ''
   selectedAxis.value = ''
   syncRouteQuery({ program: '', axis: '' })
+})
+
+// 监听加载状态变化，动态调整日志轮询间隔
+watch(isLoading, (val, prev) => {
+  if (val === prev) return
+  // 如果正在切换加载状态（从无到有或从有到无），重启轮询以使用正确的间隔
+  if (logPollingTimer.value) {
+    stopLogPolling()
+    if (val) {
+      // 开始加载，使用快速轮询
+      startLogPolling()
+    }
+  }
 })
 </script>
 
@@ -804,10 +919,39 @@ watch(activeName, (val, prev) => {
 /* === 基础布局与背景 === */
 .bi-viewport {
   background: radial-gradient(circle at 50% 35%, #0d1a2d 0%, #030508 100%);
-  min-height: 100svh;
+  height: 100svh;
   position: relative;
   overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
   color: #fff;
+}
+
+.bi-viewport.is-maximized .layout-wrapper {
+  padding: 8px;
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.bi-viewport.is-maximized .page-header,
+.bi-viewport.is-maximized .control-panel {
+  display: none;
+}
+
+.restore-fab {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 5;
+  border-radius: 999px;
+  height: 32px;
+  padding: 0 14px;
+}
+
+.maximize-btn {
+  border-radius: 12px;
+  height: 32px;
+  padding: 0 14px;
 }
 
 /* === 背景流光元素 === */
@@ -852,10 +996,14 @@ watch(activeName, (val, prev) => {
 .layout-wrapper {
   position: relative;
   z-index: 1;
-  padding: clamp(16px, 2.2vw, 32px);
+  padding: clamp(12px, 1.6vw, 20px) clamp(16px, 2.2vw, 32px);
   width: 100%;
   max-width: none;
   margin: 0 auto;
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
 }
 
 /* === Header === */
@@ -865,9 +1013,10 @@ watch(activeName, (val, prev) => {
   align-items: center;
   flex-wrap: wrap;
   gap: 10px 16px;
-  margin-bottom: 20px;
-  padding-bottom: 20px;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  flex: 0 0 auto;
 }
 
 .title-area {
@@ -999,8 +1148,9 @@ watch(activeName, (val, prev) => {
 
 /* === 控制面板 === */
 .control-panel {
-  margin-bottom: 24px;
+  margin-bottom: 12px;
   overflow: visible;
+  flex: 0 0 auto;
 }
 
 .control-content {
@@ -1069,7 +1219,11 @@ watch(activeName, (val, prev) => {
 
 /* === 内容区域 === */
 .bi-content {
-  min-height: max(520px, calc(100svh - 280px));
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  width: 100%;
+  overflow: hidden;
 }
 
 /* === 空状态 === */
@@ -1079,7 +1233,10 @@ watch(activeName, (val, prev) => {
   align-items: center;
   justify-content: center;
   gap: 16px;
-  min-height: max(520px, calc(100svh - 280px));
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
   padding: 40px;
   border-radius: 0;
 }
@@ -1106,12 +1263,19 @@ watch(activeName, (val, prev) => {
   padding: 0;
   overflow: hidden;
   border-radius: 0;
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 .bi-frame-wrapper {
   position: relative;
   width: 100%;
-  height: max(520px, calc(100svh - 280px));
+  flex: 1 1 auto;
+  min-height: 0;
   border-radius: 0;
   overflow: hidden;
   background: #000;
@@ -1135,175 +1299,6 @@ watch(activeName, (val, prev) => {
 }
 
 /* === 加载遮罩层 === */
-.bi-loading-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(10, 15, 25, 0.9);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 10;
-  backdrop-filter: blur(20px);
-}
-
-.bi-loading-content {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 24px;
-}
-
-/* === 旋转Spinner === */
-.loading-spinner {
-  width: 48px;
-  height: 48px;
-}
-
-.loading-spinner.is-compact {
-  width: 40px;
-  height: 40px;
-}
-
-.spinner {
-  width: 100%;
-  height: 100%;
-  animation: rotate 1.5s linear infinite;
-}
-
-.spinner .path {
-  stroke: #00c3ff;
-  stroke-linecap: round;
-  animation: dash 1.5s ease-in-out infinite;
-}
-
-@keyframes rotate {
-  100% {
-    transform: rotate(360deg);
-  }
-}
-
-@keyframes dash {
-  0% {
-    stroke-dasharray: 1, 150;
-    stroke-dashoffset: 0;
-  }
-  50% {
-    stroke-dasharray: 90, 150;
-    stroke-dashoffset: -35;
-  }
-  100% {
-    stroke-dasharray: 90, 150;
-    stroke-dashoffset: -124;
-  }
-}
-
-/* === 加载文字 === */
-.loading-message {
-  text-align: center;
-}
-
-.loading-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #fff;
-  margin-bottom: 6px;
-}
-
-.loading-tip {
-  font-size: 13px;
-  color: #8899aa;
-}
-
-.log-plain {
-  width: min(560px, 88vw);
-  max-height: 120px;
-  overflow: hidden;
-  mask-image: linear-gradient(180deg, transparent 0%, #000 18%, #000 82%, transparent 100%);
-  padding: 12px 0;
-}
-
-.log-plain.is-empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.log-single {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 80px;
-}
-
-.log-line {
-  font-size: 12px;
-  color: #b4c7da;
-  text-shadow: 0 0 16px rgba(0, 195, 255, 0.2);
-  letter-spacing: 0.02em;
-  white-space: pre-wrap;
-  word-break: break-word;
-  line-height: 1.45;
-  text-align: center;
-}
-
-.log-empty {
-  font-size: 12px;
-  color: #6d8498;
-}
-
-.log-fade-enter-active,
-.log-fade-leave-active {
-  transition: opacity 0.35s ease, transform 0.35s ease;
-}
-
-.log-fade-enter-from,
-.log-fade-leave-to {
-  opacity: 0;
-  transform: translateY(8px);
-}
-
-/* === 进度条 === */
-.bi-progress-bar {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: rgba(0, 195, 255, 0.1);
-  overflow: hidden;
-  z-index: 11;
-}
-
-.progress-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #00c3ff 0%, #00ffcc 50%, #00c3ff 100%);
-  background-size: 200% 100%;
-  animation: shimmer 1.5s ease-in-out infinite;
-  width: 60%;
-}
-
-@keyframes shimmer {
-  0% {
-    background-position: 200% 0;
-  }
-  100% {
-    background-position: -200% 0;
-  }
-}
-
-/* === 过渡动画 === */
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.3s ease;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
 
 .slide-down-enter-active,
 .slide-down-leave-active {
@@ -1409,7 +1404,7 @@ watch(activeName, (val, prev) => {
     justify-content: center;
   }
   .bi-frame-wrapper {
-    height: clamp(420px, 70vh, 720px);
+    min-height: clamp(420px, 70vh, 720px);
   }
 }
 

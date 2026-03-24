@@ -1,0 +1,249 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>程序周期同步视窗(Bokeh Server) - {{ table_name }}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #fff; overflow-x: auto; }
+    .bi-container { width: 100%; min-height: 100vh; position: relative; overflow-x: auto; }
+    .bk-root { width: 100% !important; }
+
+    /* 加载状态遮罩层 */
+    .bi-loading-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      background: #0a0e1a;
+      transition: opacity 0.5s ease, visibility 0.5s ease;
+    }
+
+    .bi-loading-overlay.hidden {
+      opacity: 0;
+      visibility: hidden;
+    }
+
+    .loading-content {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .loading-spinner {
+      width: 50px;
+      height: 50px;
+      border: 3px solid rgba(0, 195, 255, 0.2);
+      border-top-color: #00c3ff;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .loading-text {
+      font-size: 15px;
+      color: #8899aa;
+      font-weight: 400;
+    }
+
+    .loading-status {
+      font-size: 13px;
+      color: #00c3ff;
+      margin-top: 4px;
+    }
+
+    .dots {
+      display: inline-flex;
+      gap: 4px;
+      margin-left: 4px;
+    }
+
+    .dots span {
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: #00c3ff;
+      animation: pulse 1.4s ease-in-out infinite;
+    }
+
+    .dots span:nth-child(2) { animation-delay: 0.2s; }
+    .dots span:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes pulse {
+      0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+      40% { opacity: 1; transform: scale(1.2); }
+    }
+  </style>
+</head>
+<body>
+  <!-- 加载状态遮罩层 -->
+  <div class="bi-loading-overlay" id="loadingOverlay">
+    <div class="loading-content">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">
+        正在加载 BI 图
+        <div class="loading-status" id="loadingStatus">正在连接服务器...</div>
+        <div class="dots">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bi-container">
+    {{ bokeh_server_script|safe }}
+  </div>
+
+  <script>
+    (function () {
+      // 加载状态管理
+      const loadingOverlay = document.getElementById('loadingOverlay');
+      const loadingStatus = document.getElementById('loadingStatus');
+
+      const updateLoadingStatus = (text) => {
+        if (loadingStatus) loadingStatus.textContent = text;
+      };
+
+      const hideLoadingOverlay = () => {
+        if (loadingOverlay) {
+          loadingOverlay.classList.add('hidden');
+          setTimeout(() => {
+            if (loadingOverlay.parentNode) {
+              loadingOverlay.parentNode.removeChild(loadingOverlay);
+            }
+          }, 500);
+        }
+      };
+
+      const getDoc = () => {
+        try {
+          if (!window.Bokeh || !window.Bokeh.documents || !window.Bokeh.documents.length) return null;
+          return window.Bokeh.documents[0];
+        } catch (e) {
+          return null;
+        }
+      };
+
+      const docHasNoDataBanner = (doc) => {
+        try {
+          const roots = typeof doc?.roots === 'function' ? doc.roots() : [];
+          if (!Array.isArray(roots) || !roots.length) return false;
+          return roots.some((root) => {
+            const text = root && typeof root.text === 'string' ? root.text : '';
+            return text.includes('BI 无数据') || text.includes('BI 无 program 数据');
+          });
+        } catch (e) {
+          return false;
+        }
+      };
+
+      const postState = (models) => {
+        try {
+          if (!window.parent || window.parent === window) return;
+          window.parent.postMessage(
+            { type: 'biState', program: models.programSelect.value, axis: models.axisSelect.value },
+            '*'
+          );
+        } catch (e) {}
+      };
+
+      const applyState = (models, state) => {
+        try {
+          const nextProgram = typeof state.program === 'string' ? state.program.trim() : '';
+          const nextAxis = typeof state.axis === 'string' ? state.axis.trim() : '';
+          if (nextProgram && nextProgram !== models.programSelect.value) {
+            models.programSelect.value = nextProgram;
+          }
+          if (nextAxis && nextAxis !== models.axisSelect.value) {
+            models.axisSelect.value = nextAxis;
+          }
+        } catch (e) {}
+      };
+
+      const init = () => {
+        const doc = getDoc();
+        if (!doc) return false;
+
+        // Bokeh 文档已加载，更新状态
+        updateLoadingStatus('正在渲染图表...');
+
+        const programSelect = doc.get_model_by_name('program_select');
+        const axisSelect = doc.get_model_by_name('axis_select');
+        if (!programSelect || !axisSelect) {
+          // 无数据/无 program 数据时，服务端只渲染提示 Div，不会创建下拉控件；避免遮罩层永远不消失
+          if (docHasNoDataBanner(doc)) {
+            updateLoadingStatus('无数据');
+            setTimeout(hideLoadingOverlay, 300);
+            return true;
+          }
+          return false;
+        }
+        const models = { doc, programSelect, axisSelect };
+
+        // 等待图表完全渲染
+        setTimeout(() => {
+          updateLoadingStatus('加载完成');
+          setTimeout(hideLoadingOverlay, 300);
+        }, 500);
+
+        // Initial sync to parent
+        postState(models);
+
+        // Allow parent to restore last selection
+        window.addEventListener('message', (event) => {
+          const data = event && event.data;
+          if (!data || typeof data !== 'object') return;
+          if (data.type === 'getBIState') {
+            postState(models);
+            return;
+          }
+          if (data.type !== 'setBIState') return;
+          applyState(models, data);
+        });
+
+        return true;
+      };
+
+      const start = () => {
+        updateLoadingStatus('正在加载数据...');
+        if (init()) return;
+        let tries = 0;
+        const timer = setInterval(() => {
+          tries += 1;
+          if (tries % 100 === 0) {
+            // 每10秒更新一次状态
+            const elapsed = (tries / 10).toFixed(0);
+            if (tries < 200) updateLoadingStatus(`正在处理数据... (${elapsed}s)`);
+            else if (tries < 400) updateLoadingStatus(`正在生成图表... (${elapsed}s)`);
+            else if (tries < 600) updateLoadingStatus(`正在渲染... (${elapsed}s)`);
+            else updateLoadingStatus(`即将完成... (${elapsed}s)`);
+          }
+          // 加载成功后停止轮询（不设超时上限）
+          if (init()) {
+            clearInterval(timer);
+          }
+        }, 100);
+      };
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', start);
+      } else {
+        start();
+      }
+    })();
+  </script>
+</body>
+</html>

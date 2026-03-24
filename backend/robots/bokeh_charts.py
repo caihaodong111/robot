@@ -362,8 +362,12 @@ def create_bi_charts(
     program=None,
     start_date=None,
     end_date=None,
+    cancel_check=None,
 ):
     """创建BI可视化图表 - 首屏只计算默认 program，切换 program 触发重载再算。"""
+    def _check_cancel():
+        if cancel_check:
+            cancel_check()
 
     # 从Django配置获取数据库连接参数
     db_config = get_db_engine()
@@ -376,6 +380,7 @@ def create_bi_charts(
 
     # 创建数据库连接
     try:
+        _check_cancel()
         engine = create_engine(f'mysql+pymysql://{user}:{password}@{host}:{port}/{database}')
         logger.info(f"数据库连接: {host}:{port}/{database}")
     except Exception as e:
@@ -404,6 +409,7 @@ def create_bi_charts(
     fetch_start = time.perf_counter()
 
     # 构建需要的列（与 Digitaltwin_timefree.py 一致，使用 SELECT *）
+    _check_cancel()
     df_full = fetch_data_from_mysql(
         table_name,
         _format_datetime(start_time),
@@ -411,6 +417,7 @@ def create_bi_charts(
         time_column,  # 传递字符串，不使用 dict
         engine,
     )
+    _check_cancel()
     logger.info("全量数据: db fetch %.3fs, 行数=%s", time.perf_counter() - fetch_start, len(df_full))
 
     if df_full.empty:
@@ -419,7 +426,9 @@ def create_bi_charts(
 
     # 数据预处理
     preprocess_start = time.perf_counter()
+    _check_cancel()
     df_full = _preprocess_bi_dataframe(df_full)
+    _check_cancel()
     logger.info("数据预处理: %.3fs", time.perf_counter() - preprocess_start)
 
     # 缓存全量数据（用于快速切换 program）
@@ -429,6 +438,7 @@ def create_bi_charts(
     logger.info("数据已缓存到内存，用于快速切换 program")
 
     # 在 Python 中获取 program 列表和过滤数据（与 Digitaltwin_timefree.py 一致）
+    _check_cancel()
     c_opt = df_full['Name_C'].unique()
     logger.info("可用程序列表: %s", len(c_opt))
 
@@ -442,6 +452,7 @@ def create_bi_charts(
 
     # 在 Python 中过滤 program（与 Digitaltwin_timefree.py 一致）
     # 直接过滤，不复制（避免大数据复制开销）
+    _check_cancel()
     df_prog = df_full[df_full['Name_C'] == default_program]
     logger.info("程序 %s 数据条数: %s", default_program, len(df_prog))
 
@@ -451,6 +462,7 @@ def create_bi_charts(
     logger.info("加载数据条数: %s, 列数=%s (program=%s)", len(df_prog), len(df_prog.columns), default_program)
 
     # 获取能量数据
+    _check_cancel()
     energy_cache_key = (
         f"bi:energy:{CACHE_VERSION}:{table_name}:"
         f"{start_time.strftime('%Y%m%d%H%M%S')}:{end_time.strftime('%Y%m%d%H%M%S')}"
@@ -468,8 +480,10 @@ def create_bi_charts(
             f"AND '{_format_datetime(end_time)}'"
         )
         try:
+            _check_cancel()
             energy_fetch_start = time.perf_counter()
             energy_full = pd.read_sql(energy_query, engine)
+            _check_cancel()
             logger.info("能量数据: db fetch %.3fs", time.perf_counter() - energy_fetch_start)
             logger.info(f"能量数据条数: {len(energy_full)}")
         except Exception as e:
@@ -494,6 +508,7 @@ def create_bi_charts(
 
     # ============ 仅为默认 program 计算数据（program 切换时重载页面再算） ============
     agg_start = time.perf_counter()
+    _check_cancel()
     prog_data = df_prog  # 直接使用，不复制（与 Digitaltwin_timefree.py 一致）
     prog_data = prog_data.sort_values(by=["SNR_C", "Time"])
     prog_data["sort"] = range(1, len(prog_data) + 1)
@@ -561,47 +576,12 @@ def create_bi_charts(
 
     # ============ 创建图表 ============
     chart_create_start = time.perf_counter()
-    # 创建代理数据源，使用固定的列名，这样渲染器不需要修改列引用
-    # 当切换轴或程序时，我们只需要更新这些代理列的数据
-
-    # 从默认轴和程序获取初始数据
+    # 直接使用 source/agg_source（与 Digitaltwin_timefree.py 一致：切换轴时改 glyph.y.field）
+    # 避免额外 proxy_* 数据源导致数据在页面中重复序列化，首屏体积/生成时间会显著增加。
     default_config = AXIS_CONFIG[default_axis]
-    default_source_data = source.data
-    default_agg_data = agg_source.data
-
-    # 创建代理数据源 - 使用固定的列名
-    # 时间序列图表使用固定列名
-    proxy_source = ColumnDataSource(data={
-        'sort': default_source_data.get('sort', []),
-        'Timestamp': default_source_data.get('Timestamp', []),
-        'SNR_C': default_source_data.get('SNR_C', []),
-        'P_name': default_source_data.get('P_name', []),
-        'Time': default_source_data.get('Time', []),
-        'Tem_1': default_source_data.get('Tem_1', []),
-        # 使用固定列名，初始值为默认轴的数据
-        'curr_value': default_source_data.get(default_config['curr'], []),
-        'max_curr_value': default_source_data.get(default_config['max_curr'], []),
-        'min_curr_value': default_source_data.get(default_config['min_curr'], []),
-        'torque_value': default_source_data.get(default_config['torque'], []),
-        'speed_value': default_source_data.get(default_config['speed'], []),
-        'fol_value': default_source_data.get(default_config['fol'], []),
-        'axisp_value': default_source_data.get(default_config['axisp'], []),
-    })
-
-    # 聚合图表也使用固定列名
-    # 找到对应的_LQ和_HQ列名（例如 Curr_A1_LQ, Curr_A1_HQ）
-    curr_col = default_config['curr']
-    lq_col = f'{curr_col}_LQ'
-    hq_col = f'{curr_col}_HQ'
-
-    proxy_agg_source = ColumnDataSource(data={
-        'SNR_C': default_agg_data.get('SNR_C', []),
-        'P_name': default_agg_data.get('P_name', []),
-        'max_curr_value': default_agg_data.get(default_config['max_curr'], []),
-        'min_curr_value': default_agg_data.get(default_config['min_curr'], []),
-        'lq_value': default_agg_data.get(lq_col, []),
-        'hq_value': default_agg_data.get(hq_col, []),
-    })
+    curr_col = default_config["curr"]
+    lq_col = f"{curr_col}_LQ"
+    hq_col = f"{curr_col}_HQ"
 
     # 获取默认轴和程序的配置
     max_curr_col = default_config['max_curr']
@@ -614,7 +594,7 @@ def create_bi_charts(
     # Hover工具定义 - 使用动态列名显示
     hover = HoverTool(tooltips=[
         ('Timestamp', '@Timestamp'),
-        ('Current', '@curr_value'),
+        ('Current', f'@{curr_col}'),
         ('SNR_C', '@SNR_C'),
         ('P_name', '@P_name')
     ])
@@ -628,28 +608,28 @@ def create_bi_charts(
 
     hover_torque = HoverTool(tooltips=[
         ('Timestamp', '@Timestamp'),
-        ('Torque', '@torque_value'),
+        ('Torque', f'@{torque_col}'),
         ('SNR_C', '@SNR_C'),
         ('P_name', '@P_name')
     ])
 
     hover_fol = HoverTool(tooltips=[
         ('Timestamp', '@Timestamp'),
-        ('Following Error', '@fol_value'),
+        ('Following Error', f'@{fol_col}'),
         ('SNR_C', '@SNR_C'),
         ('P_name', '@P_name')
     ])
 
     hover_speed = HoverTool(tooltips=[
         ('Timestamp', '@Timestamp'),
-        ('Speed', '@speed_value'),
+        ('Speed', f'@{speed_col}'),
         ('SNR_C', '@SNR_C'),
         ('P_name', '@P_name')
     ])
 
     hover_axisp = HoverTool(tooltips=[
         ('Timestamp', '@Timestamp'),
-        ('Position', '@axisp_value'),
+        ('Position', f'@{axisp_col}'),
         ('SNR_C', '@SNR_C'),
         ('P_name', '@P_name')
     ])
@@ -674,9 +654,9 @@ def create_bi_charts(
         margin=(5, 10, 5, 10),
         output_backend='webgl'
     )
-    p_curr.step(x='sort', y='min_curr_value', source=proxy_source, line_width=2, mode="center", color='red', legend_label='Min Current')
-    p_curr.step(x='sort', y='max_curr_value', source=proxy_source, line_width=2, mode="center", color='red', legend_label='Max Current')
-    p_curr.scatter(x='sort', y='curr_value', source=proxy_source, size=2, alpha=0.6, color='navy', legend_label='Real-time Current')
+    g_curr_min = p_curr.step(x='sort', y=min_curr_col, source=source, line_width=2, mode="center", color='red', legend_label='Min Current')
+    g_curr_max = p_curr.step(x='sort', y=max_curr_col, source=source, line_width=2, mode="center", color='red', legend_label='Max Current')
+    g_curr = p_curr.scatter(x='sort', y=curr_col, source=source, size=2, alpha=0.6, color='navy', legend_label='Real-time Current')
     p_curr.legend.location = 'top_right'
     p_curr.legend.click_policy = "hide"
     p_curr.xaxis.visible = False
@@ -697,7 +677,7 @@ def create_bi_charts(
         margin=(5, 10, 5, 10),
         output_backend='webgl'
     )
-    p_temp.scatter(x='sort', y='Tem_1', source=proxy_source, size=2, color='orange', legend_label='Temperature')
+    g_temp = p_temp.scatter(x='sort', y='Tem_1', source=source, size=2, color='orange', legend_label='Temperature')
     p_temp.legend.location = 'top_right'
     p_temp.legend.click_policy = "hide"
     p_temp.xaxis.visible = False
@@ -717,7 +697,7 @@ def create_bi_charts(
         margin=(5, 10, 5, 10),
         output_backend='webgl'
     )
-    p_pos.scatter(x='sort', y='axisp_value', source=proxy_source, size=2, color='green', legend_label='Position')
+    g_pos = p_pos.scatter(x='sort', y=axisp_col, source=source, size=2, color='green', legend_label='Position')
     p_pos.legend.location = 'top_right'
     p_pos.legend.click_policy = "hide"
     p_pos.xaxis.visible = False
@@ -737,7 +717,7 @@ def create_bi_charts(
         margin=(5, 10, 5, 10),
         output_backend='webgl'
     )
-    p_speed.scatter(x='sort', y='speed_value', source=proxy_source, size=2, color='blue', legend_label='Speed')
+    g_speed = p_speed.scatter(x='sort', y=speed_col, source=source, size=2, color='blue', legend_label='Speed')
     p_speed.legend.location = 'top_right'
     p_speed.legend.click_policy = "hide"
     p_speed.xaxis.visible = False
@@ -757,7 +737,7 @@ def create_bi_charts(
         margin=(5, 10, 5, 10),
         output_backend='webgl'
     )
-    p_fol.scatter(x='sort', y='fol_value', source=proxy_source, size=2, color='lime', legend_label='Following Error')
+    g_fol = p_fol.scatter(x='sort', y=fol_col, source=source, size=2, color='lime', legend_label='Following Error')
     p_fol.legend.location = 'top_right'
     p_fol.legend.click_policy = "hide"
     p_fol.xaxis.visible = False
@@ -777,7 +757,7 @@ def create_bi_charts(
         margin=(5, 10, 5, 10),
         output_backend='webgl'
     )
-    p_torque.scatter(x='sort', y='torque_value', source=proxy_source, size=2, color='sienna', legend_label='Torque')
+    g_torque = p_torque.scatter(x='sort', y=torque_col, source=source, size=2, color='sienna', legend_label='Torque')
     p_torque.legend.location = 'top_right'
     p_torque.legend.click_policy = "hide"
     p_torque.xaxis.visible = False
@@ -804,22 +784,22 @@ def create_bi_charts(
         tooltips=[
             ("SNR_C", "@SNR_C"),
             ("P_name", "@P_name"),
-            ("1% Quantile", "@lq_value"),
-            ("99% Quantile", "@hq_value"),
+            ("1% Quantile", f"@{lq_col}"),
+            ("99% Quantile", f"@{hq_col}"),
         ]
     )
     line_plot.add_tools(hover_line)
 
-    line_plot.line(x="SNR_C", y="lq_value", source=proxy_agg_source, line_color="blue",
-                    line_width=2, legend_label="1% Quantile", alpha=1)
-    line_plot.line(x="SNR_C", y="hq_value", source=proxy_agg_source, line_color="orange",
-                    line_width=2, legend_label="99% Quantile", alpha=1)
-    l1 = Band(base="SNR_C", lower="min_curr_value", upper="max_curr_value", source=proxy_agg_source,
+    g_lq = line_plot.line(x="SNR_C", y=lq_col, source=agg_source, line_color="blue",
+                          line_width=2, legend_label="1% Quantile", alpha=1)
+    g_hq = line_plot.line(x="SNR_C", y=hq_col, source=agg_source, line_color="orange",
+                          line_width=2, legend_label="99% Quantile", alpha=1)
+    l1 = Band(base="SNR_C", lower=min_curr_col, upper=max_curr_col, source=agg_source,
               fill_alpha=0.3, fill_color="green", line_color="red")
     line_plot.add_layout(l1)
 
-    label_setmax = LabelSet(x="SNR_C", y="hq_value", text='P_name', level='glyph',
-                            x_offset=3, y_offset=3, source=proxy_agg_source,
+    label_setmax = LabelSet(x="SNR_C", y=hq_col, text='P_name', level='glyph',
+                            x_offset=3, y_offset=3, source=agg_source,
                             text_font_size='7pt', angle=0, text_font_style='bold')
     line_plot.add_layout(label_setmax)
 
@@ -869,10 +849,25 @@ def create_bi_charts(
             program_select=program_select,
             source=source,
             agg_source=agg_source,
-            proxy_source=proxy_source,
-            proxy_agg_source=proxy_agg_source,
             curr_plot=p_curr,
             line_plot=line_plot,
+            g_curr_min=g_curr_min,
+            g_curr_max=g_curr_max,
+            g_curr=g_curr,
+            g_pos=g_pos,
+            g_speed=g_speed,
+            g_fol=g_fol,
+            g_torque=g_torque,
+            g_lq=g_lq,
+            g_hq=g_hq,
+            band=l1,
+            label_setmax=label_setmax,
+            hover=hover,
+            hover_torque=hover_torque,
+            hover_fol=hover_fol,
+            hover_speed=hover_speed,
+            hover_axisp=hover_axisp,
+            hover_line=hover_line,
             axis_config_json=json.dumps(AXIS_CONFIG),
         ),
         code="""
@@ -887,36 +882,63 @@ def create_bi_charts(
         const speedCol = config.speed;
         const folCol = config.fol;
         const axispCol = config.axisp;
+        const lqCol = currCol + "_LQ";
+        const hqCol = currCol + "_HQ";
 
         curr_plot.title.text = axis + " - Current Analysis";
 
-        proxy_source.data['sort'] = source.data['sort'];
-        proxy_source.data['Timestamp'] = source.data['Timestamp'];
-        proxy_source.data['SNR_C'] = source.data['SNR_C'];
-        proxy_source.data['P_name'] = source.data['P_name'];
-        proxy_source.data['Time'] = source.data['Time'];
-        proxy_source.data['Tem_1'] = source.data['Tem_1'];
+        g_curr_min.glyph.y.field = minCurrCol;
+        g_curr_max.glyph.y.field = maxCurrCol;
+        g_curr.glyph.y.field = currCol;
+        g_pos.glyph.y.field = axispCol;
+        g_speed.glyph.y.field = speedCol;
+        g_fol.glyph.y.field = folCol;
+        g_torque.glyph.y.field = torqueCol;
+        g_lq.glyph.y.field = lqCol;
+        g_hq.glyph.y.field = hqCol;
+        band.lower.field = minCurrCol;
+        band.upper.field = maxCurrCol;
+        label_setmax.y.field = hqCol;
 
-        proxy_source.data['curr_value'] = source.data[currCol] || [];
-        proxy_source.data['max_curr_value'] = source.data[maxCurrCol] || [];
-        proxy_source.data['min_curr_value'] = source.data[minCurrCol] || [];
-        proxy_source.data['torque_value'] = source.data[torqueCol] || [];
-        proxy_source.data['speed_value'] = source.data[speedCol] || [];
-        proxy_source.data['fol_value'] = source.data[folCol] || [];
-        proxy_source.data['axisp_value'] = source.data[axispCol] || [];
+        hover.tooltips = [
+          ['Timestamp', '@Timestamp'],
+          ['Current', '@' + currCol],
+          ['SNR_C', '@SNR_C'],
+          ['P_name', '@P_name'],
+        ];
+        hover_torque.tooltips = [
+          ['Timestamp', '@Timestamp'],
+          ['Torque', '@' + torqueCol],
+          ['SNR_C', '@SNR_C'],
+          ['P_name', '@P_name'],
+        ];
+        hover_fol.tooltips = [
+          ['Timestamp', '@Timestamp'],
+          ['Following Error', '@' + folCol],
+          ['SNR_C', '@SNR_C'],
+          ['P_name', '@P_name'],
+        ];
+        hover_speed.tooltips = [
+          ['Timestamp', '@Timestamp'],
+          ['Speed', '@' + speedCol],
+          ['SNR_C', '@SNR_C'],
+          ['P_name', '@P_name'],
+        ];
+        hover_axisp.tooltips = [
+          ['Timestamp', '@Timestamp'],
+          ['Position', '@' + axispCol],
+          ['SNR_C', '@SNR_C'],
+          ['P_name', '@P_name'],
+        ];
+        hover_line.tooltips = [
+          ['SNR_C', '@SNR_C'],
+          ['P_name', '@P_name'],
+          ['1% Quantile', '@' + lqCol],
+          ['99% Quantile', '@' + hqCol],
+        ];
 
-        proxy_agg_source.data['SNR_C'] = agg_source.data['SNR_C'];
-        proxy_agg_source.data['P_name'] = agg_source.data['P_name'];
-        proxy_agg_source.data['max_curr_value'] = agg_source.data[maxCurrCol] || [];
-        proxy_agg_source.data['min_curr_value'] = agg_source.data[minCurrCol] || [];
-
-        const lqCol = currCol + "_LQ";
-        const hqCol = currCol + "_HQ";
-        proxy_agg_source.data['lq_value'] = agg_source.data[lqCol] || [];
-        proxy_agg_source.data['hq_value'] = agg_source.data[hqCol] || [];
-
-        proxy_source.change.emit();
-        proxy_agg_source.change.emit();
+        source.change.emit();
+        agg_source.change.emit();
 
         // Notify parent to persist selections (without reloading).
         if (window.parent && window.parent !== window) {
@@ -935,8 +957,6 @@ def create_bi_charts(
             axis_select=axis_select,
             source=source,
             agg_source=agg_source,
-            proxy_source=proxy_source,
-            proxy_agg_source=proxy_agg_source,
             curr_plot=p_curr,
             line_plot=line_plot,
             axis_config_json=json.dumps(AXIS_CONFIG),
@@ -956,9 +976,6 @@ def create_bi_charts(
         try {
           window.history.replaceState({}, '', url.toString());
         } catch (e) {}
-
-        const overlay = document.getElementById('biLoadingOverlay');
-        if (overlay) overlay.style.display = 'flex';
 
         // Notify parent to persist selections (without reloading).
         if (window.parent && window.parent !== window) {
@@ -988,51 +1005,14 @@ def create_bi_charts(
             source.data = payload.source || {};
             agg_source.data = payload.agg || {};
 
-            // Refresh proxy sources for current axis.
-            const currCol = config.curr;
-            const maxCurrCol = config.max_curr;
-            const minCurrCol = config.min_curr;
-            const torqueCol = config.torque;
-            const speedCol = config.speed;
-            const folCol = config.fol;
-            const axispCol = config.axisp;
-
             curr_plot.title.text = axis + " - Current Analysis";
             line_plot.title.text = "Aggregate Analysis - " + nextProgram;
             // Program 切换后 SNR_C 因子集合可能变化，必须同步更新 x_range，否则聚合线会错位/缺失。
             if (line_plot.x_range && Array.isArray(agg_source.data['SNR_C'])) {
               line_plot.x_range.factors = agg_source.data['SNR_C'];
             }
-
-            proxy_source.data['sort'] = source.data['sort'];
-            proxy_source.data['Timestamp'] = source.data['Timestamp'];
-            proxy_source.data['SNR_C'] = source.data['SNR_C'];
-            proxy_source.data['P_name'] = source.data['P_name'];
-            proxy_source.data['Time'] = source.data['Time'];
-            proxy_source.data['Tem_1'] = source.data['Tem_1'];
-
-            proxy_source.data['curr_value'] = source.data[currCol] || [];
-            proxy_source.data['max_curr_value'] = source.data[maxCurrCol] || [];
-            proxy_source.data['min_curr_value'] = source.data[minCurrCol] || [];
-            proxy_source.data['torque_value'] = source.data[torqueCol] || [];
-            proxy_source.data['speed_value'] = source.data[speedCol] || [];
-            proxy_source.data['fol_value'] = source.data[folCol] || [];
-            proxy_source.data['axisp_value'] = source.data[axispCol] || [];
-
-            proxy_agg_source.data['SNR_C'] = agg_source.data['SNR_C'];
-            proxy_agg_source.data['P_name'] = agg_source.data['P_name'];
-            proxy_agg_source.data['max_curr_value'] = agg_source.data[maxCurrCol] || [];
-            proxy_agg_source.data['min_curr_value'] = agg_source.data[minCurrCol] || [];
-
-            const lqCol = currCol + "_LQ";
-            const hqCol = currCol + "_HQ";
-            proxy_agg_source.data['lq_value'] = agg_source.data[lqCol] || [];
-            proxy_agg_source.data['hq_value'] = agg_source.data[hqCol] || [];
-
             source.change.emit();
             agg_source.change.emit();
-            proxy_source.change.emit();
-            proxy_agg_source.change.emit();
           })
           .catch((err) => {
             // Fallback: reload the page if dynamic update fails.
@@ -1041,7 +1021,6 @@ def create_bi_charts(
           })
           .finally(() => {
             if (window.__biProgramRequestId !== requestId) return;
-            if (overlay) overlay.style.display = 'none';
           });
         """,
     )
