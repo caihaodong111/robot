@@ -12,12 +12,12 @@ from bokeh.models import (
     Button,
     ColumnDataSource,
     CustomJS,
-    DateRangePicker,
+    Dialog,
     Div,
     HoverTool,
     LabelSet,
     Select,
-    TextInput,
+    Spacer,
 )
 from bokeh.plotting import figure
 from sqlalchemy import create_engine
@@ -25,6 +25,42 @@ from sqlalchemy import create_engine
 from .bokeh_charts import AXIS_CONFIG, get_db_engine
 
 logger = logging.getLogger(__name__)
+
+def _apply_axis_proxy(deft: "pd.DataFrame", q: "pd.DataFrame", axis: str) -> tuple["pd.DataFrame", "pd.DataFrame"]:
+    axis_key = axis if axis in AXIS_CONFIG else "A1"
+    cfg = AXIS_CONFIG[axis_key]
+
+    def _series(df: "pd.DataFrame", col: str):
+        if col in df.columns:
+            return df[col]
+        return pd.Series([None] * len(df), index=df.index)
+
+    curr_col = cfg["curr"]
+    min_curr_col = cfg["min_curr"]
+    max_curr_col = cfg["max_curr"]
+    torque_col = cfg["torque"]
+    speed_col = cfg["speed"]
+    fol_col = cfg["fol"]
+    axisp_col = cfg["axisp"]
+    lq_col = f"{curr_col}_LQ"
+    hq_col = f"{curr_col}_HQ"
+
+    deft = deft.assign(
+        Curr=_series(deft, curr_col),
+        MinCurr=_series(deft, min_curr_col),
+        MaxCurr=_series(deft, max_curr_col),
+        Torque=_series(deft, torque_col),
+        Speed=_series(deft, speed_col),
+        Fol=_series(deft, fol_col),
+        AxisP=_series(deft, axisp_col),
+    )
+    q = q.assign(
+        Curr_LQ=_series(q, lq_col),
+        Curr_HQ=_series(q, hq_col),
+        MinCurr=_series(q, min_curr_col),
+        MaxCurr=_series(q, max_curr_col),
+    )
+    return deft, q
 
 
 def _get_request_arg(doc, key: str) -> str | None:
@@ -279,6 +315,7 @@ def bkapp(doc):
     q, x_tex = _compute_agg(deft) if not deft.empty else (pd.DataFrame(), [])
     logger.info(f"[BI LOAD] Aggregation computed: {len(q)} groups, {len(x_tex)} SNR_C values")
 
+    deft, q = _apply_axis_proxy(deft, q, default_axis)
     source = ColumnDataSource(deft)
     source1 = ColumnDataSource(q)
 
@@ -300,30 +337,20 @@ def bkapp(doc):
     logger.info(f"[BI LOAD] Energy data fetched: {len(energy)} rows")
     energy_source = ColumnDataSource(energy)
 
-    # === widgets（与 Digitaltwin_timefree.py 一致：table/date/button/program/axis）===
-    table_input = TextInput(value=table_name, title="Enter Robot Name:", width=360)
-    date_range_picker = DateRangePicker(
-        title="Select date range",
-        value=(start_time.date(), end_time.date()),
-        min_date=datetime.now().date() - timedelta(days=400),
-        max_date=datetime.now().date() + timedelta(days=1),
-        width=360,
-    )
-    load_button = Button(label="Load data", button_type="success", width=360)
-
-    program_select = Select(title="program_name", value=default_program, options=c_opt, width=360)
+    # === widgets（PROGRAM CYCLE SYNC 页面已在外层提供 robot/日期选择，这里仅保留 program/axis）===
+    program_select = Select(title="program_name", value=default_program, options=c_opt, width=420)
     program_select.name = "program_select"
 
-    axis_select = Select(title="Axis select", value=default_axis, options=list(AXIS_CONFIG.keys()), width=360)
+    axis_select = Select(title="Axis select", value=default_axis, options=list(AXIS_CONFIG.keys()), width=220)
     axis_select.name = "axis_select"
 
     # === 图表（布局和思路与 Digitaltwin_timefree.py 对齐）===
-    hover = HoverTool(tooltips=[("Timestamp", "@Timestamp"), ("Curr", "@Curr_A1"), ("SNR_C", "@SNR_C"), ("P_name", "@P_name")])
+    hover = HoverTool(tooltips=[("Timestamp", "@Timestamp"), ("Current", "@Curr"), ("SNR_C", "@SNR_C"), ("P_name", "@P_name")])
     hover_temp = HoverTool(tooltips=[("Timestamp", "@Timestamp"), ("Tem_1", "@Tem_1"), ("SNR_C", "@SNR_C"), ("P_name", "@P_name")])
-    hover_torque = HoverTool(tooltips=[("Timestamp", "@Timestamp"), ("Torque", "@Torque1"), ("SNR_C", "@SNR_C"), ("P_name", "@P_name")])
-    hover_fol = HoverTool(tooltips=[("Timestamp", "@Timestamp"), ("Fol", "@Fol1"), ("SNR_C", "@SNR_C"), ("P_name", "@P_name")])
-    hover_speed = HoverTool(tooltips=[("Timestamp", "@Timestamp"), ("Speed", "@Speed1"), ("SNR_C", "@SNR_C"), ("P_name", "@P_name")])
-    hover_axisp = HoverTool(tooltips=[("Timestamp", "@Timestamp"), ("AxisP", "@AxisP1"), ("SNR_C", "@SNR_C"), ("P_name", "@P_name")])
+    hover_torque = HoverTool(tooltips=[("Timestamp", "@Timestamp"), ("Torque", "@Torque"), ("SNR_C", "@SNR_C"), ("P_name", "@P_name")])
+    hover_fol = HoverTool(tooltips=[("Timestamp", "@Timestamp"), ("Following Error", "@Fol"), ("SNR_C", "@SNR_C"), ("P_name", "@P_name")])
+    hover_speed = HoverTool(tooltips=[("Timestamp", "@Timestamp"), ("Speed", "@Speed"), ("SNR_C", "@SNR_C"), ("P_name", "@P_name")])
+    hover_axisp = HoverTool(tooltips=[("Timestamp", "@Timestamp"), ("Position", "@AxisP"), ("SNR_C", "@SNR_C"), ("P_name", "@P_name")])
 
     p_curr = figure(
         title=f"{default_axis} - Current Analysis",
@@ -335,9 +362,9 @@ def bkapp(doc):
         output_backend="webgl",
     )
     p_curr.xaxis.visible = False
-    g_min = p_curr.step(x="sort", y="MinCurr_A1", source=source, line_width=2, mode="center", color="red")
-    g_max = p_curr.step(x="sort", y="MAXCurr_A1", source=source, line_width=2, mode="center", color="red")
-    g_curr = p_curr.scatter(x="sort", y="Curr_A1", source=source, size=3, alpha=0.7)
+    g_min = p_curr.step(x="sort", y="MinCurr", source=source, line_width=2, mode="center", color="red")
+    g_max = p_curr.step(x="sort", y="MaxCurr", source=source, line_width=2, mode="center", color="red")
+    g_curr = p_curr.scatter(x="sort", y="Curr", source=source, size=3, alpha=0.7)
     p_curr.add_tools(hover)
 
     p_temp = figure(
@@ -364,7 +391,7 @@ def bkapp(doc):
         output_backend="webgl",
     )
     p_pos.xaxis.visible = False
-    g_pos = p_pos.scatter(x="sort", y="AxisP1", source=source, size=3, color="green")
+    g_pos = p_pos.scatter(x="sort", y="AxisP", source=source, size=3, color="green")
     p_pos.add_tools(hover_axisp)
 
     p_speed = figure(
@@ -377,7 +404,7 @@ def bkapp(doc):
         output_backend="webgl",
     )
     p_speed.xaxis.visible = False
-    g_speed = p_speed.scatter(x="sort", y="Speed1", source=source, size=3, color="blue")
+    g_speed = p_speed.scatter(x="sort", y="Speed", source=source, size=3, color="blue")
     p_speed.add_tools(hover_speed)
 
     p_fol = figure(
@@ -390,7 +417,7 @@ def bkapp(doc):
         output_backend="webgl",
     )
     p_fol.xaxis.visible = False
-    g_fol = p_fol.scatter(x="sort", y="Fol1", source=source, size=3, color="lime")
+    g_fol = p_fol.scatter(x="sort", y="Fol", source=source, size=3, color="lime")
     p_fol.add_tools(hover_fol)
 
     p_torque = figure(
@@ -403,7 +430,7 @@ def bkapp(doc):
         output_backend="webgl",
     )
     p_torque.xaxis.visible = False
-    g_torque = p_torque.scatter(x="sort", y="Torque1", source=source, size=3, color="sienna")
+    g_torque = p_torque.scatter(x="sort", y="Torque", source=source, size=3, color="sienna")
     p_torque.add_tools(hover_torque)
 
     line_plot = figure(
@@ -415,9 +442,9 @@ def bkapp(doc):
         y_range=p_curr.y_range,
         output_backend="webgl",
     )
-    lq_line = line_plot.line(x="SNR_C", y="Curr_A1_LQ", source=source1, line_color="blue", line_width=2, alpha=1)
-    hq_line = line_plot.line(x="SNR_C", y="Curr_A1_HQ", source=source1, line_color="orange", line_width=2, alpha=1)
-    ref_band = Band(base="SNR_C", lower="MinCurr_A1", upper="MAXCurr_A1", source=source1, fill_alpha=0.3, fill_color="green", line_color="red")
+    lq_line = line_plot.line(x="SNR_C", y="Curr_LQ", source=source1, line_color="blue", line_width=2, alpha=1)
+    hq_line = line_plot.line(x="SNR_C", y="Curr_HQ", source=source1, line_color="orange", line_width=2, alpha=1)
+    ref_band = Band(base="SNR_C", lower="MinCurr", upper="MaxCurr", source=source1, fill_alpha=0.3, fill_color="green", line_color="red")
     line_plot.add_layout(ref_band)
     band = BoxAnnotation(top=-90, fill_alpha=0.2, fill_color="#D55E00")
     band2 = BoxAnnotation(bottom=90, fill_alpha=0.2, fill_color="#D55E00")
@@ -426,7 +453,7 @@ def bkapp(doc):
 
     label_setmax = LabelSet(
         x="SNR_C",
-        y="Curr_A1_HQ",
+        y="Curr_HQ",
         text="P_name",
         level="glyph",
         x_offset=3,
@@ -453,21 +480,13 @@ def bkapp(doc):
         energy_plot.line(x="TimeStamp2", y="ENERGY", source=energy_source, line_color="orange", line_width=2)
         energy_plot.line(x="TimeStamp2", y="LOSTENERGY", source=energy_source, line_color="yellow", line_width=2)
 
-    # === 轴切换：CustomJS 改 glyph.y.field（与 Digitaltwin_timefree.py 对齐）===
+    # === 轴切换：仅更新代理列（避免 JS 修改 glyph.field 在部分版本/后端下不生效）===
     axis_callback = CustomJS(
         args=dict(
             axis_select=axis_select,
-            g_min=g_min,
-            g_max=g_max,
-            g_curr=g_curr,
-            g_pos=g_pos,
-            g_speed=g_speed,
-            g_fol=g_fol,
-            g_torque=g_torque,
-            lq_line=lq_line,
-            hq_line=hq_line,
-            ref_band=ref_band,
-            label_setmax=label_setmax,
+            source=source,
+            source1=source1,
+            p_curr=p_curr,
             axis_config_json=json.dumps(AXIS_CONFIG),
             hover=hover,
             hover_torque=hover_torque,
@@ -490,24 +509,31 @@ def bkapp(doc):
         const lqCol = currCol + "_LQ";
         const hqCol = currCol + "_HQ";
 
-        g_min.glyph.y.field = minCurrCol;
-        g_max.glyph.y.field = maxCurrCol;
-        g_curr.glyph.y.field = currCol;
-        g_pos.glyph.y.field = axispCol;
-        g_speed.glyph.y.field = speedCol;
-        g_fol.glyph.y.field = folCol;
-        g_torque.glyph.y.field = torqueCol;
-        lq_line.glyph.y.field = lqCol;
-        hq_line.glyph.y.field = hqCol;
-        ref_band.lower.field = minCurrCol;
-        ref_band.upper.field = maxCurrCol;
-        label_setmax.y.field = hqCol;
+        const s = source.data || {};
+        s['Curr'] = s[currCol] || [];
+        s['MinCurr'] = s[minCurrCol] || [];
+        s['MaxCurr'] = s[maxCurrCol] || [];
+        s['Torque'] = s[torqueCol] || [];
+        s['Speed'] = s[speedCol] || [];
+        s['Fol'] = s[folCol] || [];
+        s['AxisP'] = s[axispCol] || [];
 
-        hover.tooltips = [['Timestamp','@Timestamp'],[currCol,'@'+currCol],['SNR_C','@SNR_C'],['P_name','@P_name']];
-        hover_torque.tooltips = [['Timestamp','@Timestamp'],[torqueCol,'@'+torqueCol],['SNR_C','@SNR_C'],['P_name','@P_name']];
-        hover_fol.tooltips = [['Timestamp','@Timestamp'],[folCol,'@'+folCol],['SNR_C','@SNR_C'],['P_name','@P_name']];
-        hover_speed.tooltips = [['Timestamp','@Timestamp'],[speedCol,'@'+speedCol],['SNR_C','@SNR_C'],['P_name','@P_name']];
-        hover_axisp.tooltips = [['Timestamp','@Timestamp'],[axispCol,'@'+axispCol],['SNR_C','@SNR_C'],['P_name','@P_name']];
+        const a = source1.data || {};
+        a['Curr_LQ'] = a[lqCol] || [];
+        a['Curr_HQ'] = a[hqCol] || [];
+        a['MinCurr'] = a[minCurrCol] || [];
+        a['MaxCurr'] = a[maxCurrCol] || [];
+
+        p_curr.title.text = axis + " - Current Analysis";
+
+        hover.tooltips = [['Timestamp','@Timestamp'],['Current (' + axis + ')','@Curr'],['SNR_C','@SNR_C'],['P_name','@P_name']];
+        hover_torque.tooltips = [['Timestamp','@Timestamp'],['Torque (' + axis + ')','@Torque'],['SNR_C','@SNR_C'],['P_name','@P_name']];
+        hover_fol.tooltips = [['Timestamp','@Timestamp'],['Following Error (' + axis + ')','@Fol'],['SNR_C','@SNR_C'],['P_name','@P_name']];
+        hover_speed.tooltips = [['Timestamp','@Timestamp'],['Speed (' + axis + ')','@Speed'],['SNR_C','@SNR_C'],['P_name','@P_name']];
+        hover_axisp.tooltips = [['Timestamp','@Timestamp'],['Position (' + axis + ')','@AxisP'],['SNR_C','@SNR_C'],['P_name','@P_name']];
+
+        source.change.emit();
+        source1.change.emit();
         """,
     )
     axis_select.js_on_change("value", axis_callback)
@@ -519,51 +545,49 @@ def bkapp(doc):
             return
         next_deft = df[df["Name_C"] == new].sort_values(by=["SNR_C", "Time"])
         next_deft["sort"] = range(1, len(next_deft) + 1)
-        source.data = ColumnDataSource.from_df(next_deft)
 
         next_q, next_x = _compute_agg(next_deft) if not next_deft.empty else (pd.DataFrame(), [])
+        # 依据当前 axis 生成代理列，保持轴切换纯前端更新
+        next_deft, next_q = _apply_axis_proxy(next_deft, next_q, axis_select.value)
+
+        source.data = ColumnDataSource.from_df(next_deft)
         source1.data = ColumnDataSource.from_df(next_q) if not next_q.empty else {}
         line_plot.x_range.factors = [str(x) for x in next_x]
         line_plot.title.text = new
 
     program_select.on_change("value", _update_program)
 
-    # === load data：Python 侧重新拉取 df/energy 并刷新（与 Digitaltwin_timefree.py 对齐）===
-    def _load_data():
-        nonlocal df, c_opt
-        table = _validate_table_name(table_input.value)
-        start_d, end_d = date_range_picker.value
-        start_dt = pd.to_datetime(start_d).to_pydatetime()
-        end_dt = pd.to_datetime(str(end_d) + " 23:59:59").to_pydatetime()
-
-        df_next = fetch_data_from_mysql(table, start_dt, end_dt, engine, time_column="Timestamp")
-        df_next = _preprocess_df(df_next)
-        df = df_next
-
-        c_opt = df["Name_C"].unique().tolist() if not df.empty and "Name_C" in df.columns else []
-        program_select.options = c_opt
-        if c_opt:
-            program_select.value = c_opt[0]
-
-        try:
-            energy_q = (
-                "SELECT TimeStamp2,ENERGY,LOSTENERGY FROM energy "
-                f"WHERE RobotName= '{table}' and TimeStamp2 BETWEEN '{start_dt.strftime('%Y-%m-%d %H:%M:%S')}' AND '{end_dt.strftime('%Y-%m-%d %H:%M:%S')}';"
-            )
-            e = pd.read_sql(energy_q, engine)
-        except Exception:
-            e = pd.DataFrame()
-        if not e.empty:
-            e["TimeStamp2"] = pd.to_datetime(e["TimeStamp2"]) + timedelta(hours=8)
-            e["ENERGY"] = e["ENERGY"].astype(float)
-            e["LOSTENERGY"] = e["LOSTENERGY"].astype(float)
-            e = e.sort_values(by="TimeStamp2", ascending=True)
-        energy_source.data = ColumnDataSource.from_df(e) if not e.empty else {}
-
-    load_button.on_click(_load_data)
-
     logger.info(f"[BI LOAD] Creating charts and layout...")
-    widgets = column(table_input, date_range_picker, load_button, program_select, axis_select, energy_plot, width=400)
+    energy_dialog = Dialog(
+        title="Energy",
+        visible=False,
+        close_action="hide",
+        content=column(energy_plot, sizing_mode="stretch_width", width=980),
+        styles={"width": "min(1100px, 92vw)"},
+    )
+
+    energy_button = Button(label="Energy", button_type="primary", width=140, height=32)
+
+    energy_button_stack = column(Spacer(height=19), energy_button, width=140)
+
+    def _open_energy():
+        energy_dialog.visible = True
+
+    energy_button.on_click(_open_energy)
+
+    top_controls = row(
+        program_select,
+        axis_select,
+        energy_button_stack,
+        sizing_mode="stretch_width",
+        styles={
+            "justify-content": "center",
+            "align-items": "flex-start",
+            "gap": "12px",
+            "padding": "6px 0",
+        },
+    )
     charts = column(line_plot, p_curr, p_temp, p_pos, p_speed, p_fol, p_torque, sizing_mode="stretch_width")
-    doc.add_root(row(charts, widgets, sizing_mode="stretch_width"))
+    doc.add_root(column(top_controls, charts, sizing_mode="stretch_width"))
+    doc.add_root(energy_dialog)
     logger.info(f"[BI LOAD COMPLETE] BI charts ready for table={table_name}, program={default_program}, axis={default_axis}")

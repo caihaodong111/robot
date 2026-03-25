@@ -541,6 +541,7 @@ def archive_high_risk_robots() -> dict:
         归档结果统计
     """
     from .models import RobotComponent, SystemConfig
+    from django.db.utils import DatabaseError
 
     # 获取上次记录的高风险机器人列表
     last_high_risk_robots = SystemConfig.get('last_high_risk_robots', '[]')
@@ -568,13 +569,26 @@ def archive_high_risk_robots() -> dict:
     components = RobotComponent.objects.filter(robot__in=robot_list)
     archived_count = 0
 
-    for component in components:
-        create_high_risk_snapshot(component)
-        archived_count += 1
+    try:
+        for component in components:
+            create_high_risk_snapshot(component)
+            archived_count += 1
+    except DatabaseError as exc:
+        logger.exception("Failed to archive high risk snapshots")
+        log_print(f"归档高风险快照失败: {exc}")
+        log_print("提示：这通常是数据库表结构未迁移导致（例如 _robot_high_risk_snapshots 缺列/缺表），请执行 migrate 后重试。")
+        return {
+            "success": False,
+            "archived_count": archived_count,
+            "error": str(exc),
+        }
 
     log_print(f"已归档 {archived_count} 条高风险机器人数据到历史快照表")
 
-    return {'archived_count': archived_count}
+    return {
+        "success": True,
+        "archived_count": archived_count,
+    }
 
 
 def save_current_high_risk_robots() -> None:
@@ -867,6 +881,8 @@ def import_robot_components_csv(
     """
     from .models import RobotComponent, RobotGroup, RefreshLog
 
+    warnings = []
+
     # 获取文件路径（支持多文件）
     log_print("开始导入流程...")
     sync_weekly_result_path_config()
@@ -921,7 +937,12 @@ def import_robot_components_csv(
     # 步骤0：先归档上次的高风险数据（必须在导入新数据之前执行！）
     log_print("开始归档上次的高风险数据...")
     archive_result = archive_high_risk_robots()
-    if archive_result.get('archived_count', 0) > 0:
+    if not archive_result.get("success", True):
+        warnings.append({
+            "stage": "archive_high_risk",
+            "error": archive_result.get("error") or "unknown error",
+        })
+    elif archive_result.get('archived_count', 0) > 0:
         log_print(f"已归档 {archive_result['archived_count']} 条高风险数据到历史快照表")
 
     # 全局统计信息（累加所有文件）
@@ -1265,4 +1286,5 @@ def import_robot_components_csv(
         'skipped_no_robot': total_skipped,
         'total_rows': total_records_created + total_records_updated + total_skipped,
         'date': first_week_start.isoformat() if first_week_start else None,
+        'warnings': warnings,
     }

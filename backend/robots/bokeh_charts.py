@@ -540,6 +540,23 @@ def create_bi_charts(
     x_tex = prog_data["SNR_C"].sort_values(ascending=True).unique().astype(str)
     Q["SNR_C"] = x_tex
 
+    # 为轴切换准备固定代理列（避免在 JS 里修改 glyph.field，兼容不同 BokehJS/渲染后端）
+    prog_data = prog_data.assign(
+        Curr=prog_data[curr_col],
+        MinCurr=prog_data[min_curr_col],
+        MaxCurr=prog_data[max_curr_col],
+        Torque=prog_data[torque_col],
+        Speed=prog_data[speed_col],
+        Fol=prog_data[fol_col],
+        AxisP=prog_data[axisp_col],
+    )
+    Q = Q.assign(
+        Curr_LQ=Q[lq_col],
+        Curr_HQ=Q[hq_col],
+        MinCurr=Q[min_curr_col],
+        MaxCurr=Q[max_curr_col],
+    )
+
     source = ColumnDataSource(prog_data)
     agg_source = ColumnDataSource(Q)
     logger.info("程序数据聚合: %.3fs (program=%s)", time.perf_counter() - agg_start, default_program)
@@ -591,10 +608,10 @@ def create_bi_charts(
     fol_col = default_config['fol']
     axisp_col = default_config['axisp']
 
-    # Hover工具定义 - 使用动态列名显示
+    # Hover 工具：使用固定代理列，轴切换时仅替换代理列数据
     hover = HoverTool(tooltips=[
         ('Timestamp', '@Timestamp'),
-        ('Current', f'@{curr_col}'),
+        ('Current', '@Curr'),
         ('SNR_C', '@SNR_C'),
         ('P_name', '@P_name')
     ])
@@ -608,28 +625,28 @@ def create_bi_charts(
 
     hover_torque = HoverTool(tooltips=[
         ('Timestamp', '@Timestamp'),
-        ('Torque', f'@{torque_col}'),
+        ('Torque', '@Torque'),
         ('SNR_C', '@SNR_C'),
         ('P_name', '@P_name')
     ])
 
     hover_fol = HoverTool(tooltips=[
         ('Timestamp', '@Timestamp'),
-        ('Following Error', f'@{fol_col}'),
+        ('Following Error', '@Fol'),
         ('SNR_C', '@SNR_C'),
         ('P_name', '@P_name')
     ])
 
     hover_speed = HoverTool(tooltips=[
         ('Timestamp', '@Timestamp'),
-        ('Speed', f'@{speed_col}'),
+        ('Speed', '@Speed'),
         ('SNR_C', '@SNR_C'),
         ('P_name', '@P_name')
     ])
 
     hover_axisp = HoverTool(tooltips=[
         ('Timestamp', '@Timestamp'),
-        ('Position', f'@{axisp_col}'),
+        ('Position', '@AxisP'),
         ('SNR_C', '@SNR_C'),
         ('P_name', '@P_name')
     ])
@@ -654,9 +671,9 @@ def create_bi_charts(
         margin=(5, 10, 5, 10),
         output_backend='webgl'
     )
-    g_curr_min = p_curr.step(x='sort', y=min_curr_col, source=source, line_width=2, mode="center", color='red', legend_label='Min Current')
-    g_curr_max = p_curr.step(x='sort', y=max_curr_col, source=source, line_width=2, mode="center", color='red', legend_label='Max Current')
-    g_curr = p_curr.scatter(x='sort', y=curr_col, source=source, size=2, alpha=0.6, color='navy', legend_label='Real-time Current')
+    g_curr_min = p_curr.step(x='sort', y='MinCurr', source=source, line_width=2, mode="center", color='red', legend_label='Min Current')
+    g_curr_max = p_curr.step(x='sort', y='MaxCurr', source=source, line_width=2, mode="center", color='red', legend_label='Max Current')
+    g_curr = p_curr.scatter(x='sort', y='Curr', source=source, size=2, alpha=0.6, color='navy', legend_label='Real-time Current')
     p_curr.legend.location = 'top_right'
     p_curr.legend.click_policy = "hide"
     p_curr.xaxis.visible = False
@@ -697,7 +714,7 @@ def create_bi_charts(
         margin=(5, 10, 5, 10),
         output_backend='webgl'
     )
-    g_pos = p_pos.scatter(x='sort', y=axisp_col, source=source, size=2, color='green', legend_label='Position')
+    g_pos = p_pos.scatter(x='sort', y='AxisP', source=source, size=2, color='green', legend_label='Position')
     p_pos.legend.location = 'top_right'
     p_pos.legend.click_policy = "hide"
     p_pos.xaxis.visible = False
@@ -717,7 +734,7 @@ def create_bi_charts(
         margin=(5, 10, 5, 10),
         output_backend='webgl'
     )
-    g_speed = p_speed.scatter(x='sort', y=speed_col, source=source, size=2, color='blue', legend_label='Speed')
+    g_speed = p_speed.scatter(x='sort', y='Speed', source=source, size=2, color='blue', legend_label='Speed')
     p_speed.legend.location = 'top_right'
     p_speed.legend.click_policy = "hide"
     p_speed.xaxis.visible = False
@@ -737,7 +754,7 @@ def create_bi_charts(
         margin=(5, 10, 5, 10),
         output_backend='webgl'
     )
-    g_fol = p_fol.scatter(x='sort', y=fol_col, source=source, size=2, color='lime', legend_label='Following Error')
+    g_fol = p_fol.scatter(x='sort', y='Fol', source=source, size=2, color='lime', legend_label='Following Error')
     p_fol.legend.location = 'top_right'
     p_fol.legend.click_policy = "hide"
     p_fol.xaxis.visible = False
@@ -757,7 +774,7 @@ def create_bi_charts(
         margin=(5, 10, 5, 10),
         output_backend='webgl'
     )
-    g_torque = p_torque.scatter(x='sort', y=torque_col, source=source, size=2, color='sienna', legend_label='Torque')
+    g_torque = p_torque.scatter(x='sort', y='Torque', source=source, size=2, color='sienna', legend_label='Torque')
     p_torque.legend.location = 'top_right'
     p_torque.legend.click_policy = "hide"
     p_torque.xaxis.visible = False
@@ -784,21 +801,21 @@ def create_bi_charts(
         tooltips=[
             ("SNR_C", "@SNR_C"),
             ("P_name", "@P_name"),
-            ("1% Quantile", f"@{lq_col}"),
-            ("99% Quantile", f"@{hq_col}"),
+            ("1% Quantile", "@Curr_LQ"),
+            ("99% Quantile", "@Curr_HQ"),
         ]
     )
     line_plot.add_tools(hover_line)
 
-    g_lq = line_plot.line(x="SNR_C", y=lq_col, source=agg_source, line_color="blue",
+    g_lq = line_plot.line(x="SNR_C", y="Curr_LQ", source=agg_source, line_color="blue",
                           line_width=2, legend_label="1% Quantile", alpha=1)
-    g_hq = line_plot.line(x="SNR_C", y=hq_col, source=agg_source, line_color="orange",
+    g_hq = line_plot.line(x="SNR_C", y="Curr_HQ", source=agg_source, line_color="orange",
                           line_width=2, legend_label="99% Quantile", alpha=1)
-    l1 = Band(base="SNR_C", lower=min_curr_col, upper=max_curr_col, source=agg_source,
+    l1 = Band(base="SNR_C", lower="MinCurr", upper="MaxCurr", source=agg_source,
               fill_alpha=0.3, fill_color="green", line_color="red")
     line_plot.add_layout(l1)
 
-    label_setmax = LabelSet(x="SNR_C", y=hq_col, text='P_name', level='glyph',
+    label_setmax = LabelSet(x="SNR_C", y="Curr_HQ", text='P_name', level='glyph',
                             x_offset=3, y_offset=3, source=agg_source,
                             text_font_size='7pt', angle=0, text_font_style='bold')
     line_plot.add_layout(label_setmax)
@@ -851,17 +868,6 @@ def create_bi_charts(
             agg_source=agg_source,
             curr_plot=p_curr,
             line_plot=line_plot,
-            g_curr_min=g_curr_min,
-            g_curr_max=g_curr_max,
-            g_curr=g_curr,
-            g_pos=g_pos,
-            g_speed=g_speed,
-            g_fol=g_fol,
-            g_torque=g_torque,
-            g_lq=g_lq,
-            g_hq=g_hq,
-            band=l1,
-            label_setmax=label_setmax,
             hover=hover,
             hover_torque=hover_torque,
             hover_fol=hover_fol,
@@ -887,54 +893,57 @@ def create_bi_charts(
 
         curr_plot.title.text = axis + " - Current Analysis";
 
-        g_curr_min.glyph.y.field = minCurrCol;
-        g_curr_max.glyph.y.field = maxCurrCol;
-        g_curr.glyph.y.field = currCol;
-        g_pos.glyph.y.field = axispCol;
-        g_speed.glyph.y.field = speedCol;
-        g_fol.glyph.y.field = folCol;
-        g_torque.glyph.y.field = torqueCol;
-        g_lq.glyph.y.field = lqCol;
-        g_hq.glyph.y.field = hqCol;
-        band.lower.field = minCurrCol;
-        band.upper.field = maxCurrCol;
-        label_setmax.y.field = hqCol;
+        // Update proxy columns so glyphs keep using fixed fields (Curr/MinCurr/MaxCurr/...)
+        const s = source.data || {};
+        s['Curr'] = s[currCol] || [];
+        s['MinCurr'] = s[minCurrCol] || [];
+        s['MaxCurr'] = s[maxCurrCol] || [];
+        s['Torque'] = s[torqueCol] || [];
+        s['Speed'] = s[speedCol] || [];
+        s['Fol'] = s[folCol] || [];
+        s['AxisP'] = s[axispCol] || [];
+
+        const a = agg_source.data || {};
+        a['Curr_LQ'] = a[lqCol] || [];
+        a['Curr_HQ'] = a[hqCol] || [];
+        a['MinCurr'] = a[minCurrCol] || [];
+        a['MaxCurr'] = a[maxCurrCol] || [];
 
         hover.tooltips = [
           ['Timestamp', '@Timestamp'],
-          ['Current', '@' + currCol],
+          ['Current (' + axis + ')', '@Curr'],
           ['SNR_C', '@SNR_C'],
           ['P_name', '@P_name'],
         ];
         hover_torque.tooltips = [
           ['Timestamp', '@Timestamp'],
-          ['Torque', '@' + torqueCol],
+          ['Torque (' + axis + ')', '@Torque'],
           ['SNR_C', '@SNR_C'],
           ['P_name', '@P_name'],
         ];
         hover_fol.tooltips = [
           ['Timestamp', '@Timestamp'],
-          ['Following Error', '@' + folCol],
+          ['Following Error (' + axis + ')', '@Fol'],
           ['SNR_C', '@SNR_C'],
           ['P_name', '@P_name'],
         ];
         hover_speed.tooltips = [
           ['Timestamp', '@Timestamp'],
-          ['Speed', '@' + speedCol],
+          ['Speed (' + axis + ')', '@Speed'],
           ['SNR_C', '@SNR_C'],
           ['P_name', '@P_name'],
         ];
         hover_axisp.tooltips = [
           ['Timestamp', '@Timestamp'],
-          ['Position', '@' + axispCol],
+          ['Position (' + axis + ')', '@AxisP'],
           ['SNR_C', '@SNR_C'],
           ['P_name', '@P_name'],
         ];
         hover_line.tooltips = [
           ['SNR_C', '@SNR_C'],
           ['P_name', '@P_name'],
-          ['1% Quantile', '@' + lqCol],
-          ['99% Quantile', '@' + hqCol],
+          ['1% Quantile (' + axis + ')', '@Curr_LQ'],
+          ['99% Quantile (' + axis + ')', '@Curr_HQ'],
         ];
 
         source.change.emit();
@@ -1004,6 +1013,32 @@ def create_bi_charts(
             // Replace backing sources (used for axis switching).
             source.data = payload.source || {};
             agg_source.data = payload.agg || {};
+
+            // Rebuild proxy columns for current axis selection.
+            const currCol = config.curr;
+            const maxCurrCol = config.max_curr;
+            const minCurrCol = config.min_curr;
+            const torqueCol = config.torque;
+            const speedCol = config.speed;
+            const folCol = config.fol;
+            const axispCol = config.axisp;
+            const lqCol = currCol + "_LQ";
+            const hqCol = currCol + "_HQ";
+
+            const s = source.data || {};
+            s['Curr'] = s[currCol] || [];
+            s['MinCurr'] = s[minCurrCol] || [];
+            s['MaxCurr'] = s[maxCurrCol] || [];
+            s['Torque'] = s[torqueCol] || [];
+            s['Speed'] = s[speedCol] || [];
+            s['Fol'] = s[folCol] || [];
+            s['AxisP'] = s[axispCol] || [];
+
+            const a = agg_source.data || {};
+            a['Curr_LQ'] = a[lqCol] || [];
+            a['Curr_HQ'] = a[hqCol] || [];
+            a['MinCurr'] = a[minCurrCol] || [];
+            a['MaxCurr'] = a[maxCurrCol] || [];
 
             curr_plot.title.text = axis + " - Current Analysis";
             line_plot.title.text = "Aggregate Analysis - " + nextProgram;
