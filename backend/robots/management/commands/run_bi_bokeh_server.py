@@ -7,6 +7,13 @@ from django.core.management.base import BaseCommand
 class Command(BaseCommand):
     help = "Run BI Bokeh Server (Digitaltwin_timefree.py style)."
 
+    def _normalize_origin(self, value: str) -> str | None:
+        value = (value or "").strip()
+        if not value:
+            return None
+        value = value.replace("http://", "").replace("https://", "")
+        return value.strip().strip("/")
+
     def add_arguments(self, parser):
         parser.add_argument("--port", type=int, default=int(os.getenv("BI_BOKEH_PORT", "5008")))
         parser.add_argument("--address", type=str, default=os.getenv("BI_BOKEH_ADDRESS", "0.0.0.0"))
@@ -81,11 +88,22 @@ class Command(BaseCommand):
         port = options["port"]
         address = options["address"]
 
-        allow_origins = options["allow_origins"] or []
+        allow_origins = [v for v in (self._normalize_origin(x) for x in (options["allow_origins"] or [])) if v]
         env_origins = (os.getenv("BI_BOKEH_ALLOW_ORIGINS") or "").strip()
         if env_origins:
-            allow_origins.extend([v.strip() for v in env_origins.split(",") if v.strip()])
+            allow_origins.extend([v for v in (self._normalize_origin(x) for x in env_origins.split(",")) if v])
         if not allow_origins:
+            settings_hosts = getattr(settings, "ALLOWED_HOSTS", []) or []
+            extra_hosts = [
+                h
+                for h in (self._normalize_origin(x) for x in settings_hosts)
+                if h and h not in {"*", "localhost", "127.0.0.1", "0.0.0.0"}
+            ]
+            common_ports = [8001, 8000, 8080, 5173, 5174]
+            for host in extra_hosts:
+                for p in common_ports:
+                    allow_origins.append(f"{host}:{p}")
+
             # sensible defaults for local dev / common LAN IPs
             allow_origins = [
                 # local
@@ -93,6 +111,8 @@ class Command(BaseCommand):
                 "127.0.0.1:8001",
                 "localhost:5173",
                 "127.0.0.1:5173",
+                "localhost:5174",
+                "127.0.0.1:5174",
                 # existing LAN
                 "172.20.10.3:8001",
                 "172.20.10.3:5173",
@@ -106,6 +126,7 @@ class Command(BaseCommand):
                 "127.0.0.1:8080",
             ]
 
+        allow_origins = sorted({v for v in allow_origins if v})
         server = Server({"/": bkapp}, port=port, address=address, allow_websocket_origin=allow_origins)
         server.start()
         self.stdout.write(self.style.SUCCESS(f"BI Bokeh Server running on http://{address}:{port}/"))
