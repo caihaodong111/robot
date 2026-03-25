@@ -190,7 +190,14 @@ def bkapp(doc):
     # === 数据库连接（与项目一致：SG_DB_*）===
     db_config = get_db_engine()
     engine = create_engine(
-        f"mysql+pymysql://{db_config['user']}:{db_config['password']}@{db_config['host']}:{db_config['port']}/{db_config['database']}"
+        f"mysql+pymysql://{db_config['user']}:{db_config['password']}@{db_config['host']}:{db_config['port']}/{db_config['database']}",
+        pool_recycle=3600,  # 1小时回收连接，避免 MySQL wait_timeout 断开
+        pool_pre_ping=True,  # 使用连接前检查有效性
+        connect_args={
+            "connect_timeout": 60,  # 连接超时 60 秒
+            "read_timeout": 300,    # 读超时 5 分钟
+            "write_timeout": 300,   # 写超时 5 分钟
+        }
     )
 
     # === 时间范围（与 Digitaltwin_timefree.py 一致：默认最近7天；日期入参覆盖整天）===
@@ -198,6 +205,27 @@ def bkapp(doc):
     if not start_time or not end_time:
         end_time = datetime.now()
         start_time = end_time - timedelta(days=7)
+
+    # === 限制时间范围，避免查询超时 ===
+    max_days = 90
+    days_diff = (end_time - start_time).days
+    if days_diff > max_days:
+        logger.warning(f"[BI LOAD] Time range too large: {days_diff} days > {max_days} days")
+        doc.add_root(
+            column(
+                Div(
+                    text=(
+                        "<div style='padding:16px;font-size:14px;color:#e74c3c;'>"
+                        "<b>时间范围过大</b><br/>"
+                        f"当前选择: <code>{days_diff}</code> 天<br/>"
+                        f"最大支持: <code>{max_days}</code> 天<br/>"
+                        f"请缩小时间范围后重试"
+                        "</div>"
+                    )
+                )
+            )
+        )
+        return doc
 
     # === 首次拉取数据 ===
     logger.info(f"[BI LOAD] Fetching data from database...")

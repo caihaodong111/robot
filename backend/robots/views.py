@@ -810,7 +810,15 @@ def bi_view(request):
     )
     if not bokeh_server_url:
         # 自动推导：与当前请求相同 host，不同端口（默认 5008）
+        # 优先使用原始请求头中的 Host（处理代理情况）
         request_host = (request.get_host() or "").split(":", 1)[0].strip()
+
+        # 如果是通过代理（如 127.0.0.1），尝试从 X-Forwarded-Host 获取真实主机
+        if request_host in ("127.0.0.1", "localhost"):
+            forwarded_host = request.META.get("HTTP_X_FORWARDED_HOST") or request.META.get("HTTP_X_REAL_IP")
+            if forwarded_host:
+                request_host = forwarded_host.split(":", 1)[0].strip()
+
         bi_bokeh_port = int(getattr(settings, "BI_BOKEH_SERVER_PORT", 5008))
         scheme = "https" if request.is_secure() else "http"
         if request_host:
