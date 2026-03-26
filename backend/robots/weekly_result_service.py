@@ -576,12 +576,9 @@ def archive_high_risk_robots() -> dict:
     except DatabaseError as exc:
         logger.exception("Failed to archive high risk snapshots")
         log_print(f"归档高风险快照失败: {exc}")
-        log_print("提示：这通常是数据库表结构未迁移导致（例如 _robot_high_risk_snapshots 缺列/缺表），请执行 migrate 后重试。")
-        return {
-            "success": False,
-            "archived_count": archived_count,
-            "error": str(exc),
-        }
+        log_print("提示：这通常是数据库表结构未迁移导致（例如 _robot_high_risk_snapshots 缺列/缺表）或字符编码问题，请检查后重试。")
+        # 直接抛出异常，阻止继续同步
+        raise
 
     log_print(f"已归档 {archived_count} 条高风险机器人数据到历史快照表")
 
