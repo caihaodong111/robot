@@ -35,9 +35,8 @@ from .gripper_check_state import (
     set_gripper_check_status,
 )
 from .error_trend_chart import generate_trend_chart, chart_exists
-from celery.result import AsyncResult
-from .tasks import gripper_check_task
 import json
+import threading
 import time
 import uuid
 
@@ -1007,10 +1006,31 @@ class GripperCheckViewSet(viewsets.GenericViewSet):
     def get_queryset(self):
         return RobotComponent.objects.all()
 
+    def _run_gripper_check_background(self, config_data, task_id):
+        """
+        后台线程执行诊断任务
+        """
+        from .gripper_service import check_gripper_from_config
+
+        try:
+            set_gripper_check_status("running", task_id=task_id)
+
+            result = check_gripper_from_config(config_data)
+
+            # 缓存结果
+            set_gripper_check_latest(result)
+            set_gripper_check_status("idle", task_id=task_id)
+
+            logger.info(f"Gripper check task {task_id} completed successfully")
+
+        except Exception as e:
+            logger.exception(f"Gripper check task {task_id} failed: {e}")
+            set_gripper_check_status("failed", error=str(e), task_id=task_id)
+
     @action(detail=False, methods=['post'])
     def execute(self, request):
         """
-        执行关键轨迹检查
+        执行关键轨迹检查（后台线程执行）
 
         请求体:
         {
@@ -1022,10 +1042,9 @@ class GripperCheckViewSet(viewsets.GenericViewSet):
 
         返回:
         {
-            "success": true,
-            "count": 100,
-            "data": [...],
-            "columns": [...]
+            "queued": true,
+            "task_id": "xxx",
+            "status": "running"
         }
         """
         serializer = GripperCheckSerializer(data=request.data)
@@ -1036,7 +1055,7 @@ class GripperCheckViewSet(viewsets.GenericViewSet):
                 'details': serializer.errors
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        # 若已有任务在运行，则直接返回状态，避免重复触发重计算
+        # 检查是否已有任务在运行
         current_status = get_gripper_check_status() or {}
         if (current_status.get("status") or "").lower() == "running":
             return Response(
@@ -1044,16 +1063,25 @@ class GripperCheckViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_200_OK,
             )
 
-        # celery 任务参数建议为可序列化对象（ISO 时间字符串）
-        task_payload = dict(serializer.validated_data)
-        for key in ("start_time", "end_time"):
-            if hasattr(task_payload.get(key), "isoformat"):
-                task_payload[key] = task_payload[key].isoformat()
+        # 生成任务ID
+        task_id = uuid.uuid4().hex
 
-        async_result = gripper_check_task.delay(task_payload)
-        set_gripper_check_status("running", task_id=async_result.id)
+        # 获取配置数据
+        config_data = dict(serializer.validated_data)
+
+        # 启动后台线程执行任务
+        thread = threading.Thread(
+            target=self._run_gripper_check_background,
+            args=(config_data, task_id),
+            daemon=True
+        )
+        thread.start()
+
+        # 立即返回任务ID
+        set_gripper_check_status("running", task_id=task_id)
+
         return Response(
-            {"success": True, "queued": True, "task_id": async_result.id, "status": "running"},
+            {"success": True, "queued": True, "task_id": task_id, "status": "running"},
             status=status.HTTP_202_ACCEPTED,
         )
 
@@ -1139,53 +1167,64 @@ class GripperCheckViewSet(viewsets.GenericViewSet):
         })
 
 
-@api_view(["GET"])
+@require_GET
+@xframe_options_exempt
 def gripper_check_events(request):
     """
-    Server-Sent Events: 推送关键轨迹检查状态与最终结果，避免前端轮询。
-
-    Query:
-        task_id: Celery task id（可选，但推荐传）
+    Server-Sent Events: 推送关键轨迹检查状态与最终结果
     """
+    import json as json_module
+
     task_id = (request.GET.get("task_id") or "").strip()
 
-    def stream():
-        last_status = None
-        started_at = time.time()
-        timeout_seconds = 60 * 60  # 最长 1 小时
-
-        while True:
+    def stream_generator():
+        try:
+            # 立即发送初始状态
             status_payload = get_gripper_check_status() or {"status": "idle"}
-            status_value = (status_payload.get("status") or "idle").lower()
+            yield f"event: status\ndata: {json_module.dumps(status_payload, ensure_ascii=False)}\n\n"
 
-            # 若提供 task_id，则尽量等待对应任务结束；否则直接推当前状态
-            if task_id and status_payload.get("task_id") and status_payload.get("task_id") != task_id:
-                # 当前缓存是别的任务：若它处于 running，说明目标任务已被覆盖/不存在
-                if status_value == "running":
-                    yield f"event: status\ndata: {json.dumps(status_payload, ensure_ascii=False)}\n\n"
-                    yield "event: error\ndata: {\"error\":\"task_id_mismatch\"}\n\n"
-                    return
+            last_status = status_payload.get("status", "idle").lower()
+            started_at = time.time()
+            timeout_seconds = 60 * 60  # 1小时超时
 
-            if status_value != last_status:
-                yield f"event: status\ndata: {json.dumps(status_payload, ensure_ascii=False)}\n\n"
-                last_status = status_value
+            while True:
+                try:
+                    current_status = get_gripper_check_status() or {"status": "idle"}
+                    current_value = current_status.get("status", "idle").lower()
 
-            if status_value in ("idle", "failed"):
-                latest = get_gripper_check_latest()
-                if latest:
-                    yield f"event: result\ndata: {json.dumps(latest, ensure_ascii=False)}\n\n"
-                return
+                    # 发送状态更新
+                    if current_value != last_status:
+                        yield f"event: status\ndata: {json_module.dumps(current_status, ensure_ascii=False)}\n\n"
+                        last_status = current_value
 
-            if time.time() - started_at > timeout_seconds:
-                yield "event: error\ndata: {\"error\":\"timeout\"}\n\n"
-                return
+                    # 检查是否完成
+                    if current_value in ("idle", "failed"):
+                        if current_value == "idle":
+                            latest = get_gripper_check_latest()
+                            if latest:
+                                yield f"event: result\ndata: {json_module.dumps(latest, ensure_ascii=False)}\n\n"
+                        break
 
-            time.sleep(1.5)
+                    # 超时检查
+                    if time.time() - started_at > timeout_seconds:
+                        yield f"event: error\ndata: {json_module.dumps({'error': 'timeout'}, ensure_ascii=False)}\n\n"
+                        break
 
-    resp = StreamingHttpResponse(stream(), content_type="text/event-stream")
-    resp["Cache-Control"] = "no-cache"
-    resp["X-Accel-Buffering"] = "no"
-    return resp
+                    time.sleep(1)
+
+                except Exception as e:
+                    logger.error(f"Error in SSE loop: {e}")
+                    yield f"event: error\ndata: {json_module.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
+                    break
+
+        except Exception as e:
+            logger.exception(f"Error in gripper_check_events: {e}")
+            yield f"event: error\ndata: {json_module.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
+
+    response = StreamingHttpResponse(stream_generator(), content_type="text/event-stream")
+    response["Cache-Control"] = "no-cache"
+    response["X-Accel-Buffering"] = "no"
+    return response
 
 
 class RobotHighRiskSnapshotViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):

@@ -57,7 +57,9 @@ router.register(r"high-risk-histories", RobotHighRiskSnapshotViewSet, basename="
 router.register(r"reference-dict", RobotReferenceDictViewSet, basename="robot-reference-dict")
 
 urlpatterns = [
-    # ViewSet 路由必须放在最前面，避免被其他路径拦截
+    # 独立路由必须放在 ViewSet 路由之前，避免被拦截
+    path("gripper-check/events/", gripper_check_events, name="gripper-check-events"),
+    # ViewSet 路由
     path("", include(router.urls)),
     path("bi/", bi_view, name="robot-bi"),
     path("bi_cancel/", bi_cancel_view, name="robot-bi-cancel"),
@@ -68,7 +70,6 @@ urlpatterns = [
     path("bi_logs/", get_bi_logs, name="bi-logs"),
     path("refresh_logs/", get_refresh_logs, name="refresh-logs"),
     path("keypath-warnings/", get_keypath_warnings, name="keypath-warnings"),
-    path("gripper-check/events/", gripper_check_events, name="gripper-check-events"),
     # 编辑认证相关接口
     path("auth/verify/", verify_edit_credentials, name="verify-edit-credentials"),
     path("auth/status/", get_edit_auth_status, name="edit-auth-status"),

@@ -648,13 +648,16 @@ const executeCheck = async () => {
       }
     } else {
       result = await executeGripperCheck(payload)
+      console.log('[DEBUG] executeGripperCheck response:', result)
     }
 
     if (canceledCheckId.value === myCheckId || activeCheckId.value !== myCheckId) {
       return
     }
 
-    // 后端异步队列模式：先返回 queued/task_id，然后通过 status/latest 获取结果
+    // 后台队列模式：先返回 queued/task_id，然后通过 status/latest 获取结果
+    console.log('[DEBUG] DEMO_MODE:', DEMO_MODE)
+    console.log('[DEBUG] result?.queued:', result?.queued)
     if (!DEMO_MODE && result?.queued) {
       activeTaskId.value = result.task_id || ''
       if (activeTaskId.value) localStorage.setItem('gripper_check_task_id', activeTaskId.value)

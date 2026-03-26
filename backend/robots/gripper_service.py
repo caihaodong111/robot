@@ -216,29 +216,36 @@ def check_gripper(start_time, end_time, gripper_list, key_paths):
         unique_p_names = data['P_name'].dropna().unique()
         print(f"[DEBUG] Table {rob} unique P_name values: {unique_p_names[:10]}")  # 只显示前10个
 
-        # 根据关键路径筛选数据
+        # 根据关键路径筛选数据（按原始版本逻辑：匹配行 + 下一行）
         matched_count = 0
         for key in [key1, key2, key3, key4]:
             key_str = None if key is None else str(key).strip()
-            if key_str and key_str == key_str:  # 非空且不是NaN
+            if key_str and key_str == key_str:  # 非空且不是NaN（NaN != NaN 为 True）
                 try:
-                    matched = data[data['P_name'].astype(str).str.contains(key_str, case=False, na=False)]
-                    print(f"[DEBUG] Key '{key_str}' matched {len(matched)} rows in table {rob}")
-                    matched_count += len(matched)
-                    if not matched.empty:
-                        GP.append(matched)
+                    # 获取匹配行的索引
+                    matched_indices = data[data['P_name'].astype(str).str.contains(key_str, case=False, na=False)].index
+                    print(f"[DEBUG] Key '{key_str}' matched {len(matched_indices)} rows in table {rob}")
+                    matched_count += len(matched_indices)
+                    for idx in matched_indices:
+                        # 追加当前行
+                        GP.append(data.iloc[idx])
+                        # 追加下一行（如果存在）
+                        if idx < len(data) - 1:
+                            GP.append(data.iloc[idx + 1])
                 except Exception as e:
                     print(f"[ERROR] Error filtering by key path '{key_str}': {e}")
                     traceback.print_exc()
                     continue
 
-        print(f"[DEBUG] Table {rob} total matched: {matched_count} rows")
+        print(f"[DEBUG] Table {rob} total matched: {matched_count} rows, {matched_count * 2} rows collected (with next rows)")
 
     print(f"[DEBUG] Total GP items collected: {len(GP)}")
 
     if GP:
-        # 使用 axis=0 按行连接
-        gr_check = pd.concat(GP, axis=0, ignore_index=True)
+        # 按原始版本逻辑：axis=1 合并后转置
+        gr_check = pd.concat(GP, axis=1)
+        gr_check = gr_check.T
+        gr_check.reset_index(drop=True, inplace=True)
         print(f"[DEBUG] Check completed successfully! Total rows: {len(gr_check)}")
         return gr_check
     else:

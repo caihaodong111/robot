@@ -233,17 +233,13 @@ CELERY_BEAT_SCHEDULE = {
 }
 
 
-# 缓存配置
+# 缓存配置 - 使用内存缓存（开发环境）
 CACHES = {
     "default": {
-        "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": (
-            f"redis://{os.getenv('REDIS_HOST', '127.0.0.1')}:"
-            f"{os.getenv('REDIS_PORT', 6379)}/"
-            f"{os.getenv('REDIS_CACHE_DB', os.getenv('REDIS_DB', 1))}"
-        ),
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "gripper_check_cache",
         "OPTIONS": {
-            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            "MAX_ENTRIES": 1000,
         }
     }
 }
