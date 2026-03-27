@@ -43,19 +43,20 @@ def bkapp(doc):
     #source = ColumnDataSource(data=dict())
 
     table_name = 'HC21_050RB_300'
-    start_time = datetime.now()-timedelta(days=7)
-    end_time = datetime.now()
+    start_time = (datetime.now()-timedelta(days=7)).date()
+    end_time = datetime.now().date()
     #start_time = '2024-12-16 00:00:00'
     #end_time = '2024-12-20 00:00:00'
     time_column = 'Timestamp'
     #value_column = 'your_value_column'
     engine = create_engine(f'mysql+pymysql://{user}:{password}@{host}:{port}/{database}')
 
-    df= fetch_data_from_mysql(table_name, start_time, end_time, time_column)
+    end_time_with_tod = str(end_time) + ' 23:59:59'
+    df= fetch_data_from_mysql(table_name, start_time, end_time_with_tod, time_column)
     print(start_time)
-    print(end_time)
+    print(end_time_with_tod)
     ###########################energy 数据获取##########################
-    query = f"SELECT TimeStamp2,ENERGY,LOSTENERGY FROM energy WHERE RobotName= '{table_name}'and TimeStamp2 BETWEEN '{start_time}' AND '{end_time}';"
+    query = f"SELECT TimeStamp2,ENERGY,LOSTENERGY FROM energy WHERE RobotName= '{table_name}'and TimeStamp2 BETWEEN '{start_time}' AND '{end_time_with_tod}';"
     energy =pd.read_sql(query, engine)
 
 

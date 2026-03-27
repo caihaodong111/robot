@@ -42,6 +42,12 @@ class Command(BaseCommand):
             default=[],
             help="Allowed websocket origin, e.g. localhost:8000 (repeatable).",
         )
+        parser.add_argument(
+            "--session-token-expiration",
+            type=int,
+            default=int(os.getenv("BI_BOKEH_SESSION_TOKEN_EXPIRATION", "300")),
+            help="Session token expiration time in seconds (default: 300).",
+        )
 
     def handle(self, *args, **options):
         import logging
@@ -127,7 +133,13 @@ class Command(BaseCommand):
             ]
 
         allow_origins = sorted({v for v in allow_origins if v})
-        server = Server({"/": bkapp}, port=port, address=address, allow_websocket_origin=allow_origins)
+        server = Server(
+            {"/": bkapp},
+            port=port,
+            address=address,
+            allow_websocket_origin=allow_origins,
+            session_token_expiration=options["session_token_expiration"],
+        )
         server.start()
         self.stdout.write(self.style.SUCCESS(f"BI Bokeh Server running on http://{address}:{port}/"))
         self.stdout.write(self.style.SUCCESS(f"allow_websocket_origin={allow_origins}"))

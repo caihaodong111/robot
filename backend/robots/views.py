@@ -1184,8 +1184,9 @@ def gripper_check_events(request):
             yield f"event: status\ndata: {json_module.dumps(status_payload, ensure_ascii=False)}\n\n"
 
             last_status = status_payload.get("status", "idle").lower()
-            started_at = time.time()
-            timeout_seconds = 60 * 60  # 1小时超时
+            # 移除超时限制，支持大数据量长时间诊断任务
+            # started_at = time.time()
+            # timeout_seconds = 60 * 60  # 1小时超时
 
             while True:
                 try:
@@ -1205,10 +1206,10 @@ def gripper_check_events(request):
                                 yield f"event: result\ndata: {json_module.dumps(latest, ensure_ascii=False)}\n\n"
                         break
 
-                    # 超时检查
-                    if time.time() - started_at > timeout_seconds:
-                        yield f"event: error\ndata: {json_module.dumps({'error': 'timeout'}, ensure_ascii=False)}\n\n"
-                        break
+                    # 超时检查已移除，允许长时间运行
+                    # if time.time() - started_at > timeout_seconds:
+                    #     yield f"event: error\ndata: {json_module.dumps({'error': 'timeout'}, ensure_ascii=False)}\n\n"
+                    #     break
 
                     time.sleep(1)
 

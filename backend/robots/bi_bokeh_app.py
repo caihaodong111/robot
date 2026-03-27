@@ -221,7 +221,7 @@ def bkapp(doc):
 
     table_name = _validate_table_name(table_arg)
 
-    logger.info(f"[BI LOAD START] table={table_name}, program={program_arg}, axis={axis_arg}, range={start_arg} ~ {end_arg}")
+    logger.info(f"[BI LOAD START] table={table_name}, program={program_arg}, axis={axis_arg}, range={start_arg} 00:00:00 ~ {end_arg} 23:59:59")
 
     # === 数据库连接（与项目一致：SG_DB_*）===
     db_config = get_db_engine()
