@@ -504,3 +504,4 @@ class RefreshLogSerializer(serializers.ModelSerializer):
             "error_message",
             "sync_time",
         )
+

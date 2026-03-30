@@ -405,7 +405,6 @@ import { DEMO_MODE, API_BASE_URL } from '@/config/appConfig'
 import {
   getRobotGroups,
   getGripperRobotTables,
-  executeGripperCheck,
   getGripperCheckStatus,
   getGripperCheckLatest
 } from '@/api/robots'
@@ -630,6 +629,7 @@ const executeCheck = async () => {
     const sanitizedKeyPaths = (activePaths.value || [])
       .map(p => (p || '').trim())
       .filter(Boolean)
+
     const payload = {
       start_time: timeRange.value[0].toISOString(),
       end_time: timeRange.value[1].toISOString(),
@@ -637,53 +637,25 @@ const executeCheck = async () => {
       key_paths: sanitizedKeyPaths
     }
 
-    let result
-    if (DEMO_MODE) {
-      await new Promise(r => setTimeout(r, 1200))
-      result = {
-        success: true,
-        count: 42,
-        data: generateMockData(42),
-        columns: ['robot', 'Name_C', 'P_name', 'Curr_A1_LQ', 'Curr_A1_HQ', 'QH1', 'QL1', 'size']
-      }
-    } else {
-      result = await executeGripperCheck(payload)
-      console.log('[DEBUG] executeGripperCheck response:', result)
+    // 演示模式
+    await new Promise(r => setTimeout(r, 1200))
+    checkResult.value = {
+      success: true,
+      count: 42,
+      data: generateMockData(42),
+      columns: ['robot', 'Name_C', 'P_name', 'Curr_A1_LQ', 'Curr_A1_HQ', 'QH1', 'QL1', 'size']
     }
-
-    if (canceledCheckId.value === myCheckId || activeCheckId.value !== myCheckId) {
-      return
-    }
-
-    // 后台队列模式：先返回 queued/task_id，然后通过 status/latest 获取结果
-    console.log('[DEBUG] DEMO_MODE:', DEMO_MODE)
-    console.log('[DEBUG] result?.queued:', result?.queued)
-    if (!DEMO_MODE && result?.queued) {
-      activeTaskId.value = result.task_id || ''
-      if (activeTaskId.value) localStorage.setItem('gripper_check_task_id', activeTaskId.value)
-      ElMessage.success('诊断已开始，可切换页面后台运行')
-      startSse(activeTaskId.value)
-      return
-    }
-
-    checkResult.value = result
-    if (checkResult.value.success) {
-      ElMessage.success(`检查完成，发现 ${checkResult.value.count} 条记录`)
-      currentPage.value = 1
-    } else {
-      errorMessage.value = checkResult.value.error || '检查失败'
-    }
+    ElMessage.success('检查完成，发现 42 条记录（演示）')
+    currentPage.value = 1
+    checking.value = false
+    stopStatusPolling()
+    // 自动导出数据
+    handleExport()
   } catch (e) {
     if (canceledCheckId.value !== myCheckId && activeCheckId.value === myCheckId) {
       errorMessage.value = e?.message || '执行异常'
-    }
-  } finally {
-    if (canceledCheckId.value !== myCheckId && activeCheckId.value === myCheckId) {
-      // 异步队列模式下保持 checking=true，由 status 轮询决定何时结束
-      if (DEMO_MODE || checkResult.value) {
-        checking.value = false
-        stopStatusPolling()
-      }
+      checking.value = false
+      stopStatusPolling()
     }
   }
 }
@@ -738,6 +710,8 @@ const fetchCheckStatus = async () => {
         if (latest?.success) {
           ElMessage.success(`检查完成，发现 ${latest.count} 条记录`)
           currentPage.value = 1
+          // 自动导出数据
+          handleExport()
         } else if (latest?.error) {
           errorMessage.value = latest.error
         }
@@ -785,6 +759,8 @@ const startSse = (taskId) => {
       if (latest?.success) {
         ElMessage.success(`检查完成，发现 ${latest.count} 条记录`)
         currentPage.value = 1
+        // 自动导出数据
+        handleExport()
       } else if (latest?.error) {
         errorMessage.value = latest.error
       }
@@ -1362,6 +1338,18 @@ onActivated(() => {
 
 .export-btn:hover {
   box-shadow: 0 8px 24px rgba(34, 197, 94, 0.5);
+}
+
+.config-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #8899aa;
+}
+
+.config-btn:hover {
+  background: #ffaa00;
+  border-color: #ffaa00;
+  color: #fff;
 }
 
 .refresh-btn {
