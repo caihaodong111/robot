@@ -25,6 +25,7 @@ request.interceptors.request.use(
 // 响应拦截器
 request.interceptors.response.use(
   response => {
+    if (response.config?.rawResponse) return response
     return response.data
   },
   error => {

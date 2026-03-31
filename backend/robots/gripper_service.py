@@ -220,41 +220,7 @@ def check_gripper_from_config(config_data):
         dict: 包含结果DataFrame和元数据的字典
     """
     try:
-        # 解析时间
-        if isinstance(config_data['start_time'], str):
-            start_time = datetime.fromisoformat(config_data['start_time'].replace('Z', '+00:00'))
-        else:
-            start_time = config_data['start_time']
-
-        if isinstance(config_data['end_time'], str):
-            end_time = datetime.fromisoformat(config_data['end_time'].replace('Z', '+00:00'))
-        else:
-            end_time = config_data['end_time']
-
-        # 获取参数
-        griper = config_data['gripper_list']
-        key_paths = config_data.get('key_paths', [])
-        save_path = config_data.get('save_path', '')
-        savename = config_data.get('savename', 'result')
-
-        # 将key_paths映射到key1~key4参数
-        key1 = key_paths[0] if len(key_paths) > 0 else np.nan
-        key2 = key_paths[1] if len(key_paths) > 1 else np.nan
-        key3 = key_paths[2] if len(key_paths) > 2 else np.nan
-        key4 = key_paths[3] if len(key_paths) > 3 else np.nan
-
-        # 执行检查（完全基于check_gripper_withmax.py的逻辑）
-        result_df = check_gripper(
-            save_path=save_path,
-            start_time=start_time,
-            end_time=end_time,
-            griper=griper,
-            savename=savename,
-            key1=key1,
-            key2=key2,
-            key3=key3,
-            key4=key4
-        )
+        result_df = check_gripper_df_from_config(config_data)
 
         # 转换为字典返回
         return {
@@ -273,3 +239,41 @@ def check_gripper_from_config(config_data):
             'data': [],
             'columns': []
         }
+
+
+def check_gripper_df_from_config(config_data):
+    """
+    从配置字典执行检查并返回 DataFrame（用于大数据量 CSV 导出，避免 to_dict 占用大量内存）
+    """
+    # 解析时间
+    if isinstance(config_data["start_time"], str):
+        start_time = datetime.fromisoformat(config_data["start_time"].replace("Z", "+00:00"))
+    else:
+        start_time = config_data["start_time"]
+
+    if isinstance(config_data["end_time"], str):
+        end_time = datetime.fromisoformat(config_data["end_time"].replace("Z", "+00:00"))
+    else:
+        end_time = config_data["end_time"]
+
+    griper = config_data["gripper_list"]
+    key_paths = config_data.get("key_paths", [])
+    save_path = config_data.get("save_path", "")
+    savename = config_data.get("savename", "result")
+
+    key1 = key_paths[0] if len(key_paths) > 0 else np.nan
+    key2 = key_paths[1] if len(key_paths) > 1 else np.nan
+    key3 = key_paths[2] if len(key_paths) > 2 else np.nan
+    key4 = key_paths[3] if len(key_paths) > 3 else np.nan
+
+    return check_gripper(
+        save_path=save_path,
+        start_time=start_time,
+        end_time=end_time,
+        griper=griper,
+        savename=savename,
+        key1=key1,
+        key2=key2,
+        key3=key3,
+        key4=key4,
+    )

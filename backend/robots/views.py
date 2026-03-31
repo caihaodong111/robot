@@ -1,9 +1,10 @@
 from datetime import datetime, timedelta
 import logging
 import os
+from pathlib import Path
 from django.conf import settings
 from django.core.cache import cache
-from django.http import JsonResponse, StreamingHttpResponse
+from django.http import JsonResponse, StreamingHttpResponse, FileResponse
 from django.shortcuts import render
 from django.db.models import Count, Q
 from django.utils import timezone
@@ -27,7 +28,7 @@ from .serializers import (
     RobotReferenceDictSerializer,
     RefreshLogSerializer,
 )
-from .gripper_service import check_gripper_from_config
+from .gripper_service import check_gripper_from_config, check_gripper_df_from_config
 from .gripper_check_state import (
     get_gripper_check_latest,
     get_gripper_check_status,
@@ -1085,6 +1086,116 @@ class GripperCheckViewSet(viewsets.GenericViewSet):
             status=status.HTTP_202_ACCEPTED,
         )
 
+    def _run_gripper_check_csv_background(self, config_data, task_id):
+        try:
+            set_gripper_check_status("running", task_id=task_id)
+            logger.info("Gripper CSV task %s started", task_id)
+
+            export_dir = Path(getattr(settings, "BASE_DIR", ".")) / "exports" / "gripper_check"
+            export_dir.mkdir(parents=True, exist_ok=True)
+            file_stamp = timezone.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"trajectory_report_{file_stamp}.csv"
+            server_path = export_dir / filename
+
+            df = check_gripper_df_from_config(config_data)
+            set_gripper_check_status("exporting", task_id=task_id)
+            logger.info("Gripper CSV task %s exporting rows=%s path=%s", task_id, df.shape[0], server_path)
+            df.to_csv(server_path, index=False, encoding="utf-8-sig")
+
+            latest = {
+                "success": True,
+                "count": int(df.shape[0]),
+                "filename": filename,
+                "server_path": str(server_path),
+                "task_id": task_id,
+                "updated_at": timezone.now().isoformat(),
+            }
+            set_gripper_check_latest(latest)
+            set_gripper_check_status("idle", task_id=task_id)
+            logger.info("Gripper CSV task %s finished path=%s", task_id, server_path)
+        except Exception as e:
+            logger.exception("Gripper CSV task %s failed: %s", task_id, e)
+            set_gripper_check_status("failed", error=str(e), task_id=task_id)
+            set_gripper_check_latest(
+                {
+                    "success": False,
+                    "error": str(e),
+                    "count": 0,
+                    "filename": "",
+                    "server_path": "",
+                    "task_id": task_id,
+                    "updated_at": timezone.now().isoformat(),
+                }
+            )
+
+    @action(detail=False, methods=["post"], url_path="execute_csv")
+    def execute_csv(self, request):
+        """
+        执行关键轨迹检查并导出 CSV（异步）
+
+        说明：
+        - 大数据量（>1h）不适合长连接等待；此接口立即返回 task_id
+        - 前端通过 /status 轮询，完成后调用 /download_csv 下载文件
+        """
+        serializer = GripperCheckSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                {
+                    "success": False,
+                    "error": "Invalid request data",
+                    "details": serializer.errors,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        config_data = dict(serializer.validated_data)
+        current_status = get_gripper_check_status() or {}
+        if (current_status.get("status") or "").lower() == "running":
+            return Response(
+                {"success": True, "queued": True, **current_status},
+                status=status.HTTP_200_OK,
+            )
+
+        task_id = uuid.uuid4().hex
+        thread = threading.Thread(
+            target=self._run_gripper_check_csv_background,
+            args=(config_data, task_id),
+            daemon=True,
+        )
+        thread.start()
+
+        set_gripper_check_status("running", task_id=task_id)
+        return Response(
+            {"success": True, "queued": True, "task_id": task_id, "status": "running"},
+            status=status.HTTP_202_ACCEPTED,
+        )
+
+    @action(detail=False, methods=["get"], url_path="download_csv")
+    def download_csv(self, request):
+        """
+        下载最近一次 CSV（或指定 task_id 的 CSV）
+        """
+        task_id = (request.query_params.get("task_id") or "").strip()
+        latest = get_gripper_check_latest() or {}
+        if task_id and latest.get("task_id") != task_id:
+            return Response({"success": False, "error": "task-id-mismatch"}, status=status.HTTP_404_NOT_FOUND)
+
+        if not latest or not latest.get("success"):
+            return Response({"success": False, "error": "no-ready-csv"}, status=status.HTTP_404_NOT_FOUND)
+
+        server_path = (latest.get("server_path") or "").strip()
+        filename = (latest.get("filename") or "trajectory_report.csv").strip()
+        if not server_path:
+            return Response({"success": False, "error": "missing-server-path"}, status=status.HTTP_404_NOT_FOUND)
+
+        path = Path(server_path)
+        if not path.exists():
+            return Response({"success": False, "error": "file-not-found"}, status=status.HTTP_404_NOT_FOUND)
+
+        response = FileResponse(path.open("rb"), as_attachment=True, filename=filename, content_type="text/csv")
+        response["X-Server-File-Path"] = str(path)
+        return response
+
     @action(detail=False, methods=['get'])
     def status(self, request):
         payload = get_gripper_check_status()
@@ -1188,10 +1299,17 @@ def gripper_check_events(request):
             # started_at = time.time()
             # timeout_seconds = 60 * 60  # 1小时超时
 
+            last_ping = 0.0
             while True:
                 try:
                     current_status = get_gripper_check_status() or {"status": "idle"}
                     current_value = current_status.get("status", "idle").lower()
+
+                    # 心跳：避免代理/浏览器因长时间无数据而断开连接
+                    now = time.time()
+                    if now - last_ping >= 15:
+                        yield ": ping\n\n"
+                        last_ping = now
 
                     # 发送状态更新
                     if current_value != last_status:

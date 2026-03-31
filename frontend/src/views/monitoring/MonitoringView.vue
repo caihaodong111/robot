@@ -405,6 +405,8 @@ import { DEMO_MODE, API_BASE_URL } from '@/config/appConfig'
 import {
   getRobotGroups,
   getGripperRobotTables,
+  executeGripperCheckCsv,
+  downloadGripperCheckCsv,
   getGripperCheckStatus,
   getGripperCheckLatest
 } from '@/api/robots'
@@ -501,7 +503,7 @@ const canceledCheckId = ref(0)
 const activeTaskId = ref(localStorage.getItem('gripper_check_task_id') || '')
 const sseConnection = ref(null)
 const statusPollingTimer = ref(null)
-const STATUS_POLL_INTERVAL = 8000
+const STATUS_POLL_INTERVAL = 30000
 const statusRequestInFlight = ref(false)
 
 const canExecute = computed(() => selectedPlant.value && selectedRobots.value.length > 0 && timeRange.value?.length === 2)
@@ -619,7 +621,7 @@ const executeCheck = async () => {
   canceledCheckId.value = 0
   checking.value = true
   isCheckHover.value = false
-  startStatusPolling()
+  stopStatusPolling()
   checkResult.value = null
   errorMessage.value = ''
   activeTaskId.value = ''
@@ -637,20 +639,30 @@ const executeCheck = async () => {
       key_paths: sanitizedKeyPaths
     }
 
-    // 演示模式
-    await new Promise(r => setTimeout(r, 1200))
-    checkResult.value = {
-      success: true,
-      count: 42,
-      data: generateMockData(42),
-      columns: ['robot', 'Name_C', 'P_name', 'Curr_A1_LQ', 'Curr_A1_HQ', 'QH1', 'QL1', 'size']
+    if (DEMO_MODE) {
+      await new Promise(r => setTimeout(r, 1200))
+      checkResult.value = {
+        success: true,
+        count: 42,
+        data: generateMockData(42),
+        columns: ['robot', 'Name_C', 'P_name', 'Curr_A1_LQ', 'Curr_A1_HQ', 'QH1', 'QL1', 'size']
+      }
+      ElMessage.success('检查完成，发现 42 条记录（演示）')
+      currentPage.value = 1
+      checking.value = false
+      stopStatusPolling()
+      handleExport()
+      return
     }
-    ElMessage.success('检查完成，发现 42 条记录（演示）')
-    currentPage.value = 1
-    checking.value = false
-    stopStatusPolling()
-    // 自动导出数据
-    handleExport()
+
+    const resp = await executeGripperCheckCsv(payload)
+    const taskId = (resp?.task_id || '').trim()
+    if (!taskId) throw new Error('未获取到任务ID')
+    activeTaskId.value = taskId
+    localStorage.setItem('gripper_check_task_id', taskId)
+    startSse(taskId)
+    startStatusPolling()
+    fetchCheckStatus()
   } catch (e) {
     if (canceledCheckId.value !== myCheckId && activeCheckId.value === myCheckId) {
       errorMessage.value = e?.message || '执行异常'
@@ -703,18 +715,38 @@ const fetchCheckStatus = async () => {
         return
       }
 
-      // idle：取最新结果展示
+      // idle：取最新元信息并下载 CSV（不展示数据）
       try {
         const latest = await getGripperCheckLatest()
-        checkResult.value = latest
-        if (latest?.success) {
-          ElMessage.success(`检查完成，发现 ${latest.count} 条记录`)
-          currentPage.value = 1
-          // 自动导出数据
-          handleExport()
-        } else if (latest?.error) {
-          errorMessage.value = latest.error
-        }
+        if (!latest?.success) throw new Error(latest?.error || '检查失败')
+
+        const taskId = (activeTaskId.value || '').trim()
+        if (!taskId) throw new Error('任务ID丢失，无法下载')
+
+        const downloadResp = await downloadGripperCheckCsv(taskId)
+        const blob = downloadResp?.data
+        const headers = downloadResp?.headers || {}
+        const serverPath = headers['x-server-file-path'] || headers['X-Server-File-Path'] || latest?.server_path
+        const contentDisposition = headers['content-disposition'] || ''
+        const match = /filename\\*=UTF-8''([^;]+)|filename=\"?([^\";]+)\"?/i.exec(contentDisposition)
+        const filename = decodeURIComponent(match?.[1] || match?.[2] || latest?.filename || `trajectory_report_${Date.now()}.csv`)
+
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = filename
+        link.click()
+        URL.revokeObjectURL(url)
+
+        const tips = serverPath ? `（服务器生成路径: ${serverPath}）` : ''
+        ElMessage({
+          type: 'success',
+          message: `文件已下载${tips}`,
+          duration: 0,
+          showClose: true
+        })
+        checkResult.value = null
+        currentPage.value = 1
       } finally {
         localStorage.removeItem('gripper_check_task_id')
         activeTaskId.value = ''
@@ -755,15 +787,40 @@ const startSse = (taskId) => {
   es.addEventListener('result', (evt) => {
     try {
       const latest = JSON.parse(evt.data || '{}')
-      checkResult.value = latest
-      if (latest?.success) {
-        ElMessage.success(`检查完成，发现 ${latest.count} 条记录`)
-        currentPage.value = 1
-        // 自动导出数据
-        handleExport()
-      } else if (latest?.error) {
-        errorMessage.value = latest.error
+      if (!latest?.success) {
+        if (latest?.error) errorMessage.value = latest.error
+        return
       }
+      const taskId = (activeTaskId.value || '').trim()
+      if (!taskId) {
+        errorMessage.value = '任务ID丢失，无法下载'
+        return
+      }
+      downloadGripperCheckCsv(taskId).then((downloadResp) => {
+        const blob = downloadResp?.data
+        const headers = downloadResp?.headers || {}
+        const serverPath = headers['x-server-file-path'] || headers['X-Server-File-Path'] || latest?.server_path
+        const contentDisposition = headers['content-disposition'] || ''
+        const match = /filename\\*=UTF-8''([^;]+)|filename=\"?([^\";]+)\"?/i.exec(contentDisposition)
+        const filename = decodeURIComponent(match?.[1] || match?.[2] || latest?.filename || `trajectory_report_${Date.now()}.csv`)
+
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = filename
+        link.click()
+        URL.revokeObjectURL(url)
+
+        const tips = serverPath ? `（服务器生成路径: ${serverPath}）` : ''
+        ElMessage({
+          type: 'success',
+          message: `文件已下载${tips}`,
+          duration: 0,
+          showClose: true
+        })
+      }).catch((e) => {
+        errorMessage.value = e?.message || '下载失败'
+      })
     } finally {
       checking.value = false
       stopStatusPolling()

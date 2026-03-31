@@ -110,6 +110,28 @@ export function executeGripperCheck(data) {
   })
 }
 
+// 执行关键轨迹检查并直接下载 CSV
+export function executeGripperCheckCsv(data) {
+  return request({
+    url: '/robots/gripper-check/execute_csv/',
+    method: 'post',
+    data,
+    timeout: 0
+  })
+}
+
+// 下载关键轨迹检查 CSV（需要先 execute_csv 生成完成）
+export function downloadGripperCheckCsv(taskId) {
+  return request({
+    url: '/robots/gripper-check/download_csv/',
+    method: 'get',
+    params: { task_id: taskId },
+    responseType: 'blob',
+    rawResponse: true,
+    timeout: 0
+  })
+}
+
 // 获取关键轨迹检查状态
 export function getGripperCheckStatus() {
   return request({

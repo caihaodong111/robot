@@ -189,6 +189,7 @@ REST_FRAMEWORK = {
 # CORS 配置
 CORS_ALLOW_ALL_ORIGINS = True  # 开发环境允许所有来源
 CORS_ALLOW_CREDENTIALS = True
+CORS_EXPOSE_HEADERS = ["X-Server-File-Path", "Content-Disposition"]
 
 # CORS_ALLOWED_ORIGINS = [
 #     "http://localhost:3000",
@@ -233,16 +234,32 @@ CELERY_BEAT_SCHEDULE = {
 }
 
 
-# 缓存配置 - 使用内存缓存（开发环境）
-CACHES = {
-    "default": {
-        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-        "LOCATION": "gripper_check_cache",
-        "OPTIONS": {
-            "MAX_ENTRIES": 1000,
+# 缓存配置
+# - `LocMemCache` 是进程内缓存：多进程/多 worker 部署时，写入与读取可能落在不同进程，前端会一直“加载中”
+# - 不使用 Redis 的情况下，默认用 `FileBasedCache`（同一台机器上多进程可共享）
+if DEBUG:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "gripper_check_cache",
+            "OPTIONS": {
+                "MAX_ENTRIES": 1000,
+            },
         }
     }
-}
+else:
+    CACHE_DIR = os.getenv("DJANGO_FILE_CACHE_DIR") or str(BASE_DIR / "cache")
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.filebased.FileBasedCache",
+            "LOCATION": CACHE_DIR,
+            "OPTIONS": {
+                "MAX_ENTRIES": 1000,
+            },
+            "KEY_PREFIX": "sg57",
+        }
+    }
 
 
 # 日志配置
