@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import pandas as pd
 import numpy as np
+from celery.result import AsyncResult
 from django.conf import settings
 from django.core.cache import cache
 from django.http import JsonResponse, StreamingHttpResponse, FileResponse
@@ -30,16 +31,15 @@ from .serializers import (
     RobotReferenceDictSerializer,
     RefreshLogSerializer,
 )
-from .gripper_service import check_gripper_from_config, check_gripper_df_from_config
 from .gripper_check_state import (
     get_gripper_check_latest,
     get_gripper_check_status,
-    set_gripper_check_latest,
     set_gripper_check_status,
+    request_gripper_check_cancel,
 )
 from .error_trend_chart import generate_trend_chart, chart_exists
+from .tasks import gripper_check_csv_task, gripper_check_task
 import json
-import threading
 import time
 import uuid
 
@@ -1009,26 +1009,102 @@ class GripperCheckViewSet(viewsets.GenericViewSet):
     def get_queryset(self):
         return RobotComponent.objects.all()
 
-    def _run_gripper_check_background(self, config_data, task_id):
-        """
-        后台线程执行诊断任务
-        """
-        from .gripper_service import check_gripper_from_config
+    def _get_gripper_export_dir(self):
+        return Path(getattr(settings, "BASE_DIR", ".")) / "exports" / "gripper_check"
 
+    def _parse_multi_query_param(self, request, name):
+        values = []
+        for raw in request.query_params.getlist(name):
+            if raw is None:
+                continue
+            values.extend(str(raw).split(","))
+        return [value.strip() for value in values if value and value.strip()]
+
+    def _resolve_export_csv_path(self, filename):
+        safe_name = Path((filename or "").strip()).name
+        if not safe_name or safe_name in {".", ".."}:
+            return None
+        path = self._get_gripper_export_dir() / safe_name
         try:
-            set_gripper_check_status("running", task_id=task_id)
+            path.resolve().relative_to(self._get_gripper_export_dir().resolve())
+        except Exception:
+            return None
+        return path
 
-            result = check_gripper_from_config(config_data)
+    def _read_csv_page_response(self, path, page, page_size, sort_col, order, keyword):
+        try:
+            try:
+                df = pd.read_csv(path, encoding="utf-8-sig", low_memory=False)
+            except UnicodeDecodeError:
+                df = pd.read_csv(path, encoding="gbk", low_memory=False)
 
-            # 缓存结果
-            set_gripper_check_latest(result)
-            set_gripper_check_status("idle", task_id=task_id)
+            if df.empty:
+                return Response(
+                    {
+                        "success": True,
+                        "count": 0,
+                        "page": page,
+                        "page_size": page_size,
+                        "columns": df.columns.tolist(),
+                        "data": [],
+                    }
+                )
 
-            logger.info(f"Gripper check task {task_id} completed successfully")
+            if keyword:
+                candidate_cols = [c for c in ["robot", "Name_C", "SNR_C", "SUB", "P_name"] if c in df.columns]
+                if candidate_cols:
+                    mask = False
+                    for col in candidate_cols:
+                        mask = mask | df[col].astype(str).str.contains(keyword, case=False, na=False)
+                    df = df[mask]
 
-        except Exception as e:
-            logger.exception(f"Gripper check task {task_id} failed: {e}")
-            set_gripper_check_status("failed", error=str(e), task_id=task_id)
+            if sort_col and sort_col in df.columns:
+                asc = order != "desc"
+                series = df[sort_col]
+                numeric = pd.to_numeric(series, errors="coerce")
+                if numeric.notna().any():
+                    df = df.assign(_sort_key=numeric).sort_values("_sort_key", ascending=asc, kind="mergesort")
+                    df = df.drop(columns=["_sort_key"])
+                else:
+                    df = df.sort_values(sort_col, ascending=asc, kind="mergesort")
+
+            total = int(df.shape[0])
+            start = (page - 1) * page_size
+            end = start + page_size
+            page_df = df.iloc[start:end].copy()
+            page_df = page_df.replace([np.nan, np.inf, -np.inf], None)
+
+            return Response(
+                {
+                    "success": True,
+                    "count": total,
+                    "page": page,
+                    "page_size": page_size,
+                    "columns": df.columns.tolist(),
+                    "data": page_df.to_dict("records"),
+                }
+            )
+        except Exception as exc:
+            logger.exception("read csv page failed path=%s", path)
+            return Response({"success": False, "error": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def _queue_gripper_check_task(self, config_data, task_func):
+        task_id = uuid.uuid4().hex
+        set_gripper_check_status("queued", task_id=task_id)
+        try:
+            task_func.apply_async(args=[config_data], task_id=task_id)
+        except Exception as exc:
+            logger.exception("Failed to enqueue gripper check task %s", task_id)
+            set_gripper_check_status("failed", error=str(exc), task_id=task_id)
+            return Response(
+                {"success": False, "error": "enqueue-failed", "details": str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        return Response(
+            {"success": True, "queued": True, "task_id": task_id, "status": "queued"},
+            status=status.HTTP_202_ACCEPTED,
+        )
 
     @action(detail=False, methods=['post'])
     def execute(self, request):
@@ -1057,78 +1133,8 @@ class GripperCheckViewSet(viewsets.GenericViewSet):
                 'error': 'Invalid request data',
                 'details': serializer.errors
             }, status=status.HTTP_400_BAD_REQUEST)
-
-        # 检查是否已有任务在运行
-        current_status = get_gripper_check_status() or {}
-        if (current_status.get("status") or "").lower() == "running":
-            return Response(
-                {"success": True, "queued": True, **current_status},
-                status=status.HTTP_200_OK,
-            )
-
-        # 生成任务ID
-        task_id = uuid.uuid4().hex
-
-        # 获取配置数据
         config_data = dict(serializer.validated_data)
-
-        # 启动后台线程执行任务
-        thread = threading.Thread(
-            target=self._run_gripper_check_background,
-            args=(config_data, task_id),
-            daemon=True
-        )
-        thread.start()
-
-        # 立即返回任务ID
-        set_gripper_check_status("running", task_id=task_id)
-
-        return Response(
-            {"success": True, "queued": True, "task_id": task_id, "status": "running"},
-            status=status.HTTP_202_ACCEPTED,
-        )
-
-    def _run_gripper_check_csv_background(self, config_data, task_id):
-        try:
-            set_gripper_check_status("running", task_id=task_id)
-            logger.info("Gripper CSV task %s started", task_id)
-
-            export_dir = Path(getattr(settings, "BASE_DIR", ".")) / "exports" / "gripper_check"
-            export_dir.mkdir(parents=True, exist_ok=True)
-            file_stamp = timezone.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"trajectory_report_{file_stamp}.csv"
-            server_path = export_dir / filename
-
-            df = check_gripper_df_from_config(config_data)
-            set_gripper_check_status("exporting", task_id=task_id)
-            logger.info("Gripper CSV task %s exporting rows=%s path=%s", task_id, df.shape[0], server_path)
-            df.to_csv(server_path, index=False, encoding="utf-8-sig")
-
-            latest = {
-                "success": True,
-                "count": int(df.shape[0]),
-                "filename": filename,
-                "server_path": str(server_path),
-                "task_id": task_id,
-                "updated_at": timezone.now().isoformat(),
-            }
-            set_gripper_check_latest(latest)
-            set_gripper_check_status("idle", task_id=task_id)
-            logger.info("Gripper CSV task %s finished path=%s", task_id, server_path)
-        except Exception as e:
-            logger.exception("Gripper CSV task %s failed: %s", task_id, e)
-            set_gripper_check_status("failed", error=str(e), task_id=task_id)
-            set_gripper_check_latest(
-                {
-                    "success": False,
-                    "error": str(e),
-                    "count": 0,
-                    "filename": "",
-                    "server_path": "",
-                    "task_id": task_id,
-                    "updated_at": timezone.now().isoformat(),
-                }
-            )
+        return self._queue_gripper_check_task(config_data, gripper_check_task)
 
     @action(detail=False, methods=["post"], url_path="execute_csv")
     def execute_csv(self, request):
@@ -1151,26 +1157,33 @@ class GripperCheckViewSet(viewsets.GenericViewSet):
             )
 
         config_data = dict(serializer.validated_data)
-        current_status = get_gripper_check_status() or {}
-        if (current_status.get("status") or "").lower() == "running":
+        return self._queue_gripper_check_task(config_data, gripper_check_csv_task)
+
+    @action(detail=False, methods=["post"])
+    def cancel(self, request):
+        task_id = (request.data.get("task_id") or "").strip()
+        if not task_id:
+            return Response({"success": False, "error": "missing-task-id"}, status=status.HTTP_400_BAD_REQUEST)
+
+        task_status = get_gripper_check_status(task_id=task_id)
+        if not task_status:
+            return Response({"success": False, "error": "task-not-found"}, status=status.HTTP_404_NOT_FOUND)
+
+        status_value = (task_status.get("status") or "").lower()
+        if status_value in {"idle", "failed", "cancelled"}:
             return Response(
-                {"success": True, "queued": True, **current_status},
-                status=status.HTTP_200_OK,
+                {"success": False, "error": "task-not-active", **task_status},
+                status=status.HTTP_409_CONFLICT,
             )
 
-        task_id = uuid.uuid4().hex
-        thread = threading.Thread(
-            target=self._run_gripper_check_csv_background,
-            args=(config_data, task_id),
-            daemon=True,
-        )
-        thread.start()
+        request_gripper_check_cancel(task_id)
+        AsyncResult(task_id).revoke(terminate=False)
+        if status_value == "queued":
+            set_gripper_check_status("cancelled", task_id=task_id)
+            return Response({"success": True, "task_id": task_id, "status": "cancelled"})
 
-        set_gripper_check_status("running", task_id=task_id)
-        return Response(
-            {"success": True, "queued": True, "task_id": task_id, "status": "running"},
-            status=status.HTTP_202_ACCEPTED,
-        )
+        set_gripper_check_status("cancelling", task_id=task_id)
+        return Response({"success": True, "task_id": task_id, "status": "cancelling"})
 
     @action(detail=False, methods=["get"], url_path="download_csv")
     def download_csv(self, request):
@@ -1178,9 +1191,10 @@ class GripperCheckViewSet(viewsets.GenericViewSet):
         下载最近一次 CSV（或指定 task_id 的 CSV）
         """
         task_id = (request.query_params.get("task_id") or "").strip()
-        latest = get_gripper_check_latest() or {}
-        if task_id and latest.get("task_id") != task_id:
-            return Response({"success": False, "error": "task-id-mismatch"}, status=status.HTTP_404_NOT_FOUND)
+        if not task_id:
+            return Response({"success": False, "error": "missing-task-id"}, status=status.HTTP_400_BAD_REQUEST)
+
+        latest = get_gripper_check_latest(task_id=task_id) or {}
 
         if not latest or not latest.get("success"):
             return Response({"success": False, "error": "no-ready-csv"}, status=status.HTTP_404_NOT_FOUND)
@@ -1195,6 +1209,22 @@ class GripperCheckViewSet(viewsets.GenericViewSet):
             return Response({"success": False, "error": "file-not-found"}, status=status.HTTP_404_NOT_FOUND)
 
         response = FileResponse(path.open("rb"), as_attachment=True, filename=filename, content_type="text/csv")
+        response["X-Server-File-Path"] = str(path)
+        return response
+
+    @action(detail=False, methods=["get"], url_path="download_csv_file")
+    def download_csv_file(self, request):
+        filename = (request.query_params.get("filename") or "").strip()
+        if not filename:
+            return Response({"success": False, "error": "missing-filename"}, status=status.HTTP_400_BAD_REQUEST)
+
+        path = self._resolve_export_csv_path(filename)
+        if not path:
+            return Response({"success": False, "error": "invalid-filename"}, status=status.HTTP_400_BAD_REQUEST)
+        if not path.exists():
+            return Response({"success": False, "error": "file-not-found"}, status=status.HTTP_404_NOT_FOUND)
+
+        response = FileResponse(path.open("rb"), as_attachment=True, filename=path.name, content_type="text/csv")
         response["X-Server-File-Path"] = str(path)
         return response
 
@@ -1215,17 +1245,15 @@ class GripperCheckViewSet(viewsets.GenericViewSet):
         if not task_id:
             return Response({"success": False, "error": "missing-task-id"}, status=status.HTTP_400_BAD_REQUEST)
 
-        current_status = get_gripper_check_status() or {}
-        if (current_status.get("task_id") or "") != task_id:
-            return Response({"success": False, "error": "task-id-mismatch"}, status=status.HTTP_404_NOT_FOUND)
+        current_status = get_gripper_check_status(task_id=task_id) or {}
+        if not current_status:
+            return Response({"success": False, "error": "task-not-found"}, status=status.HTTP_404_NOT_FOUND)
         if (current_status.get("status") or "").lower() != "idle":
             return Response({"success": False, "error": "not-ready", **current_status}, status=status.HTTP_409_CONFLICT)
 
-        latest = get_gripper_check_latest() or {}
+        latest = get_gripper_check_latest(task_id=task_id) or {}
         if not latest.get("success"):
             return Response({"success": False, "error": latest.get("error") or "no-latest"}, status=status.HTTP_404_NOT_FOUND)
-        if (latest.get("task_id") or "") != task_id:
-            return Response({"success": False, "error": "task-id-mismatch"}, status=status.HTTP_404_NOT_FOUND)
 
         server_path = (latest.get("server_path") or "").strip()
         if not server_path:
@@ -1249,84 +1277,84 @@ class GripperCheckViewSet(viewsets.GenericViewSet):
         order = (request.query_params.get("order") or "asc").strip().lower()
         keyword = (request.query_params.get("keyword") or "").strip()
 
+        return self._read_csv_page_response(path, page, page_size, sort_col, order, keyword)
+
+    @action(detail=False, methods=["get"], url_path="csv_file_rows")
+    def csv_file_rows(self, request):
+        filename = (request.query_params.get("filename") or "").strip()
+        if not filename:
+            return Response({"success": False, "error": "missing-filename"}, status=status.HTTP_400_BAD_REQUEST)
+
+        path = self._resolve_export_csv_path(filename)
+        if not path:
+            return Response({"success": False, "error": "invalid-filename"}, status=status.HTTP_400_BAD_REQUEST)
+        if not path.exists():
+            return Response({"success": False, "error": "file-not-found"}, status=status.HTTP_404_NOT_FOUND)
+
         try:
-            try:
-                df = pd.read_csv(path, encoding="utf-8-sig", low_memory=False)
-            except UnicodeDecodeError:
-                df = pd.read_csv(path, encoding="gbk", low_memory=False)
+            page = int(request.query_params.get("page", 1))
+        except Exception:
+            page = 1
+        try:
+            page_size = int(request.query_params.get("page_size", 15))
+        except Exception:
+            page_size = 15
+        page = max(page, 1)
+        page_size = min(max(page_size, 1), 500)
+        sort_col = (request.query_params.get("sort") or "").strip()
+        order = (request.query_params.get("order") or "asc").strip().lower()
+        keyword = (request.query_params.get("keyword") or "").strip()
 
-            if df.empty:
-                return Response(
-                    {
-                        "success": True,
-                        "count": 0,
-                        "page": page,
-                        "page_size": page_size,
-                        "columns": df.columns.tolist(),
-                        "data": [],
-                    }
-                )
+        return self._read_csv_page_response(path, page, page_size, sort_col, order, keyword)
 
-            # keyword filter（仅做常用列）
-            if keyword:
-                candidate_cols = [c for c in ["robot", "Name_C", "SNR_C", "SUB", "P_name"] if c in df.columns]
-                if candidate_cols:
-                    mask = False
-                    for col in candidate_cols:
-                        mask = mask | df[col].astype(str).str.contains(keyword, case=False, na=False)
-                    df = df[mask]
+    @action(detail=False, methods=["get"], url_path="csv_files")
+    def csv_files(self, request):
+        export_dir = self._get_gripper_export_dir()
+        export_dir.mkdir(parents=True, exist_ok=True)
 
-            # sort（尝试数值排序，否则字符串排序）
-            if sort_col and sort_col in df.columns:
-                asc = order != "desc"
-                series = df[sort_col]
-                numeric = pd.to_numeric(series, errors="coerce")
-                if numeric.notna().any():
-                    df = df.assign(_sort_key=numeric).sort_values("_sort_key", ascending=asc, kind="mergesort")
-                    df = df.drop(columns=["_sort_key"])
-                else:
-                    df = df.sort_values(sort_col, ascending=asc, kind="mergesort")
-
-            total = int(df.shape[0])
-            start = (page - 1) * page_size
-            end = start + page_size
-            page_df = df.iloc[start:end].copy()
-            # DRF JSONRenderer 不接受 NaN/Inf：统一转成 None
-            page_df = page_df.replace([np.nan, np.inf, -np.inf], None)
-
-            return Response(
+        files = []
+        for path in sorted(export_dir.glob("*.csv"), key=lambda item: item.stat().st_mtime, reverse=True):
+            stat_result = path.stat()
+            files.append(
                 {
-                    "success": True,
-                    "count": total,
-                    "page": page,
-                    "page_size": page_size,
-                    "columns": df.columns.tolist(),
-                    "data": page_df.to_dict("records"),
+                    "filename": path.name,
+                    "server_path": str(path),
+                    "size": int(stat_result.st_size),
+                    "updated_at": datetime.fromtimestamp(stat_result.st_mtime, tz=timezone.get_current_timezone()).isoformat(),
                 }
             )
-        except Exception as e:
-            logger.exception("csv_rows failed task_id=%s", task_id)
-            return Response({"success": False, "error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return Response(
+            {
+                "success": True,
+                "export_dir": str(export_dir),
+                "files": files,
+            }
+        )
 
     @action(detail=False, methods=['get'])
     def status(self, request):
-        payload = get_gripper_check_status()
+        task_id = (request.query_params.get("task_id") or "").strip()
+        payload = get_gripper_check_status(task_id=task_id)
         if not payload:
+            if task_id:
+                return Response({"success": False, "error": "task-not-found"}, status=status.HTTP_404_NOT_FOUND)
             return Response({"status": "idle"})
         return Response(payload)
 
     @action(detail=False, methods=['get'])
     def latest(self, request):
-        payload = get_gripper_check_latest()
+        task_id = (request.query_params.get("task_id") or "").strip()
+        payload = get_gripper_check_latest(task_id=task_id)
         if not payload:
-            return Response({"success": False, "error": "no-latest-result"})
+            return Response({"success": False, "error": "no-latest-result"}, status=status.HTTP_404_NOT_FOUND)
         return Response(payload)
 
     @action(detail=False, methods=['get'])
     def robot_tables(self, request):
         """
         获取可用的机器人表名列表（从RobotComponent获取robot）
-        支持按车间(group_key)筛选和关键词(keyword)搜索
+        支持按车间(group_key)、type、tech 筛选和关键词(keyword)搜索
 
         参数:
             group: 车间key（可选）
@@ -1343,18 +1371,25 @@ class GripperCheckViewSet(viewsets.GenericViewSet):
         # 获取车间筛选参数
         group_key = request.query_params.get('group')
         keyword = request.query_params.get('keyword', '').strip()
+        selected_types = self._parse_multi_query_param(request, "types")
+        selected_techs = self._parse_multi_query_param(request, "techs")
 
         # 构建查询 - 使用 robot 字段而不是 part_no
-        qs = RobotComponent.objects.values('robot', 'shop', 'group__key', 'tech').distinct()
+        qs = RobotComponent.objects.values('robot', 'shop', 'group__key', 'type', 'tech').distinct()
 
         if group_key:
             qs = qs.filter(group__key=group_key)
+        if selected_types:
+            qs = qs.filter(type__in=selected_types)
+        if selected_techs:
+            qs = qs.filter(tech__in=selected_techs)
 
         # 支持关键词搜索
         if keyword:
             qs = qs.filter(
                 Q(robot__icontains=keyword)
                 | Q(shop__icontains=keyword)
+                | Q(type__icontains=keyword)
                 | Q(tech__icontains=keyword)
             )
 
@@ -1368,9 +1403,33 @@ class GripperCheckViewSet(viewsets.GenericViewSet):
                 'robot_id': t['robot'],  # 兼容前端，使用 robot 作为 robot_id
                 'shop': t.get('shop', ''),
                 'group_key': t.get('group__key', ''),
+                'type': t.get('type', '') or '',
+                'tech': t.get('tech', '') or '',
             })
 
         return Response({'results': results})
+
+    @action(detail=False, methods=["get"], url_path="filter_options")
+    def filter_options(self, request):
+        group_key = (request.query_params.get("group") or "").strip()
+        qs = RobotComponent.objects.all()
+        if group_key:
+            qs = qs.filter(group__key=group_key)
+
+        types = [
+            value for value in qs.exclude(type__isnull=True).exclude(type__exact="").values_list("type", flat=True).distinct().order_by("type")
+        ]
+        techs = [
+            value for value in qs.exclude(tech__isnull=True).exclude(tech__exact="").values_list("tech", flat=True).distinct().order_by("tech")
+        ]
+
+        return Response(
+            {
+                "success": True,
+                "types": types,
+                "techs": techs,
+            }
+        )
 
     @action(detail=False, methods=['get'])
     def config_template(self, request):
@@ -1399,22 +1458,21 @@ def gripper_check_events(request):
     import json as json_module
 
     task_id = (request.GET.get("task_id") or "").strip()
+    if not task_id:
+        return JsonResponse({"success": False, "error": "missing-task-id"}, status=400)
 
     def stream_generator():
         try:
             # 立即发送初始状态
-            status_payload = get_gripper_check_status() or {"status": "idle"}
+            status_payload = get_gripper_check_status(task_id=task_id) or {"status": "queued", "task_id": task_id}
             yield f"event: status\ndata: {json_module.dumps(status_payload, ensure_ascii=False)}\n\n"
 
             last_status = status_payload.get("status", "idle").lower()
-            # 移除超时限制，支持大数据量长时间诊断任务
-            # started_at = time.time()
-            # timeout_seconds = 60 * 60  # 1小时超时
 
             last_ping = 0.0
             while True:
                 try:
-                    current_status = get_gripper_check_status() or {"status": "idle"}
+                    current_status = get_gripper_check_status(task_id=task_id) or {"status": "queued", "task_id": task_id}
                     current_value = current_status.get("status", "idle").lower()
 
                     # 心跳：避免代理/浏览器因长时间无数据而断开连接
@@ -1429,17 +1487,12 @@ def gripper_check_events(request):
                         last_status = current_value
 
                     # 检查是否完成
-                    if current_value in ("idle", "failed"):
+                    if current_value in ("idle", "failed", "cancelled"):
                         if current_value == "idle":
-                            latest = get_gripper_check_latest()
+                            latest = get_gripper_check_latest(task_id=task_id)
                             if latest:
                                 yield f"event: result\ndata: {json_module.dumps(latest, ensure_ascii=False)}\n\n"
                         break
-
-                    # 超时检查已移除，允许长时间运行
-                    # if time.time() - started_at > timeout_seconds:
-                    #     yield f"event: error\ndata: {json_module.dumps({'error': 'timeout'}, ensure_ascii=False)}\n\n"
-                    #     break
 
                     time.sleep(1)
 

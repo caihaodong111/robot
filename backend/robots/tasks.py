@@ -2,8 +2,9 @@
 Celery 定时任务
 用于自动同步机器人数据
 """
+from pathlib import Path
+
 from celery import shared_task
-from django.utils import timezone
 from django.utils import timezone
 import logging
 
@@ -243,6 +244,123 @@ def import_robot_components_csv_task(file_path=None, folder_path=None, project=N
     )
 
 
+def _raise_if_gripper_check_cancelled(task_id):
+    from .gripper_check_state import is_gripper_check_cancelled
+    from .gripper_service import GripperCheckCancelledError
+
+    if is_gripper_check_cancelled(task_id):
+        raise GripperCheckCancelledError("任务已取消")
+
+
+def _run_gripper_check_task(config_data, task_id, export_csv=False):
+    from django.conf import settings
+
+    from .gripper_check_state import set_gripper_check_latest, set_gripper_check_status
+    from .gripper_service import (
+        GripperCheckCancelledError,
+        check_gripper_df_from_config,
+        check_gripper_from_config,
+    )
+
+    task_id = (task_id or "").strip()
+    cancel_check = lambda: _raise_if_gripper_check_cancelled(task_id)
+    server_path = None
+    total_robots = len(config_data.get("gripper_list") or [])
+
+    def progress_callback(current, total, robot):
+        progress_text = f"{current}/{total}" if total else f"{current}"
+        logger.info("Gripper task %s progress (%s) robot=%s", task_id, progress_text, robot)
+        set_gripper_check_status(
+            "running",
+            task_id=task_id,
+            progress_current=current,
+            progress_total=total,
+            progress_text=progress_text,
+            current_robot=robot,
+            robot_count=total_robots,
+        )
+
+    set_gripper_check_status("running", task_id=task_id, robot_count=total_robots)
+
+    try:
+        if export_csv:
+            export_dir = Path(getattr(settings, "BASE_DIR", ".")) / "exports" / "gripper_check"
+            export_dir.mkdir(parents=True, exist_ok=True)
+            file_stamp = timezone.now().strftime("%Y%m%d_%H%M%S_%f")
+            filename = f"trajectory_report_{file_stamp}_{task_id[:8]}.csv"
+            server_path = export_dir / filename
+
+            df = check_gripper_df_from_config(
+                config_data,
+                cancel_check=cancel_check,
+                progress_callback=progress_callback,
+            )
+            cancel_check()
+            set_gripper_check_status("exporting", task_id=task_id)
+            logger.info("Gripper CSV task %s exporting rows=%s path=%s", task_id, df.shape[0], server_path)
+            df.to_csv(server_path, index=False, encoding="utf-8-sig")
+
+            latest = {
+                "success": True,
+                "count": int(df.shape[0]),
+                "filename": filename,
+                "server_path": str(server_path),
+                "task_id": task_id,
+                "updated_at": timezone.now().isoformat(),
+            }
+        else:
+            latest = dict(
+                check_gripper_from_config(
+                    config_data,
+                    cancel_check=cancel_check,
+                    progress_callback=progress_callback,
+                )
+            )
+            latest["task_id"] = task_id
+            latest["updated_at"] = timezone.now().isoformat()
+
+        set_gripper_check_latest(latest, task_id=task_id)
+        set_gripper_check_status("idle", task_id=task_id)
+        return latest
+    except GripperCheckCancelledError as exc:
+        if server_path and server_path.exists():
+            try:
+                server_path.unlink()
+            except OSError:
+                logger.warning("Failed to remove cancelled CSV %s", server_path)
+
+        latest = {
+            "success": False,
+            "cancelled": True,
+            "error": str(exc),
+            "count": 0,
+            "data": [],
+            "columns": [],
+            "filename": "",
+            "server_path": "",
+            "task_id": task_id,
+            "updated_at": timezone.now().isoformat(),
+        }
+        set_gripper_check_latest(latest, task_id=task_id)
+        set_gripper_check_status("cancelled", error=str(exc), task_id=task_id)
+        return latest
+    except Exception as exc:
+        latest = {
+            "success": False,
+            "error": str(exc),
+            "count": 0,
+            "data": [],
+            "columns": [],
+            "filename": "",
+            "server_path": "",
+            "task_id": task_id,
+            "updated_at": timezone.now().isoformat(),
+        }
+        set_gripper_check_latest(latest, task_id=task_id)
+        set_gripper_check_status("failed", error=str(exc), task_id=task_id)
+        return latest
+
+
 @shared_task(bind=True)
 def gripper_check_task(self, config_data):
     """
@@ -251,24 +369,12 @@ def gripper_check_task(self, config_data):
     Args:
         config_data: dict，建议传 ISO 字符串时间（start_time/end_time）
     """
-    from .gripper_check_state import set_gripper_check_latest, set_gripper_check_status
-    from .gripper_service import check_gripper_from_config
-
     task_id = getattr(self.request, "id", None)
-    set_gripper_check_status("running", task_id=task_id)
+    return _run_gripper_check_task(config_data, task_id=task_id, export_csv=False)
 
-    try:
-        result = check_gripper_from_config(config_data)
-        set_gripper_check_latest(result)
-        set_gripper_check_status("idle", task_id=task_id)
-        return result
-    except Exception as exc:
-        set_gripper_check_status("failed", error=str(exc), task_id=task_id)
-        return {
-            "success": False,
-            "error": str(exc),
-            "count": 0,
-            "data": [],
-            "columns": [],
-            "updated_at": timezone.now().isoformat(),
-        }
+
+@shared_task(bind=True)
+def gripper_check_csv_task(self, config_data):
+    """后台执行关键轨迹检查并生成 CSV。"""
+    task_id = getattr(self.request, "id", None)
+    return _run_gripper_check_task(config_data, task_id=task_id, export_csv=True)

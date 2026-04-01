@@ -235,31 +235,18 @@ CELERY_BEAT_SCHEDULE = {
 
 
 # 缓存配置
-# - `LocMemCache` 是进程内缓存：多进程/多 worker 部署时，写入与读取可能落在不同进程，前端会一直“加载中”
-# - 不使用 Redis 的情况下，默认用 `FileBasedCache`（同一台机器上多进程可共享）
-if DEBUG:
-    CACHES = {
-        "default": {
-            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-            "LOCATION": "gripper_check_cache",
-            "OPTIONS": {
-                "MAX_ENTRIES": 1000,
-            },
-        }
+# 统一使用 Redis，确保 Django / Celery / SSE 在多进程下共享同一份任务状态。
+REDIS_CACHE_URL = os.getenv("REDIS_CACHE_URL", CELERY_BROKER_URL)
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": REDIS_CACHE_URL,
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        },
+        "KEY_PREFIX": "sg57",
     }
-else:
-    CACHE_DIR = os.getenv("DJANGO_FILE_CACHE_DIR") or str(BASE_DIR / "cache")
-    os.makedirs(CACHE_DIR, exist_ok=True)
-    CACHES = {
-        "default": {
-            "BACKEND": "django.core.cache.backends.filebased.FileBasedCache",
-            "LOCATION": CACHE_DIR,
-            "OPTIONS": {
-                "MAX_ENTRIES": 1000,
-            },
-            "KEY_PREFIX": "sg57",
-        }
-    }
+}
 
 
 # 日志配置

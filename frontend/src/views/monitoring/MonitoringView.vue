@@ -53,35 +53,44 @@
                   {{ selectedRobots.length }}
                 </el-tag>
               </label>
-              <el-select
-                v-model="selectedRobots"
-                placeholder="请输入机器人名称搜索或全选"
-                multiple
-                collapse-tags
-                collapse-tags-tooltip
-                filterable
-                remote
-                reserve-keyword
-                :remote-method="searchRobots"
-                :loading="robotsLoading"
-                @change="handleRobotsChange"
-              >
-                <template #header>
-                  <div class="select-header">
-                    <el-checkbox
-                      v-model="isAllRobotsSelected"
-                      :indeterminate="isIndeterminate"
-                      @change="handleSelectAllRobots"
-                    >全选机器人</el-checkbox>
-                  </div>
-                </template>
-                <el-option
-                  v-for="robot in availableRobots"
-                  :key="robot.value"
-                  :label="robot.label"
-                  :value="robot.value"
-                />
-              </el-select>
+              <div class="robot-select-wrap">
+                <el-select
+                  v-model="selectedRobots"
+                  placeholder="请先选择 Type 和 Tech"
+                  multiple
+                  collapse-tags
+                  collapse-tags-tooltip
+                  filterable
+                  remote
+                  reserve-keyword
+                  :remote-method="searchRobots"
+                  :loading="robotsLoading"
+                  :disabled="!canSelectRobots"
+                  @change="handleRobotsChange"
+                >
+                  <template #header>
+                    <div class="select-header">
+                      <el-checkbox
+                        v-model="isAllRobotsSelected"
+                        :indeterminate="isIndeterminate"
+                        @change="handleSelectAllRobots"
+                      >全选当前筛选结果</el-checkbox>
+                    </div>
+                  </template>
+                  <el-option
+                    v-for="robot in availableRobots"
+                    :key="robot.value"
+                    :label="robot.label"
+                    :value="robot.value"
+                  />
+                </el-select>
+                <button
+                  v-if="!canSelectRobots"
+                  type="button"
+                  class="robot-select-guard"
+                  @click="handleRobotSelectGuardClick"
+                ></button>
+              </div>
             </div>
 
             <!-- Time Range -->
@@ -105,14 +114,14 @@
               <el-button
                 type="primary"
                 class="pulse-btn"
-                :class="{ 'is-cancel': checking && isCheckHover }"
+                :class="{ 'is-cancel': checking && isCheckHover && !isCancelling }"
                 :disabled="!canExecute && !checking"
                 @mouseenter="handleCheckHover(true)"
                 @mouseleave="handleCheckHover(false)"
                 @click="handleExecuteOrCancel"
               >
                 <el-icon v-if="!checking"><Search /></el-icon>
-                {{ checking ? (isCheckHover ? '取消' : '正在诊断...') : '执行诊断' }}
+                {{ checking ? (isCancelling ? '正在取消...' : (isCheckHover ? '取消' : '正在诊断...')) : '执行诊断' }}
               </el-button>
               <el-button
                 v-if="checkResult"
@@ -122,11 +131,85 @@
                 <el-icon><Download /></el-icon>
                 <span>导出数据</span>
               </el-button>
+              <el-button
+                @click="openCsvBrowser"
+                class="pulse-btn export-btn"
+              >
+                <el-icon><FolderOpened /></el-icon>
+                <span>CSV 文件</span>
+                <span v-if="hasUnreadCsvFiles" class="csv-unread-dot"></span>
+              </el-button>
             </div>
           </div>
 
           <!-- Advanced Config Row (Key Paths) -->
           <div class="control-row secondary-row">
+            <div class="control-item filter-selector entrance-fade-up-1">
+              <label><el-icon><Cpu /></el-icon> Type 筛选</label>
+              <el-select
+                v-model="selectedTypes"
+                placeholder="按 Type 缩小机器人范围"
+                multiple
+                collapse-tags
+                collapse-tags-tooltip
+                clearable
+                filterable
+                :loading="robotFilterLoading"
+                :disabled="!canFilterRobots"
+                @visible-change="handleRobotFilterVisibleChange"
+                @change="handleTypeFilterChange"
+              >
+                <template #header>
+                  <div class="select-header">
+                    <el-checkbox
+                      v-model="isAllTypesSelected"
+                      :indeterminate="isTypeIndeterminate"
+                      @change="handleSelectAllTypes"
+                    >全选当前 Type</el-checkbox>
+                  </div>
+                </template>
+                <el-option
+                  v-for="type in availableTypes"
+                  :key="type"
+                  :label="type"
+                  :value="type"
+                />
+              </el-select>
+            </div>
+
+            <div class="control-item filter-selector entrance-fade-up-1">
+              <label><el-icon><Cpu /></el-icon> Tech 筛选</label>
+              <el-select
+                v-model="selectedTechs"
+                placeholder="按 Tech 缩小机器人范围"
+                multiple
+                collapse-tags
+                collapse-tags-tooltip
+                clearable
+                filterable
+                :loading="robotFilterLoading"
+                :disabled="!canFilterRobots"
+                @visible-change="handleRobotFilterVisibleChange"
+                @change="handleTechFilterChange"
+              >
+                <template #header>
+                  <div class="select-header">
+                    <el-checkbox
+                      v-model="isAllTechsSelected"
+                      :indeterminate="isTechIndeterminate"
+                      @change="handleSelectAllTechs"
+                    >全选当前 Tech</el-checkbox>
+                  </div>
+                </template>
+                <el-option
+                  v-for="tech in availableTechs"
+                  :key="tech"
+                  :label="tech"
+                  :value="tech"
+                />
+              </el-select>
+            </div>
+
             <div class="control-item path-config entrance-fade-up-1">
               <label><el-icon><Operation /></el-icon> 轨迹关键特征 (Key Paths)</label>
               <div class="path-inputs">
@@ -185,6 +268,12 @@
                 <span class="dot bad"></span> 严重异常
               </div>
             </div>
+          </div>
+          <div v-if="activeCsvServerPath" class="csv-path-bar">
+            <span class="path-label">CSV 路径</span>
+            <button type="button" class="path-link" @click="openCsvBrowser">
+              {{ activeCsvServerPath }}
+            </button>
           </div>
 
           <el-table
@@ -382,8 +471,8 @@
             </svg>
           </div>
           <div class="loading-message">
-            <div class="loading-title">正在诊断中</div>
-            <div class="loading-tip">正在分析轨迹数据，请稍候...</div>
+            <div class="loading-title">{{ isCancelling ? '正在取消任务' : '正在诊断中' }}</div>
+            <div class="loading-tip">{{ isCancelling ? '后端正在结束当前任务，请稍候...' : '正在分析轨迹数据，请稍候...' }}</div>
           </div>
         </div>
       </transition>
@@ -401,6 +490,44 @@
         class="critical-alert"
       />
     </transition>
+
+    <el-dialog
+      v-model="csvDialogVisible"
+      width="760px"
+      title="CSV 文件浏览"
+      class="csv-browser-dialog"
+    >
+      <div class="csv-browser-header">
+        <div class="csv-dir-line">
+          <span class="csv-dir-label">存放路径</span>
+          <span class="csv-dir-value">{{ exportDir || '暂无' }}</span>
+        </div>
+        <el-button :loading="csvFilesLoading" @click="refreshCsvFiles">刷新</el-button>
+      </div>
+
+      <el-table
+        :data="csvFiles"
+        v-loading="csvFilesLoading"
+        height="360"
+        class="custom-table"
+        empty-text="暂无可用 CSV 文件"
+      >
+        <el-table-column prop="filename" label="文件名" min-width="300">
+          <template #default="{ row }">
+            <button type="button" class="path-link file-link" @click="handleLoadCsvFile(row)">
+              <span v-if="isCsvUnread(row.filename)" class="csv-file-dot"></span>
+              {{ row.filename }}
+            </button>
+          </template>
+        </el-table-column>
+        <el-table-column prop="updated_at" label="更新时间" min-width="190">
+          <template #default="{ row }">{{ formatDateTime(row.updated_at) }}</template>
+        </el-table-column>
+        <el-table-column prop="size" label="大小" width="110" align="right">
+          <template #default="{ row }">{{ formatFileSize(row.size) }}</template>
+        </el-table-column>
+      </el-table>
+    </el-dialog>
     </div>
   </div>
 </template>
@@ -410,14 +537,19 @@ import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated, next
 import { ElMessage } from 'element-plus'
 import {
   Download, Search, Location, Cpu, Calendar,
-  Operation, Monitor, Warning
+  Operation, Monitor, Warning, FolderOpened
 } from '@element-plus/icons-vue'
 import { DEMO_MODE, API_BASE_URL } from '@/config/appConfig'
 import {
   getRobotGroups,
   getGripperRobotTables,
+  getGripperRobotFilterOptions,
   executeGripperCheckCsv,
+  cancelGripperCheck,
   downloadGripperCheckCsv,
+  downloadGripperCheckCsvFile,
+  getGripperCheckCsvFiles,
+  getGripperCheckCsvFileRows,
   getGripperCheckStatus,
   getGripperCheckLatest,
   getGripperCheckCsvRows
@@ -430,6 +562,9 @@ const layoutStore = useLayoutStore()
 
 // 默认时间跨度
 const DEFAULT_TIME_SPAN_DAYS = 7
+const TASK_STORAGE_KEY = 'gripper_check_task_id'
+const CSV_READ_STORAGE_KEY = 'gripper_check_seen_csv_files'
+const ACTIVE_TASK_STATUSES = new Set(['queued', 'running', 'exporting', 'cancelling'])
 
 // 表格高度随侧边栏状态动态变化
 const tableHeight = computed(() => layoutStore.isCollapsed ? 680 : 620)
@@ -456,6 +591,11 @@ const plantsLoading = ref(false)
 
 const availableRobots = ref([])
 const selectedRobots = ref([])
+const availableTypes = ref([])
+const availableTechs = ref([])
+const selectedTypes = ref([])
+const selectedTechs = ref([])
+const robotFilterLoading = ref(false)
 const robotsLoading = ref(false)
 
 const timeRange = ref([new Date(Date.now() - DEFAULT_TIME_SPAN_DAYS * 24 * 3600_000), new Date()])
@@ -501,9 +641,26 @@ const isAllRobotsSelected = computed({
   }
 })
 const isIndeterminate = computed(() => selectedRobots.value.length > 0 && selectedRobots.value.length < availableRobots.value.length)
+const isAllTypesSelected = computed({
+  get: () => selectedTypes.value.length === availableTypes.value.length && availableTypes.value.length > 0,
+  set: (val) => {
+    if (val) selectedTypes.value = [...availableTypes.value]
+    else selectedTypes.value = []
+  }
+})
+const isTypeIndeterminate = computed(() => selectedTypes.value.length > 0 && selectedTypes.value.length < availableTypes.value.length)
+const isAllTechsSelected = computed({
+  get: () => selectedTechs.value.length === availableTechs.value.length && availableTechs.value.length > 0,
+  set: (val) => {
+    if (val) selectedTechs.value = [...availableTechs.value]
+    else selectedTechs.value = []
+  }
+})
+const isTechIndeterminate = computed(() => selectedTechs.value.length > 0 && selectedTechs.value.length < availableTechs.value.length)
 
 // Executive Logic
 const checking = ref(false)
+const isCancelling = ref(false)
 const isCheckHover = ref(false)
 const checkResult = ref(null)
 const latestMeta = ref(null)
@@ -513,14 +670,38 @@ const pageSize = ref(15)
 const sortState = ref({ prop: 'robot', order: 'ascending' })
 const activeCheckId = ref(0)
 const canceledCheckId = ref(0)
-const activeTaskId = ref(localStorage.getItem('gripper_check_task_id') || '')
+const activeTaskId = ref(localStorage.getItem(TASK_STORAGE_KEY) || '')
 const sseConnection = ref(null)
 const statusPollingTimer = ref(null)
 const STATUS_POLL_INTERVAL = 30000
+const CANCELLING_POLL_INTERVAL = 1000
 const statusRequestInFlight = ref(false)
 const keywordFilter = ref('')
+const activeCsvFilename = ref('')
+const activeCsvServerPath = ref('')
+const exportDir = ref('')
+const csvDialogVisible = ref(false)
+const csvFilesLoading = ref(false)
+const csvFiles = ref([])
+const seenCsvFiles = ref([])
+const hasUnreadCsvFiles = computed(() => {
+  const currentFilename = (activeCsvFilename.value || '').trim()
+  if (currentFilename && !seenCsvFiles.value.includes(currentFilename)) return true
+  return csvFiles.value.some(file => !seenCsvFiles.value.includes(file.filename))
+})
+const canFilterRobots = computed(() => Boolean(selectedPlant.value))
+const canSelectRobots = computed(() => Boolean(selectedPlant.value) && selectedTypes.value.length > 0 && selectedTechs.value.length > 0)
 
 const canExecute = computed(() => selectedPlant.value && selectedRobots.value.length > 0 && timeRange.value?.length === 2)
+
+const DEMO_ROBOT_CATALOG = [
+  { value: 'as33_020rb_400', label: 'as33_020rb_400', group_key: 'plant_a', type: 'HANDLING', tech: 'SPOT' },
+  { value: 'as33_020rb_401', label: 'as33_020rb_401', group_key: 'plant_a', type: 'HANDLING', tech: 'MIG' },
+  { value: 'as33_020rb_402', label: 'as33_020rb_402', group_key: 'plant_a', type: 'SEALING', tech: 'SEAL' },
+  { value: 'as34_020rb_400', label: 'as34_020rb_400', group_key: 'plant_b', type: 'WELDING', tech: 'SPOT' },
+  { value: 'as34_020rb_401', label: 'as34_020rb_401', group_key: 'plant_b', type: 'WELDING', tech: 'MIG' },
+  { value: 'as35_020rb_400', label: 'as35_020rb_400', group_key: 'plant_c', type: 'HANDLING', tech: 'LASER' },
+]
 
 const normalizeGroupName = (group) => {
   if (!group) return group
@@ -528,6 +709,72 @@ const normalizeGroupName = (group) => {
     return { ...group, name: 'AS1' }
   }
   return group
+}
+
+const setPersistedTaskId = (taskId) => {
+  const normalized = (taskId || '').trim()
+  activeTaskId.value = normalized
+  if (normalized) {
+    localStorage.setItem(TASK_STORAGE_KEY, normalized)
+  } else {
+    localStorage.removeItem(TASK_STORAGE_KEY)
+  }
+}
+
+const loadSeenCsvFiles = () => {
+  try {
+    const raw = localStorage.getItem(CSV_READ_STORAGE_KEY)
+    if (!raw) {
+      seenCsvFiles.value = []
+      return false
+    }
+    const parsed = JSON.parse(raw)
+    seenCsvFiles.value = Array.isArray(parsed) ? parsed.filter(Boolean) : []
+    return true
+  } catch {
+    seenCsvFiles.value = []
+    return false
+  }
+}
+
+const persistSeenCsvFiles = () => {
+  localStorage.setItem(CSV_READ_STORAGE_KEY, JSON.stringify(seenCsvFiles.value))
+}
+
+const markCsvFileRead = (filename) => {
+  const normalized = (filename || '').trim()
+  if (!normalized) return
+  if (!seenCsvFiles.value.includes(normalized)) {
+    seenCsvFiles.value = [...seenCsvFiles.value, normalized]
+    persistSeenCsvFiles()
+  }
+}
+
+const markCsvFileUnread = (filename) => {
+  const normalized = (filename || '').trim()
+  if (!normalized) return
+  seenCsvFiles.value = seenCsvFiles.value.filter(item => item !== normalized)
+  persistSeenCsvFiles()
+}
+
+const isCsvUnread = (filename) => {
+  const normalized = (filename || '').trim()
+  return Boolean(normalized) && !seenCsvFiles.value.includes(normalized)
+}
+
+const setActiveCsvSource = ({ filename = '', serverPath = '' } = {}) => {
+  activeCsvFilename.value = (filename || '').trim()
+  activeCsvServerPath.value = (serverPath || '').trim()
+}
+
+const getRequestErrorMessage = (error, fallback) => {
+  const errorCode = error?.response?.data?.error
+  const details = error?.response?.data?.details
+  if (errorCode === 'another-task-running') return '已有轨迹检查任务正在执行，请稍后再试'
+  if (errorCode === 'enqueue-failed') return details || '任务入队失败，请检查 Celery/Redis'
+  if (errorCode === 'task-not-found') return '任务状态已失效，请重新执行'
+  if (errorCode === 'task-not-active') return '任务已经结束，无需重复取消'
+  return errorCode || error?.message || fallback
 }
 
 const loadPlantGroups = async () => {
@@ -550,9 +797,111 @@ const loadPlantGroups = async () => {
   }
 }
 
+const resetRobotSearchState = () => {
+  lastRobotSearchKey.value = ''
+  if (robotSearchTimer.value) {
+    clearTimeout(robotSearchTimer.value)
+    robotSearchTimer.value = null
+  }
+}
+
+const syncSelectedRobotsWithAvailable = () => {
+  const allowed = new Set(availableRobots.value.map(robot => robot.value))
+  selectedRobots.value = selectedRobots.value.filter(robotId => allowed.has(robotId))
+}
+
+const syncRobotFiltersWithAvailable = () => {
+  const allowedTypes = new Set(availableTypes.value)
+  const allowedTechs = new Set(availableTechs.value)
+  selectedTypes.value = selectedTypes.value.filter(type => allowedTypes.has(type))
+  selectedTechs.value = selectedTechs.value.filter(tech => allowedTechs.has(tech))
+}
+
+const loadRobotFilterOptions = async ({ clearSelection = false } = {}) => {
+  if (clearSelection || !selectedPlant.value) {
+    selectedTypes.value = []
+    selectedTechs.value = []
+  }
+
+  if (!selectedPlant.value) {
+    availableTypes.value = []
+    availableTechs.value = []
+    return
+  }
+
+  try {
+    robotFilterLoading.value = true
+    if (DEMO_MODE) {
+      const scopedRobots = DEMO_ROBOT_CATALOG.filter(robot => robot.group_key === selectedPlant.value)
+      availableTypes.value = [...new Set(scopedRobots.map(robot => robot.type).filter(Boolean))].sort()
+      availableTechs.value = [...new Set(scopedRobots.map(robot => robot.tech).filter(Boolean))].sort()
+    } else {
+      const resp = await getGripperRobotFilterOptions({ group: selectedPlant.value })
+      availableTypes.value = Array.isArray(resp?.types) ? resp.types : []
+      availableTechs.value = Array.isArray(resp?.techs) ? resp.techs : []
+    }
+
+    if (!clearSelection) {
+      syncRobotFiltersWithAvailable()
+    }
+  } catch (e) {
+    availableTypes.value = []
+    availableTechs.value = []
+    ElMessage.error('获取 Type/Tech 筛选项失败')
+  } finally {
+    robotFilterLoading.value = false
+  }
+}
+
+const handleRobotFilterVisibleChange = async (visible) => {
+  if (!visible || !selectedPlant.value || robotFilterLoading.value) return
+  if (availableTypes.value.length || availableTechs.value.length) return
+  await loadRobotFilterOptions()
+}
+
+const refreshRobotOptions = async ({ query = '', clearSelection = false } = {}) => {
+  resetRobotSearchState()
+  if (clearSelection) {
+    selectedRobots.value = []
+  }
+  await doSearchRobots(query)
+  if (!clearSelection) {
+    syncSelectedRobotsWithAvailable()
+  }
+}
+
 const handlePlantChange = async () => {
-  // 车间变化时重新搜索机器人
-  await searchRobots('')
+  availableRobots.value = []
+  await loadRobotFilterOptions({ clearSelection: true })
+  await refreshRobotOptions({ clearSelection: true })
+}
+
+const handleTypeFilterChange = async () => {
+  await refreshRobotOptions()
+}
+
+const handleTechFilterChange = async () => {
+  await refreshRobotOptions()
+}
+
+const handleSelectAllTypes = async (val) => {
+  selectedTypes.value = val ? [...availableTypes.value] : []
+  await refreshRobotOptions()
+}
+
+const handleSelectAllTechs = async (val) => {
+  selectedTechs.value = val ? [...availableTechs.value] : []
+  await refreshRobotOptions()
+}
+
+const handleRobotSelectGuardClick = () => {
+  if (!selectedPlant.value) {
+    ElMessage.warning('请先选择车间，再选择 Type 和 Tech')
+    return
+  }
+  if (!selectedTypes.value.length || !selectedTechs.value.length) {
+    ElMessage.warning('请先选择 Type 和 Tech')
+  }
 }
 
 // 远程搜索机器人
@@ -569,23 +918,33 @@ const doSearchRobots = async (query) => {
     if (selectedPlant.value) {
       params.group = selectedPlant.value
     }
+    if (selectedTypes.value.length) {
+      params.types = selectedTypes.value.join(',')
+    }
+    if (selectedTechs.value.length) {
+      params.techs = selectedTechs.value.join(',')
+    }
 
     if (DEMO_MODE) {
-      // 模拟数据
-      const allRobots = [
-        { value: 'as33_020rb_400', label: 'as33_020rb_400', group_key: 'plant_a' },
-        { value: 'as33_020rb_401', label: 'as33_020rb_401', group_key: 'plant_a' },
-        { value: 'as33_020rb_402', label: 'as33_020rb_402', group_key: 'plant_a' },
-        { value: 'as34_020rb_400', label: 'as34_020rb_400', group_key: 'plant_b' },
-        { value: 'as34_020rb_401', label: 'as34_020rb_401', group_key: 'plant_b' },
-        { value: 'as35_020rb_400', label: 'as35_020rb_400', group_key: 'plant_c' },
-      ]
-      let filtered = allRobots
+      let filtered = DEMO_ROBOT_CATALOG
       if (query) {
-        filtered = allRobots.filter(r => r.value.toLowerCase().includes(query.toLowerCase()))
+        const normalizedQuery = query.toLowerCase()
+        filtered = filtered.filter(robot =>
+          robot.value.toLowerCase().includes(normalizedQuery) ||
+          robot.type.toLowerCase().includes(normalizedQuery) ||
+          robot.tech.toLowerCase().includes(normalizedQuery)
+        )
       }
       if (selectedPlant.value) {
         filtered = filtered.filter(r => r.group_key === selectedPlant.value)
+      }
+      if (selectedTypes.value.length) {
+        const selectedTypeSet = new Set(selectedTypes.value)
+        filtered = filtered.filter(robot => selectedTypeSet.has(robot.type))
+      }
+      if (selectedTechs.value.length) {
+        const selectedTechSet = new Set(selectedTechs.value)
+        filtered = filtered.filter(robot => selectedTechSet.has(robot.tech))
       }
       availableRobots.value = filtered
     } else {
@@ -603,7 +962,9 @@ const doSearchRobots = async (query) => {
 const searchRobots = (query) => {
   const paramsKey = JSON.stringify({
     q: (query || '').trim(),
-    group: selectedPlant.value || ''
+    group: selectedPlant.value || '',
+    types: [...selectedTypes.value].sort(),
+    techs: [...selectedTechs.value].sort()
   })
   if (paramsKey === lastRobotSearchKey.value) return
   lastRobotSearchKey.value = paramsKey
@@ -615,14 +976,16 @@ const searchRobots = (query) => {
 }
 
 // 机器人选择变化，自动设置对应车间
-const handleRobotsChange = (value) => {
+const handleRobotsChange = async (value) => {
   if (value.length === 0) return
 
-  // 获取第一个选中机器人的车间信息
   const firstRobot = availableRobots.value.find(r => r.value === value[0])
   if (firstRobot && firstRobot.group_key && firstRobot.group_key !== selectedPlant.value) {
     selectedPlant.value = firstRobot.group_key
+    await loadRobotFilterOptions({ clearSelection: true })
+    await refreshRobotOptions()
   }
+  syncSelectedRobotsWithAvailable()
 }
 
 const handleSelectAllRobots = (val) => {
@@ -634,12 +997,13 @@ const executeCheck = async () => {
   activeCheckId.value = myCheckId
   canceledCheckId.value = 0
   checking.value = true
+  isCancelling.value = false
   isCheckHover.value = false
   stopStatusPolling()
   checkResult.value = null
   errorMessage.value = ''
-  activeTaskId.value = ''
-  localStorage.removeItem('gripper_check_task_id')
+  setPersistedTaskId('')
+  setActiveCsvSource()
 
   try {
     const sanitizedKeyPaths = (activePaths.value || [])
@@ -672,14 +1036,13 @@ const executeCheck = async () => {
     const resp = await executeGripperCheckCsv(payload)
     const taskId = (resp?.task_id || '').trim()
     if (!taskId) throw new Error('未获取到任务ID')
-    activeTaskId.value = taskId
-    localStorage.setItem('gripper_check_task_id', taskId)
+    setPersistedTaskId(taskId)
     startSse(taskId)
     startStatusPolling()
-    fetchCheckStatus()
+    await fetchCheckStatus()
   } catch (e) {
     if (canceledCheckId.value !== myCheckId && activeCheckId.value === myCheckId) {
-      errorMessage.value = e?.message || '执行异常'
+      errorMessage.value = getRequestErrorMessage(e, '执行异常')
       checking.value = false
       stopStatusPolling()
     }
@@ -687,19 +1050,46 @@ const executeCheck = async () => {
 }
 
 const handleCheckHover = (val) => {
-  if (!checking.value) return
+  if (!checking.value || isCancelling.value) return
   isCheckHover.value = val
 }
 
-const handleCancelCheck = () => {
+const handleCancelCheck = async () => {
   if (!checking.value) return
-  canceledCheckId.value = activeCheckId.value
-  checking.value = false
+  const taskId = (activeTaskId.value || '').trim()
+  if (!taskId) return
+
+  const finalizeCancelledUi = () => {
+    checking.value = false
+    isCancelling.value = false
+    isCheckHover.value = false
+    checkResult.value = null
+    latestMeta.value = null
+    stopStatusPolling()
+    stopSse()
+    setPersistedTaskId('')
+  }
+
   isCheckHover.value = false
-  stopStatusPolling()
-  stopSse()
-  activeTaskId.value = ''
-  localStorage.removeItem('gripper_check_task_id')
+  isCancelling.value = true
+  try {
+    const resp = await cancelGripperCheck(taskId)
+    const statusValue = (resp?.status || '').toLowerCase()
+    if (statusValue === 'cancelled') {
+      finalizeCancelledUi()
+      ElMessage.info('任务已取消')
+      return
+    }
+
+    stopSse()
+    ElMessage.info(statusValue === 'cancelling' ? '正在取消任务...' : '已提交取消请求')
+    stopStatusPolling()
+    startStatusPolling()
+    await fetchCheckStatus()
+  } catch (e) {
+    isCancelling.value = false
+    errorMessage.value = getRequestErrorMessage(e, '取消失败')
+  }
 }
 
 const handleExecuteOrCancel = () => {
@@ -712,17 +1102,26 @@ const handleExecuteOrCancel = () => {
 
 const loadCsvPage = async (page) => {
   const taskId = (activeTaskId.value || '').trim()
-  if (!taskId) return
+  const filename = (activeCsvFilename.value || '').trim()
+  if (!taskId && !filename) return
   const sortProp = sortState.value?.prop || ''
   const sortOrder = sortState.value?.order === 'descending' ? 'desc' : 'asc'
-  const resp = await getGripperCheckCsvRows({
-    task_id: taskId,
+  const baseParams = {
     page,
     page_size: pageSize.value,
     sort: sortProp,
     order: sortOrder,
     keyword: (keywordFilter.value || '').trim()
-  })
+  }
+  const resp = filename
+    ? await getGripperCheckCsvFileRows({
+        filename,
+        ...baseParams
+      })
+    : await getGripperCheckCsvRows({
+        task_id: taskId,
+        ...baseParams
+      })
   if (!resp?.success) throw new Error(resp?.error || '读取CSV失败')
   checkResult.value = resp
   currentPage.value = page
@@ -734,40 +1133,61 @@ const applyKeywordFilter = async () => {
 }
 
 const fetchCheckStatus = async () => {
-  if (!checking.value) return
+  const taskId = (activeTaskId.value || '').trim()
+  if (!taskId) return
+  if (!checking.value && !checkResult.value) return
   if (document.visibilityState === 'hidden') return
   if (statusRequestInFlight.value) return
   statusRequestInFlight.value = true
   try {
-    const resp = await getGripperCheckStatus()
+    const resp = await getGripperCheckStatus(taskId)
     const statusValue = (resp?.status || '').toLowerCase()
-    if (statusValue && statusValue !== 'running') {
+    if (ACTIVE_TASK_STATUSES.has(statusValue)) {
+      checking.value = true
+      isCancelling.value = statusValue === 'cancelling'
+      if (statusValue === 'cancelling') {
+        stopStatusPolling()
+        startStatusPolling()
+      }
+      return
+    }
+    if (statusValue) {
       checking.value = false
+      isCancelling.value = false
       isCheckHover.value = false
       stopStatusPolling()
       if (statusValue === 'failed') {
         errorMessage.value = resp?.error || '检查失败'
-        localStorage.removeItem('gripper_check_task_id')
-        activeTaskId.value = ''
+        setPersistedTaskId('')
+        return
+      }
+      if (statusValue === 'cancelled') {
+        checkResult.value = null
+        latestMeta.value = null
+        setPersistedTaskId('')
+        ElMessage.info('诊断已取消')
         return
       }
 
-      // idle：取最新元信息并下载 CSV（不展示数据）
       try {
-        const latest = await getGripperCheckLatest()
+        const latest = await getGripperCheckLatest(taskId)
         if (!latest?.success) throw new Error(latest?.error || '检查失败')
         latestMeta.value = latest
+        setActiveCsvSource({ filename: latest.filename, serverPath: latest.server_path })
+        markCsvFileUnread(latest.filename)
 
-        const taskId = (activeTaskId.value || '').trim()
-        if (!taskId) throw new Error('任务ID丢失，无法下载')
-
-        // 读取 CSV 并展示表格（简单版：后端用 pandas 读 CSV）
         await loadCsvPage(1)
       } finally {
-        // 保留 task_id 方便用户后续下载 / 翻页
+        checking.value = false
       }
     }
   } catch (error) {
+    if (error?.response?.data?.error === 'task-not-found') {
+      checking.value = false
+      stopStatusPolling()
+      setPersistedTaskId('')
+      return
+    }
     console.error('获取轨迹检查状态失败:', error)
   } finally {
     statusRequestInFlight.value = false
@@ -796,6 +1216,20 @@ const startSse = (taskId) => {
       const payload = JSON.parse(evt.data || '{}')
       const statusValue = (payload?.status || '').toLowerCase()
       if (statusValue === 'failed' && payload?.error) errorMessage.value = payload.error
+      if (statusValue === 'cancelled') {
+        checking.value = false
+        isCancelling.value = false
+        checkResult.value = null
+        latestMeta.value = null
+        setPersistedTaskId('')
+        stopStatusPolling()
+        stopSse()
+        ElMessage.info('诊断已取消')
+      }
+      if (statusValue === 'cancelling') {
+        checking.value = true
+        isCancelling.value = true
+      }
     } catch {}
   })
 
@@ -807,11 +1241,14 @@ const startSse = (taskId) => {
         return
       }
       latestMeta.value = latest
+      setActiveCsvSource({ filename: latest.filename, serverPath: latest.server_path })
+      markCsvFileUnread(latest.filename)
       loadCsvPage(1).catch((e) => {
         errorMessage.value = e?.message || '读取CSV失败'
       })
     } finally {
       checking.value = false
+      isCancelling.value = false
       stopStatusPolling()
       stopSse()
     }
@@ -826,7 +1263,8 @@ const startSse = (taskId) => {
 
 const startStatusPolling = () => {
   if (statusPollingTimer.value) return
-  statusPollingTimer.value = setInterval(fetchCheckStatus, STATUS_POLL_INTERVAL)
+  const interval = isCancelling.value ? CANCELLING_POLL_INTERVAL : STATUS_POLL_INTERVAL
+  statusPollingTimer.value = setInterval(fetchCheckStatus, interval)
 }
 
 const stopStatusPolling = () => {
@@ -848,6 +1286,20 @@ const formatValue = (val) => {
   return isNaN(n) ? val : n.toFixed(3)
 }
 
+const formatFileSize = (size) => {
+  const value = Number(size)
+  if (!Number.isFinite(value) || value < 1024) return `${value || 0} B`
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`
+}
+
+const formatDateTime = (value) => {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString()
+}
+
 const getStatusType = (val) => {
   const n = Math.abs(parseFloat(val))
   if (isNaN(n)) return 'info'
@@ -866,10 +1318,7 @@ const getStatusClass = (val) => {
 
 const generateMockData = (count) => {
   // 使用真实的机器人表名（与availableRobots中的值一致）
-  const mockRobotNames = [
-    'as33_020rb_400', 'as33_020rb_401', 'as33_020rb_402',
-    'as34_020rb_400', 'as34_020rb_401', 'as35_020rb_400'
-  ]
+  const mockRobotNames = DEMO_ROBOT_CATALOG.map(robot => robot.value)
 
   return Array.from({ length: count }, (_, i) => {
     const robotIndex = i % mockRobotNames.length
@@ -922,34 +1371,94 @@ const handleSortChange = ({ prop, order }) => {
   })
 }
 
+const triggerCsvDownload = (downloadResp, fallbackFilename) => {
+  const blob = downloadResp?.data
+  const headers = downloadResp?.headers || {}
+  const serverPath = headers['x-server-file-path'] || headers['X-Server-File-Path'] || activeCsvServerPath.value || latestMeta.value?.server_path
+  const contentDisposition = headers['content-disposition'] || ''
+  const match = /filename\\*=UTF-8''([^;]+)|filename=\"?([^\";]+)\"?/i.exec(contentDisposition)
+  const filename = decodeURIComponent(match?.[1] || match?.[2] || fallbackFilename || `trajectory_report_${Date.now()}.csv`)
+
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.click()
+  URL.revokeObjectURL(url)
+
+  const tips = serverPath ? `（服务器生成路径: ${serverPath}）` : ''
+  ElMessage({
+    type: 'success',
+    message: `文件已下载${tips}`,
+    duration: 0,
+    showClose: true
+  })
+}
+
 const handleExport = () => {
   const taskId = (activeTaskId.value || '').trim()
+  const filename = (activeCsvFilename.value || '').trim()
+  if (filename) {
+    downloadGripperCheckCsvFile(filename)
+      .then((downloadResp) => triggerCsvDownload(downloadResp, filename))
+      .catch((e) => {
+        errorMessage.value = e?.message || '下载失败'
+      })
+    return
+  }
   if (!taskId) return
-  downloadGripperCheckCsv(taskId).then((downloadResp) => {
-    const blob = downloadResp?.data
-    const headers = downloadResp?.headers || {}
-    const serverPath = headers['x-server-file-path'] || headers['X-Server-File-Path'] || latestMeta.value?.server_path
-    const contentDisposition = headers['content-disposition'] || ''
-    const match = /filename\\*=UTF-8''([^;]+)|filename=\"?([^\";]+)\"?/i.exec(contentDisposition)
-    const filename = decodeURIComponent(match?.[1] || match?.[2] || latestMeta.value?.filename || `trajectory_report_${Date.now()}.csv`)
-
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = filename
-    link.click()
-    URL.revokeObjectURL(url)
-
-    const tips = serverPath ? `（服务器生成路径: ${serverPath}）` : ''
-    ElMessage({
-      type: 'success',
-      message: `文件已下载${tips}`,
-      duration: 0,
-      showClose: true
+  downloadGripperCheckCsv(taskId)
+    .then((downloadResp) => triggerCsvDownload(downloadResp, latestMeta.value?.filename))
+    .catch((e) => {
+      errorMessage.value = e?.message || '下载失败'
     })
-  }).catch((e) => {
-    errorMessage.value = e?.message || '下载失败'
-  })
+}
+
+const refreshCsvFiles = async () => {
+  csvFilesLoading.value = true
+  try {
+    const hadSeenStorage = loadSeenCsvFiles()
+    const resp = await getGripperCheckCsvFiles()
+    exportDir.value = resp?.export_dir || ''
+    csvFiles.value = resp?.files || []
+    if (!hadSeenStorage) {
+      seenCsvFiles.value = csvFiles.value.map(file => file.filename)
+      persistSeenCsvFiles()
+    }
+  } catch (e) {
+    errorMessage.value = e?.message || '读取 CSV 文件列表失败'
+  } finally {
+    csvFilesLoading.value = false
+  }
+}
+
+const openCsvBrowser = async () => {
+  csvDialogVisible.value = true
+  await refreshCsvFiles()
+}
+
+const handleLoadCsvFile = async (file) => {
+  const filename = (file?.filename || '').trim()
+  if (!filename) return
+  markCsvFileRead(filename)
+  checking.value = false
+  stopStatusPolling()
+  stopSse()
+  setPersistedTaskId('')
+  setActiveCsvSource({ filename, serverPath: file?.server_path || '' })
+  latestMeta.value = {
+    ...(latestMeta.value || {}),
+    filename,
+    server_path: file?.server_path || '',
+    updated_at: file?.updated_at || ''
+  }
+  try {
+    await loadCsvPage(1)
+    csvDialogVisible.value = false
+    ElMessage.success(`已加载 ${filename}`)
+  } catch (e) {
+    errorMessage.value = e?.message || '加载 CSV 失败'
+  }
 }
 
 const goToRobotBI = (robotName) => {
@@ -966,14 +1475,18 @@ const goToRobotBI = (robotName) => {
 }
 
 onMounted(async () => {
+  loadSeenCsvFiles()
   await loadPlantGroups()
+  if (selectedPlant.value) {
+    await loadRobotFilterOptions()
+  }
   document.addEventListener('visibilitychange', handleVisibilityChange)
   // 若上次诊断仍在运行/刚完成，恢复状态并在需要时拉取 latest
   if (!DEMO_MODE && activeTaskId.value) {
     checking.value = true
     startSse(activeTaskId.value)
     startStatusPolling()
-    fetchCheckStatus()
+    await fetchCheckStatus()
   }
 })
 
@@ -988,6 +1501,9 @@ onDeactivated(() => {
 })
 
 onActivated(() => {
+  if (selectedPlant.value && !availableTypes.value.length && !availableTechs.value.length) {
+    loadRobotFilterOptions()
+  }
   if (!DEMO_MODE && activeTaskId.value) {
     checking.value = true
     startSse(activeTaskId.value)
@@ -1296,6 +1812,20 @@ onActivated(() => {
   gap: 8px;
 }
 
+.robot-select-wrap {
+  position: relative;
+}
+
+.robot-select-guard {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  cursor: not-allowed;
+}
+
 .control-item label {
   font-size: 12px;
   font-weight: 600;
@@ -1310,6 +1840,7 @@ onActivated(() => {
 .plant-selector { width: 170px; flex-shrink: 0; }
 .robot-selector { width: 240px; flex-shrink: 0; }
 .time-selector { width: 380px; flex-shrink: 0; }
+.filter-selector { width: 240px; flex-shrink: 0; }
 .path-config { flex: 1; min-width: 350px; }
 
 .button-wrapper {
@@ -1803,6 +2334,7 @@ onActivated(() => {
   .main-controls { flex-wrap: wrap; }
   .secondary-row { flex-wrap: wrap; }
   .control-row { gap: 16px; }
+  .filter-selector { width: calc(50% - 8px); }
   .path-config { min-width: 100%; }
   .button-wrapper { margin-left: 0; }
 }
@@ -1819,6 +2351,13 @@ onActivated(() => {
   .custom-table :deep(.el-table__header .cell),
   .custom-table :deep(.el-table__body .cell) {
     padding: 8px 6px;
+  }
+
+  .filter-selector,
+  .plant-selector,
+  .robot-selector,
+  .time-selector {
+    width: 100%;
   }
 }
 
@@ -2045,6 +2584,85 @@ onActivated(() => {
 
 .trajectory-date-picker .el-time-spinner__item:hover {
   background: rgba(0, 195, 255, 0.1) !important;
+}
+
+.csv-path-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  border: 1px solid rgba(188, 153, 84, 0.22);
+  border-radius: 14px;
+  background: rgba(255, 250, 239, 0.72);
+}
+
+.path-label,
+.csv-dir-label {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #7b5a1f;
+  text-transform: uppercase;
+}
+
+.path-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #20508f;
+  cursor: pointer;
+  text-align: left;
+  word-break: break-all;
+}
+
+.path-link:hover {
+  color: #0d3970;
+  text-decoration: underline;
+}
+
+.csv-browser-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.csv-dir-line {
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+}
+
+.csv-dir-value {
+  color: #41556f;
+  word-break: break-all;
+}
+
+.file-link {
+  font-weight: 600;
+}
+
+.csv-unread-dot,
+.csv-file-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #ff4d4f;
+  box-shadow: 0 0 0 3px rgba(255, 77, 79, 0.18);
+}
+
+.csv-unread-dot {
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.csv-file-dot {
+  margin-right: 8px;
+  vertical-align: middle;
 }
 </style>
 

@@ -100,6 +100,15 @@ export function getGripperRobotTables(params) {
   })
 }
 
+// 获取机器人 type / tech 筛选选项
+export function getGripperRobotFilterOptions(params) {
+  return request({
+    url: '/robots/gripper-check/filter_options/',
+    method: 'get',
+    params
+  })
+}
+
 // 执行关键轨迹检查
 // 注意：此接口需要较长的超时时间，因为可能需要处理大量数据
 export function executeGripperCheck(data) {
@@ -132,19 +141,42 @@ export function downloadGripperCheckCsv(taskId) {
   })
 }
 
+// 下载指定 CSV 文件
+export function downloadGripperCheckCsvFile(filename) {
+  return request({
+    url: '/robots/gripper-check/download_csv_file/',
+    method: 'get',
+    params: { filename },
+    responseType: 'blob',
+    rawResponse: true,
+    timeout: 0
+  })
+}
+
 // 获取关键轨迹检查状态
-export function getGripperCheckStatus() {
+export function getGripperCheckStatus(taskId) {
   return request({
     url: '/robots/gripper-check/status/',
-    method: 'get'
+    method: 'get',
+    params: taskId ? { task_id: taskId } : {}
   })
 }
 
 // 获取最近一次关键轨迹检查结果
-export function getGripperCheckLatest() {
+export function getGripperCheckLatest(taskId) {
   return request({
     url: '/robots/gripper-check/latest/',
-    method: 'get'
+    method: 'get',
+    params: taskId ? { task_id: taskId } : {}
+  })
+}
+
+// 取消关键轨迹检查任务
+export function cancelGripperCheck(taskId) {
+  return request({
+    url: '/robots/gripper-check/cancel/',
+    method: 'post',
+    data: { task_id: taskId }
   })
 }
 
@@ -155,6 +187,24 @@ export function getGripperCheckCsvRows(params) {
     method: 'get',
     params,
     timeout: 0
+  })
+}
+
+// 从指定 CSV 文件中分页读取数据
+export function getGripperCheckCsvFileRows(params) {
+  return request({
+    url: '/robots/gripper-check/csv_file_rows/',
+    method: 'get',
+    params,
+    timeout: 0
+  })
+}
+
+// 获取已导出 CSV 文件列表
+export function getGripperCheckCsvFiles() {
+  return request({
+    url: '/robots/gripper-check/csv_files/',
+    method: 'get'
   })
 }
 

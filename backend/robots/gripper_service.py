@@ -4,6 +4,7 @@
 使用 .env 的 PROGRAM CYCLE SYNC 数据库配置
 """
 import os
+import logging
 import pandas as pd
 import numpy as np
 from datetime import datetime
@@ -12,6 +13,11 @@ from dotenv import load_dotenv
 import traceback
 
 load_dotenv()
+logger = logging.getLogger(__name__)
+
+
+class GripperCheckCancelledError(Exception):
+    """Raised when a trajectory check task is cancelled."""
 
 
 def get_db_engine():
@@ -47,7 +53,19 @@ def fetch_data_from_mysql(table_name, start_time, end_time, time_column, engine)
     return df
 
 
-def check_gripper(save_path, start_time, end_time, griper, savename, key1, key2, key3, key4):
+def check_gripper(
+    save_path,
+    start_time,
+    end_time,
+    griper,
+    savename,
+    key1,
+    key2,
+    key3,
+    key4,
+    cancel_check=None,
+    progress_callback=None,
+):
     """
     执行关键轨迹检查（完全基于 check_gripper_withmax.py 的 check_gripper 函数）
 
@@ -62,17 +80,34 @@ def check_gripper(save_path, start_time, end_time, griper, savename, key1, key2,
     Returns:
         DataFrame: 检查结果
     """
+    def _check_cancel():
+        if cancel_check:
+            cancel_check()
+
+    def _report_progress(current, total, robot_name):
+        if progress_callback:
+            progress_callback(
+                current=current,
+                total=total,
+                robot=robot_name,
+            )
+
     time_column = 'Timestamp'
     engine = get_db_engine()
 
     GP = []  # 收集抓放点
+    total_robots = len(griper)
 
-    for rob in griper:
-        normal = 0  # 文件夹里是否有文件的标志位
+    _check_cancel()
+    logger.info("Trajectory check started robots=%s start=%s end=%s", total_robots, start_time, end_time)
+    for index, rob in enumerate(griper, start=1):
+        _check_cancel()
+        _report_progress(index, total_robots, rob)
+        logger.info("Trajectory check robot (%s/%s) start robot=%s", index, total_robots, rob)
         try:
             Detail = fetch_data_from_mysql(rob, start_time, end_time, time_column, engine)
         except Exception as e:
-            print(f"[ERROR] {rob}: {e}")
+            logger.exception("Trajectory check robot (%s/%s) failed robot=%s error=%s", index, total_robots, rob, e)
             traceback.print_exc()
             continue
         else:
@@ -156,7 +191,14 @@ def check_gripper(save_path, start_time, end_time, griper, savename, key1, key2,
 
                 data = data.fillna('N')
                 data.insert(0, 'robot', rob)
-                print(rob)
+                _check_cancel()
+                logger.info(
+                    "Trajectory check robot (%s/%s) done robot=%s rows=%s",
+                    index,
+                    total_robots,
+                    rob,
+                    int(data.shape[0]),
+                )
 
                 # 按关键字筛选抓放点（完全复制原脚本逻辑）
                 if key1 == key1:  # NAN 与任何值都不相等，包括自身
@@ -186,13 +228,16 @@ def check_gripper(save_path, start_time, end_time, griper, savename, key1, key2,
                         GP.append(data.iloc[i, :])
                         if i < data.shape[0] - 1:
                             GP.append(data.iloc[i + 1, :])
+            else:
+                logger.info("Trajectory check robot (%s/%s) done robot=%s rows=0", index, total_robots, rob)
 
     # 合并结果
+    _check_cancel()
     if GP:
         gr_check = pd.concat(GP, axis=1)
         gr_check = gr_check.T
         gr_check.reset_index(drop=True, inplace=True)
-        print("finish!")
+        logger.info("Trajectory check finished matched_rows=%s robots=%s", int(gr_check.shape[0]), total_robots)
 
         # 可选：保存CSV（如果提供了save_path和savename）
         if save_path and savename:
@@ -200,11 +245,11 @@ def check_gripper(save_path, start_time, end_time, griper, savename, key1, key2,
 
         return gr_check
     else:
-        print("No matching data found")
+        logger.info("Trajectory check finished matched_rows=0 robots=%s", total_robots)
         return pd.DataFrame()
 
 
-def check_gripper_from_config(config_data):
+def check_gripper_from_config(config_data, cancel_check=None, progress_callback=None):
     """
     从配置字典执行检查（适配Django接口）
 
@@ -220,7 +265,11 @@ def check_gripper_from_config(config_data):
         dict: 包含结果DataFrame和元数据的字典
     """
     try:
-        result_df = check_gripper_df_from_config(config_data)
+        result_df = check_gripper_df_from_config(
+            config_data,
+            cancel_check=cancel_check,
+            progress_callback=progress_callback,
+        )
 
         # 转换为字典返回
         return {
@@ -230,8 +279,7 @@ def check_gripper_from_config(config_data):
             'columns': result_df.columns.tolist() if not result_df.empty else []
         }
     except Exception as e:
-        print(f"Error in check_gripper_from_config: {e}")
-        traceback.print_exc()
+        logger.exception("Error in check_gripper_from_config: %s", e)
         return {
             'success': False,
             'error': str(e),
@@ -241,7 +289,7 @@ def check_gripper_from_config(config_data):
         }
 
 
-def check_gripper_df_from_config(config_data):
+def check_gripper_df_from_config(config_data, cancel_check=None, progress_callback=None):
     """
     从配置字典执行检查并返回 DataFrame（用于大数据量 CSV 导出，避免 to_dict 占用大量内存）
     """
@@ -276,4 +324,6 @@ def check_gripper_df_from_config(config_data):
         key2=key2,
         key3=key3,
         key4=key4,
+        cancel_check=cancel_check,
+        progress_callback=progress_callback,
     )
