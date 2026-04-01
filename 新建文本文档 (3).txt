@@ -1,0 +1,39 @@
+后端启动：
+1.激活虚拟环境：
+(1)cd C:\robotUI
+(2)venv57\Scripts\activate
+2.激活django后端：（虚拟环境中）
+（1）切换到指定路径下：cd C:\robotUI\backend57
+（2）启动8001端口：python manage.py runserver 8001
+3.激活bokehserver后端：（虚拟环境中）
+（1）切换到指定路径下：cd C:\robotUI\backend57
+（2）python manage.py run_bi_bokeh_server --port 5008
+综上所述，后端的启动需要两个终端，分别激活虚拟环境然后启动django和bokehserver后端
+
+前端启动
+按顺序分别启动5173和5174前端
+1.启动5173前端：
+（1）切换到指定路径下：C:\robotUI\sg\sg\frontend
+（2）启动：npm run dev
+2.启动5174前端：
+(1)切换到指定路径下：C:\robotUI\frontend-vue 2
+(2)启动：npm run dev
+综上所述，前端也是两个终端，确保先启动5173，然后才是5174
+
+定时任务启动：
+1.激活虚拟环境：
+(1)cd C:\robotUI
+(2)venv57\Scripts\activate
+2.启动celery worker
+在虚拟环境中：
+（1）切换到指定路径下：cd C:\robotUI\backend57
+（2）运行celery worker
+python -m celery -A iot_monitor worker -l info --pool=solo
+3.启动celery beat
+在虚拟环境中：
+（1）切换到指定路径下：cd C:\robotUI\backend57
+（2）运行celery beat
+python -m celery -A iot_monitor beat -l info --schedule=C:\robotUI\celerybeat-schedule --pidfile=C:\robotUI\celerybeat.pid
+综上所述，也需要启动两个终端
+
+整体启动流程需要启动 6 个终端。需要注意的是因为项目在高权限路径，项目重构时，需要赋予管理员最高权限。
