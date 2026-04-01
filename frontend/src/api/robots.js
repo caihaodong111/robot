@@ -148,6 +148,16 @@ export function getGripperCheckLatest() {
   })
 }
 
+// 从已生成 CSV 中分页读取数据（简单版：服务端每次 read_csv -> filter -> sort -> paginate）
+export function getGripperCheckCsvRows(params) {
+  return request({
+    url: '/robots/gripper-check/csv_rows/',
+    method: 'get',
+    params,
+    timeout: 0
+  })
+}
+
 // 获取配置模板
 export function getGripperConfigTemplate() {
   return request({

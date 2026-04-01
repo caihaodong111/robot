@@ -2,6 +2,8 @@ from datetime import datetime, timedelta
 import logging
 import os
 from pathlib import Path
+import pandas as pd
+import numpy as np
 from django.conf import settings
 from django.core.cache import cache
 from django.http import JsonResponse, StreamingHttpResponse, FileResponse
@@ -1195,6 +1197,116 @@ class GripperCheckViewSet(viewsets.GenericViewSet):
         response = FileResponse(path.open("rb"), as_attachment=True, filename=filename, content_type="text/csv")
         response["X-Server-File-Path"] = str(path)
         return response
+
+    @action(detail=False, methods=["get"], url_path="csv_rows")
+    def csv_rows(self, request):
+        """
+        从已生成的 CSV 中按需读取行（简单版：每次请求都 read_csv -> filter -> sort -> paginate）
+
+        Query params:
+            task_id: 必填
+            page: 1-based，默认 1
+            page_size: 默认 15
+            sort: 列名（可选）
+            order: asc/desc（默认 asc）
+            keyword: 关键字（可选），在常用文本列做 contains 匹配
+        """
+        task_id = (request.query_params.get("task_id") or "").strip()
+        if not task_id:
+            return Response({"success": False, "error": "missing-task-id"}, status=status.HTTP_400_BAD_REQUEST)
+
+        current_status = get_gripper_check_status() or {}
+        if (current_status.get("task_id") or "") != task_id:
+            return Response({"success": False, "error": "task-id-mismatch"}, status=status.HTTP_404_NOT_FOUND)
+        if (current_status.get("status") or "").lower() != "idle":
+            return Response({"success": False, "error": "not-ready", **current_status}, status=status.HTTP_409_CONFLICT)
+
+        latest = get_gripper_check_latest() or {}
+        if not latest.get("success"):
+            return Response({"success": False, "error": latest.get("error") or "no-latest"}, status=status.HTTP_404_NOT_FOUND)
+        if (latest.get("task_id") or "") != task_id:
+            return Response({"success": False, "error": "task-id-mismatch"}, status=status.HTTP_404_NOT_FOUND)
+
+        server_path = (latest.get("server_path") or "").strip()
+        if not server_path:
+            return Response({"success": False, "error": "missing-server-path"}, status=status.HTTP_404_NOT_FOUND)
+        path = Path(server_path)
+        if not path.exists():
+            return Response({"success": False, "error": "file-not-found"}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            page = int(request.query_params.get("page", 1))
+        except Exception:
+            page = 1
+        try:
+            page_size = int(request.query_params.get("page_size", 15))
+        except Exception:
+            page_size = 15
+        page = max(page, 1)
+        page_size = min(max(page_size, 1), 500)
+
+        sort_col = (request.query_params.get("sort") or "").strip()
+        order = (request.query_params.get("order") or "asc").strip().lower()
+        keyword = (request.query_params.get("keyword") or "").strip()
+
+        try:
+            try:
+                df = pd.read_csv(path, encoding="utf-8-sig", low_memory=False)
+            except UnicodeDecodeError:
+                df = pd.read_csv(path, encoding="gbk", low_memory=False)
+
+            if df.empty:
+                return Response(
+                    {
+                        "success": True,
+                        "count": 0,
+                        "page": page,
+                        "page_size": page_size,
+                        "columns": df.columns.tolist(),
+                        "data": [],
+                    }
+                )
+
+            # keyword filter（仅做常用列）
+            if keyword:
+                candidate_cols = [c for c in ["robot", "Name_C", "SNR_C", "SUB", "P_name"] if c in df.columns]
+                if candidate_cols:
+                    mask = False
+                    for col in candidate_cols:
+                        mask = mask | df[col].astype(str).str.contains(keyword, case=False, na=False)
+                    df = df[mask]
+
+            # sort（尝试数值排序，否则字符串排序）
+            if sort_col and sort_col in df.columns:
+                asc = order != "desc"
+                series = df[sort_col]
+                numeric = pd.to_numeric(series, errors="coerce")
+                if numeric.notna().any():
+                    df = df.assign(_sort_key=numeric).sort_values("_sort_key", ascending=asc, kind="mergesort")
+                    df = df.drop(columns=["_sort_key"])
+                else:
+                    df = df.sort_values(sort_col, ascending=asc, kind="mergesort")
+
+            total = int(df.shape[0])
+            start = (page - 1) * page_size
+            end = start + page_size
+            page_df = df.iloc[start:end].copy()
+            # DRF JSONRenderer 不接受 NaN/Inf：统一转成 None
+            page_df = page_df.replace([np.nan, np.inf, -np.inf], None)
+
+            return Response(
+                {
+                    "success": True,
+                    "count": total,
+                    "page": page,
+                    "page_size": page_size,
+                    "columns": df.columns.tolist(),
+                    "data": page_df.to_dict("records"),
+                }
+            )
+        except Exception as e:
+            logger.exception("csv_rows failed task_id=%s", task_id)
+            return Response({"success": False, "error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=False, methods=['get'])
     def status(self, request):

@@ -170,6 +170,15 @@
               <span class="unit">条记录</span>
             </div>
             <div class="summary-right">
+              <el-input
+                v-model="keywordFilter"
+                placeholder="关键词筛选（robot/位置/程序路径等）"
+                clearable
+                class="keyword-filter"
+                @keyup.enter="applyKeywordFilter"
+                @clear="applyKeywordFilter"
+              />
+              <el-button class="filter-btn" @click="applyKeywordFilter">筛选</el-button>
               <div class="legend">
                 <span class="dot ok"></span> 正常
                 <span class="dot warning"></span> 偏差较大
@@ -179,7 +188,7 @@
           </div>
 
           <el-table
-            :data="pagedRows"
+            :data="checkResult?.data || []"
             v-loading="checking"
             @sort-change="handleSortChange"
             class="custom-table"
@@ -350,6 +359,8 @@
               :page-sizes="[15, 30, 50, 100]"
               layout="total, sizes, prev, pager, next, jumper"
               background
+              @current-change="(p) => loadCsvPage(p)"
+              @size-change="() => loadCsvPage(1)"
             />
           </footer>
         </div>
@@ -408,7 +419,8 @@ import {
   executeGripperCheckCsv,
   downloadGripperCheckCsv,
   getGripperCheckStatus,
-  getGripperCheckLatest
+  getGripperCheckLatest,
+  getGripperCheckCsvRows
 } from '@/api/robots'
 import { useLayoutStore } from '@/stores/layout'
 
@@ -494,6 +506,7 @@ const isIndeterminate = computed(() => selectedRobots.value.length > 0 && select
 const checking = ref(false)
 const isCheckHover = ref(false)
 const checkResult = ref(null)
+const latestMeta = ref(null)
 const errorMessage = ref('')
 const currentPage = ref(1)
 const pageSize = ref(15)
@@ -505,6 +518,7 @@ const sseConnection = ref(null)
 const statusPollingTimer = ref(null)
 const STATUS_POLL_INTERVAL = 30000
 const statusRequestInFlight = ref(false)
+const keywordFilter = ref('')
 
 const canExecute = computed(() => selectedPlant.value && selectedRobots.value.length > 0 && timeRange.value?.length === 2)
 
@@ -696,6 +710,29 @@ const handleExecuteOrCancel = () => {
   executeCheck()
 }
 
+const loadCsvPage = async (page) => {
+  const taskId = (activeTaskId.value || '').trim()
+  if (!taskId) return
+  const sortProp = sortState.value?.prop || ''
+  const sortOrder = sortState.value?.order === 'descending' ? 'desc' : 'asc'
+  const resp = await getGripperCheckCsvRows({
+    task_id: taskId,
+    page,
+    page_size: pageSize.value,
+    sort: sortProp,
+    order: sortOrder,
+    keyword: (keywordFilter.value || '').trim()
+  })
+  if (!resp?.success) throw new Error(resp?.error || '读取CSV失败')
+  checkResult.value = resp
+  currentPage.value = page
+}
+
+const applyKeywordFilter = async () => {
+  if (!checkResult.value?.success) return
+  await loadCsvPage(1)
+}
+
 const fetchCheckStatus = async () => {
   if (!checking.value) return
   if (document.visibilityState === 'hidden') return
@@ -719,37 +756,15 @@ const fetchCheckStatus = async () => {
       try {
         const latest = await getGripperCheckLatest()
         if (!latest?.success) throw new Error(latest?.error || '检查失败')
+        latestMeta.value = latest
 
         const taskId = (activeTaskId.value || '').trim()
         if (!taskId) throw new Error('任务ID丢失，无法下载')
 
-        const downloadResp = await downloadGripperCheckCsv(taskId)
-        const blob = downloadResp?.data
-        const headers = downloadResp?.headers || {}
-        const serverPath = headers['x-server-file-path'] || headers['X-Server-File-Path'] || latest?.server_path
-        const contentDisposition = headers['content-disposition'] || ''
-        const match = /filename\\*=UTF-8''([^;]+)|filename=\"?([^\";]+)\"?/i.exec(contentDisposition)
-        const filename = decodeURIComponent(match?.[1] || match?.[2] || latest?.filename || `trajectory_report_${Date.now()}.csv`)
-
-        const url = URL.createObjectURL(blob)
-        const link = document.createElement('a')
-        link.href = url
-        link.download = filename
-        link.click()
-        URL.revokeObjectURL(url)
-
-        const tips = serverPath ? `（服务器生成路径: ${serverPath}）` : ''
-        ElMessage({
-          type: 'success',
-          message: `文件已下载${tips}`,
-          duration: 0,
-          showClose: true
-        })
-        checkResult.value = null
-        currentPage.value = 1
+        // 读取 CSV 并展示表格（简单版：后端用 pandas 读 CSV）
+        await loadCsvPage(1)
       } finally {
-        localStorage.removeItem('gripper_check_task_id')
-        activeTaskId.value = ''
+        // 保留 task_id 方便用户后续下载 / 翻页
       }
     }
   } catch (error) {
@@ -791,42 +806,14 @@ const startSse = (taskId) => {
         if (latest?.error) errorMessage.value = latest.error
         return
       }
-      const taskId = (activeTaskId.value || '').trim()
-      if (!taskId) {
-        errorMessage.value = '任务ID丢失，无法下载'
-        return
-      }
-      downloadGripperCheckCsv(taskId).then((downloadResp) => {
-        const blob = downloadResp?.data
-        const headers = downloadResp?.headers || {}
-        const serverPath = headers['x-server-file-path'] || headers['X-Server-File-Path'] || latest?.server_path
-        const contentDisposition = headers['content-disposition'] || ''
-        const match = /filename\\*=UTF-8''([^;]+)|filename=\"?([^\";]+)\"?/i.exec(contentDisposition)
-        const filename = decodeURIComponent(match?.[1] || match?.[2] || latest?.filename || `trajectory_report_${Date.now()}.csv`)
-
-        const url = URL.createObjectURL(blob)
-        const link = document.createElement('a')
-        link.href = url
-        link.download = filename
-        link.click()
-        URL.revokeObjectURL(url)
-
-        const tips = serverPath ? `（服务器生成路径: ${serverPath}）` : ''
-        ElMessage({
-          type: 'success',
-          message: `文件已下载${tips}`,
-          duration: 0,
-          showClose: true
-        })
-      }).catch((e) => {
-        errorMessage.value = e?.message || '下载失败'
+      latestMeta.value = latest
+      loadCsvPage(1).catch((e) => {
+        errorMessage.value = e?.message || '读取CSV失败'
       })
     } finally {
       checking.value = false
       stopStatusPolling()
       stopSse()
-      localStorage.removeItem('gripper_check_task_id')
-      activeTaskId.value = ''
     }
   })
 
@@ -928,35 +915,41 @@ const generateMockData = (count) => {
   })
 }
 
-const pagedRows = computed(() => {
-  if (!checkResult.value?.data) return []
-  const start = (currentPage.value - 1) * pageSize.value
-  return checkResult.value.data.slice(start, start + pageSize.value)
-})
-
 const handleSortChange = ({ prop, order }) => {
-  if (!checkResult.value?.data) return
-  const dir = order === 'ascending' ? 1 : -1
-  checkResult.value.data.sort((a, b) => {
-    const av = a[prop], bv = b[prop]
-    if (av === bv) return 0
-    const na = parseFloat(av), nb = parseFloat(bv)
-    if (!isNaN(na) && !isNaN(nb)) return (na - nb) * dir
-    return String(av || '').localeCompare(String(bv || '')) * dir
+  sortState.value = { prop, order }
+  loadCsvPage(1).catch((e) => {
+    errorMessage.value = e?.message || '排序失败'
   })
 }
 
 const handleExport = () => {
-  const headers = checkResult.value.columns || Object.keys(checkResult.value.data[0])
-  const csv = [
-    headers.join(','),
-    ...checkResult.value.data.map(r => headers.map(h => `"${String(r[h]).replace(/"/g, '""')}"`).join(','))
-  ].join('\n')
-  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' })
-  const link = document.createElement('a')
-  link.href = URL.createObjectURL(blob)
-  link.download = `trajectory_report_${Date.now()}.csv`
-  link.click()
+  const taskId = (activeTaskId.value || '').trim()
+  if (!taskId) return
+  downloadGripperCheckCsv(taskId).then((downloadResp) => {
+    const blob = downloadResp?.data
+    const headers = downloadResp?.headers || {}
+    const serverPath = headers['x-server-file-path'] || headers['X-Server-File-Path'] || latestMeta.value?.server_path
+    const contentDisposition = headers['content-disposition'] || ''
+    const match = /filename\\*=UTF-8''([^;]+)|filename=\"?([^\";]+)\"?/i.exec(contentDisposition)
+    const filename = decodeURIComponent(match?.[1] || match?.[2] || latestMeta.value?.filename || `trajectory_report_${Date.now()}.csv`)
+
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    link.click()
+    URL.revokeObjectURL(url)
+
+    const tips = serverPath ? `（服务器生成路径: ${serverPath}）` : ''
+    ElMessage({
+      type: 'success',
+      message: `文件已下载${tips}`,
+      duration: 0,
+      showClose: true
+    })
+  }).catch((e) => {
+    errorMessage.value = e?.message || '下载失败'
+  })
 }
 
 const goToRobotBI = (robotName) => {
@@ -1460,6 +1453,20 @@ onActivated(() => {
 .summary-left .label { font-size: 13px; color: #8da0b7; font-weight: 500; }
 .summary-left .val { font-size: 24px; font-weight: 800; color: #00ccff; text-shadow: 0 0 20px rgba(0, 204, 255, 0.5); }
 .summary-left .unit { font-size: 12px; color: #8da0b7; }
+
+.summary-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.keyword-filter {
+  width: 320px;
+}
+
+.filter-btn {
+  border-radius: 10px;
+}
 
 .legend {
   font-size: 12px;
