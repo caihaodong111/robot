@@ -3,10 +3,15 @@ import { createRouter, createWebHistory } from 'vue-router'
 const routes = [
   {
     path: '/',
+    name: 'Portal',
+    component: () => import('@/views/portal/PortalLandingView.vue')
+  },
+  {
+    path: '/',
     component: () => import('@/views/LayoutView.vue'),
     children: [
       {
-        path: '',
+        path: 'dashboard',
         name: 'Dashboard',
         component: () => import('@/views/dashboard/DashboardView.vue')
       },
@@ -32,6 +37,10 @@ const routes = [
         component: () => import('@/views/devops/DevOpsView.vue')
       },
     ]
+  },
+  {
+    path: '/:pathMatch(.*)*',
+    redirect: '/'
   }
 ]
 

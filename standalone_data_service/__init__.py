@@ -1,0 +1,2 @@
+"""Standalone data snapshot service."""
+

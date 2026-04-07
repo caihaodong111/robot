@@ -13,7 +13,7 @@
           </div>
 
           <nav class="sidebar-nav">
-            <router-link to="/" class="nav-item" :class="{ active: route.path === '/' }">
+            <router-link to="/dashboard" class="nav-item" :class="{ active: route.path === '/dashboard' }">
               <div class="active-indicator"></div>
               <el-icon><Odometer /></el-icon>
               <span>Robot Overview</span>

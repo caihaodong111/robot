@@ -1,0 +1,119 @@
+{
+  "generated_at": "2026-04-03T09:17:07.947856+00:00",
+  "blocks": [
+    {
+      "key": "wam",
+      "title": "WAM",
+      "updated_at": "2026-04-03T09:17:05.356217+00:00",
+      "payload": {
+        "source_file": "/Users/caihd/Desktop/sg5.7/设备状态.xlsx",
+        "device_count": 9,
+        "category_count": 1,
+        "categories": [
+          "Toe/Camber/Height"
+        ],
+        "status_types": [
+          "Ok",
+          "Warning",
+          "Fault"
+        ],
+        "device_preview": [
+          "140-WAM1",
+          "140-WAM2",
+          "140-WAM3",
+          "140-WAM4",
+          "240-WAM1",
+          "240-WAM2"
+        ],
+        "note": "Current file exposes device list and status types. It does not contain a per-device current OK/NOK value."
+      }
+    },
+    {
+      "key": "lenze",
+      "title": "Lenze",
+      "updated_at": "2026-04-03T09:17:05.367641+00:00",
+      "payload": {
+        "source_file": "/Users/caihd/Desktop/sg5.7/temperature_min_max_results.xlsx",
+        "record_count": 175,
+        "status_counts": {
+          "OK": 172,
+          "Alarm": 2,
+          "Warning": 1
+        },
+        "temperature_summary": {
+          "device_temp_max": {
+            "min": 22.0,
+            "avg": 32.63,
+            "max": 57.0
+          },
+          "device_temp_min": {
+            "min": 14.0,
+            "avg": 30.55,
+            "max": 55.0
+          },
+          "heatsink_temp_max": {
+            "min": 24.0,
+            "avg": 32.84,
+            "max": 59.0
+          },
+          "heatsink_temp_min": {
+            "min": 22.0,
+            "avg": 31.17,
+            "max": 56.0
+          }
+        }
+      }
+    },
+    {
+      "key": "filling",
+      "title": "Filling",
+      "updated_at": "2026-04-03T09:17:05.389746+00:00",
+      "payload": {
+        "source_file": "/Users/caihd/Desktop/sg5.7/MRA1_filling_status.xlsx",
+        "record_count": 573,
+        "status_counts": {
+          "NOK": 360,
+          "OK": 213
+        },
+        "station_breakdown": [
+          {
+            "station": "MRA1_Filing1",
+            "ok": 65,
+            "nok": 125,
+            "total": 190
+          },
+          {
+            "station": "MRA1_Filing2",
+            "ok": 77,
+            "nok": 56,
+            "total": 133
+          },
+          {
+            "station": "MRA1_Filing3",
+            "ok": 48,
+            "nok": 88,
+            "total": 136
+          },
+          {
+            "station": "MRA1_Filing4",
+            "ok": 23,
+            "nok": 91,
+            "total": 114
+          }
+        ],
+        "latest_timestamp": "2026-03-23 16:55:01"
+      }
+    },
+    {
+      "key": "high_risk_distribution",
+      "title": "High-Risk Distribution",
+      "updated_at": "2026-04-03T09:17:07.947808+00:00",
+      "payload": {
+        "database": "mysql://sg@20.5.234.198:3306/sg",
+        "group_count": 0,
+        "total_high_risk": 0,
+        "groups": []
+      }
+    }
+  ]
+}

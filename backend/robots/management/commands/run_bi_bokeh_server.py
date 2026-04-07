@@ -18,6 +18,12 @@ class Command(BaseCommand):
         parser.add_argument("--port", type=int, default=int(os.getenv("BI_BOKEH_PORT", "5008")))
         parser.add_argument("--address", type=str, default=os.getenv("BI_BOKEH_ADDRESS", "0.0.0.0"))
         parser.add_argument(
+            "--prefix",
+            type=str,
+            default=(os.getenv("BI_BOKEH_PREFIX") or "").strip(),
+            help="Optional URL prefix when running behind a reverse proxy, e.g. /bi",
+        )
+        parser.add_argument(
             "--log-level",
             type=str,
             default=(os.getenv("BI_BOKEH_LOG_LEVEL") or "INFO"),
@@ -93,6 +99,11 @@ class Command(BaseCommand):
 
         port = options["port"]
         address = options["address"]
+        prefix = (options.get("prefix") or "").strip()
+        if prefix and not prefix.startswith("/"):
+            prefix = f"/{prefix}"
+        if prefix.endswith("/") and prefix != "/":
+            prefix = prefix.rstrip("/")
 
         allow_origins = [v for v in (self._normalize_origin(x) for x in (options["allow_origins"] or [])) if v]
         env_origins = (os.getenv("BI_BOKEH_ALLOW_ORIGINS") or "").strip()
@@ -133,16 +144,20 @@ class Command(BaseCommand):
             ]
 
         allow_origins = sorted({v for v in allow_origins if v})
+        effective_prefix = prefix or "/"
         server = Server(
             {"/": bkapp},
             port=port,
             address=address,
+            prefix=effective_prefix,
             allow_websocket_origin=allow_origins,
             session_token_expiration=options["session_token_expiration"],
         )
         server.start()
-        self.stdout.write(self.style.SUCCESS(f"BI Bokeh Server running on http://{address}:{port}/"))
+        display_url = f"http://{address}:{port}{effective_prefix}"
+        self.stdout.write(self.style.SUCCESS(f"BI Bokeh Server running on {display_url}"))
         self.stdout.write(self.style.SUCCESS(f"allow_websocket_origin={allow_origins}"))
+        self.stdout.write(self.style.SUCCESS(f"prefix={effective_prefix}"))
         self.stdout.write(self.style.SUCCESS(f"log_level={options.get('log_level')} access_log={bool(options.get('access_log'))}"))
         try:
             self.stdout.flush()
