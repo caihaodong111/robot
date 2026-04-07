@@ -1,15 +1,14 @@
 @echo off
 setlocal
 
-set "SCRIPT_DIR=%~dp0"
-for %%I in ("%SCRIPT_DIR%..\..") do set "PROJECT_ROOT=%%~fI"
-set "BACKEND_DIR=%PROJECT_ROOT%\backend"
+set "PROJECT_ROOT=C:\robotUI"
+set "BACKEND_DIR=C:\robotUI\backend57"
 set "RUN_DIR=%PROJECT_ROOT%\run"
 
 if defined SG57_PYTHON (
     set "PYTHON_EXE=%SG57_PYTHON%"
 ) else (
-    set "PYTHON_EXE=C:\RobotUI\venv57\Scripts\python.exe"
+    set "PYTHON_EXE=C:\robotUI\venv57\Scripts\python.exe"
 )
 
 if not exist "%PYTHON_EXE%" (
