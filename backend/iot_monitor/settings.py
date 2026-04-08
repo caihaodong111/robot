@@ -38,8 +38,16 @@ DEBUG = os.getenv('DEBUG', 'True') == 'True'
 
 allowed_hosts_env = os.getenv('ALLOWED_HOSTS', '*')
 ALLOWED_HOSTS = [h.strip() for h in allowed_hosts_env.split(',') if h.strip()]
-if '*' not in ALLOWED_HOSTS and '20.212.53.247' not in ALLOWED_HOSTS:
-    ALLOWED_HOSTS.append('20.212.53.247')
+DEFAULT_ALLOWED_HOSTS = [
+    '20.212.53.247',
+    '172.16.180.26',
+    '127.0.0.1',
+    'localhost',
+]
+if '*' not in ALLOWED_HOSTS:
+    for host in DEFAULT_ALLOWED_HOSTS:
+        if host not in ALLOWED_HOSTS:
+            ALLOWED_HOSTS.append(host)
 
 
 # Application definition

@@ -1035,8 +1035,33 @@ class GripperCheckViewSet(viewsets.GenericViewSet):
         try:
             try:
                 df = pd.read_csv(path, encoding="utf-8-sig", low_memory=False)
+            except pd.errors.EmptyDataError:
+                logger.warning("read csv page got empty csv path=%s", path)
+                return Response(
+                    {
+                        "success": True,
+                        "count": 0,
+                        "page": page,
+                        "page_size": page_size,
+                        "columns": [],
+                        "data": [],
+                    }
+                )
             except UnicodeDecodeError:
-                df = pd.read_csv(path, encoding="gbk", low_memory=False)
+                try:
+                    df = pd.read_csv(path, encoding="gbk", low_memory=False)
+                except pd.errors.EmptyDataError:
+                    logger.warning("read csv page got empty csv path=%s", path)
+                    return Response(
+                        {
+                            "success": True,
+                            "count": 0,
+                            "page": page,
+                            "page_size": page_size,
+                            "columns": [],
+                            "data": [],
+                        }
+                    )
 
             if df.empty:
                 return Response(
