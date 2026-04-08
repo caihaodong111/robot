@@ -35,7 +35,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 defineOptions({ name: 'DevOps' })
 
 const devopsFrame = ref(null)
-const defaultFrontendVueUrl = import.meta.env.PROD ? '/devops/' : 'http://localhost:5174/'
+const defaultFrontendVueUrl = import.meta.env.PROD ? '/devops-app/' : 'http://localhost:5174/'
 const baseUrl = import.meta.env.VITE_FRONTEND_VUE_URL || defaultFrontendVueUrl
 const frameUrl = computed(() => {
   try {
