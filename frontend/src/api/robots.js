@@ -1,11 +1,12 @@
 import request from '@/utils/request'
 
 // 获取机器人组列表
-export function getRobotGroups(params) {
+export function getRobotGroups(params, options = {}) {
   return request({
     url: '/robots/groups/',
     method: 'get',
-    params
+    params,
+    ...options
   })
 }
 
@@ -92,20 +93,22 @@ export function getRiskEventStatistics(params) {
 // ==================== 关键轨迹检查 API ====================
 
 // 获取可用的机器人表名列表
-export function getGripperRobotTables(params) {
+export function getGripperRobotTables(params, options = {}) {
   return request({
     url: '/robots/gripper-check/robot_tables/',
     method: 'get',
-    params
+    params,
+    ...options
   })
 }
 
 // 获取机器人 type / tech 筛选选项
-export function getGripperRobotFilterOptions(params) {
+export function getGripperRobotFilterOptions(params, options = {}) {
   return request({
     url: '/robots/gripper-check/filter_options/',
     method: 'get',
-    params
+    params,
+    ...options
   })
 }
 
@@ -154,20 +157,22 @@ export function downloadGripperCheckCsvFile(filename) {
 }
 
 // 获取关键轨迹检查状态
-export function getGripperCheckStatus(taskId) {
+export function getGripperCheckStatus(taskId, options = {}) {
   return request({
     url: '/robots/gripper-check/status/',
     method: 'get',
-    params: taskId ? { task_id: taskId } : {}
+    params: taskId ? { task_id: taskId } : {},
+    ...options
   })
 }
 
 // 获取最近一次关键轨迹检查结果
-export function getGripperCheckLatest(taskId) {
+export function getGripperCheckLatest(taskId, options = {}) {
   return request({
     url: '/robots/gripper-check/latest/',
     method: 'get',
-    params: taskId ? { task_id: taskId } : {}
+    params: taskId ? { task_id: taskId } : {},
+    ...options
   })
 }
 
@@ -181,30 +186,33 @@ export function cancelGripperCheck(taskId) {
 }
 
 // 从已生成 CSV 中分页读取数据（简单版：服务端每次 read_csv -> filter -> sort -> paginate）
-export function getGripperCheckCsvRows(params) {
+export function getGripperCheckCsvRows(params, options = {}) {
   return request({
     url: '/robots/gripper-check/csv_rows/',
     method: 'get',
     params,
-    timeout: 0
+    timeout: 0,
+    ...options
   })
 }
 
 // 从指定 CSV 文件中分页读取数据
-export function getGripperCheckCsvFileRows(params) {
+export function getGripperCheckCsvFileRows(params, options = {}) {
   return request({
     url: '/robots/gripper-check/csv_file_rows/',
     method: 'get',
     params,
-    timeout: 0
+    timeout: 0,
+    ...options
   })
 }
 
 // 获取已导出 CSV 文件列表
-export function getGripperCheckCsvFiles() {
+export function getGripperCheckCsvFiles(options = {}) {
   return request({
     url: '/robots/gripper-check/csv_files/',
-    method: 'get'
+    method: 'get',
+    ...options
   })
 }
 

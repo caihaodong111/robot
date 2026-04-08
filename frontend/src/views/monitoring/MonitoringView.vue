@@ -673,6 +673,7 @@ const canceledCheckId = ref(0)
 const activeTaskId = ref(localStorage.getItem(TASK_STORAGE_KEY) || '')
 const sseConnection = ref(null)
 const statusPollingTimer = ref(null)
+let viewRequestController = null
 const STATUS_POLL_INTERVAL = 30000
 const CANCELLING_POLL_INTERVAL = 1000
 const statusRequestInFlight = ref(false)
@@ -777,6 +778,23 @@ const getRequestErrorMessage = (error, fallback) => {
   return errorCode || error?.message || fallback
 }
 
+const isAbortedRequest = (error) => {
+  return error?.code === 'ERR_CANCELED' || error?.name === 'CanceledError'
+}
+
+const getViewRequestConfig = () => {
+  if (!viewRequestController || viewRequestController.signal.aborted) {
+    viewRequestController = new AbortController()
+  }
+  return { signal: viewRequestController.signal }
+}
+
+const abortViewRequests = () => {
+  if (!viewRequestController) return
+  viewRequestController.abort()
+  viewRequestController = null
+}
+
 const loadPlantGroups = async () => {
   plantsLoading.value = true
   try {
@@ -787,10 +805,11 @@ const loadPlantGroups = async () => {
         { key: 'plant_c', name: '车间 C - 冲压' }
       ]
     } else {
-      const response = await getRobotGroups()
+      const response = await getRobotGroups(undefined, getViewRequestConfig())
       availablePlants.value = (response || []).map(normalizeGroupName)
     }
   } catch (e) {
+    if (isAbortedRequest(e)) return
     ElMessage.error('获取车间列表失败')
   } finally {
     plantsLoading.value = false
@@ -836,7 +855,7 @@ const loadRobotFilterOptions = async ({ clearSelection = false } = {}) => {
       availableTypes.value = [...new Set(scopedRobots.map(robot => robot.type).filter(Boolean))].sort()
       availableTechs.value = [...new Set(scopedRobots.map(robot => robot.tech).filter(Boolean))].sort()
     } else {
-      const resp = await getGripperRobotFilterOptions({ group: selectedPlant.value })
+      const resp = await getGripperRobotFilterOptions({ group: selectedPlant.value }, getViewRequestConfig())
       availableTypes.value = Array.isArray(resp?.types) ? resp.types : []
       availableTechs.value = Array.isArray(resp?.techs) ? resp.techs : []
     }
@@ -845,6 +864,7 @@ const loadRobotFilterOptions = async ({ clearSelection = false } = {}) => {
       syncRobotFiltersWithAvailable()
     }
   } catch (e) {
+    if (isAbortedRequest(e)) return
     availableTypes.value = []
     availableTechs.value = []
     ElMessage.error('获取 Type/Tech 筛选项失败')
@@ -948,10 +968,11 @@ const doSearchRobots = async (query) => {
       }
       availableRobots.value = filtered
     } else {
-      const resp = await getGripperRobotTables(params)
+      const resp = await getGripperRobotTables(params, getViewRequestConfig())
       availableRobots.value = resp.results || []
     }
   } catch (e) {
+    if (isAbortedRequest(e)) return
     ElMessage.error('搜索机器人失败')
   } finally {
     robotsLoading.value = false
@@ -1117,11 +1138,11 @@ const loadCsvPage = async (page) => {
     ? await getGripperCheckCsvFileRows({
         filename,
         ...baseParams
-      })
+      }, getViewRequestConfig())
     : await getGripperCheckCsvRows({
         task_id: taskId,
         ...baseParams
-      })
+      }, getViewRequestConfig())
   if (!resp?.success) throw new Error(resp?.error || '读取CSV失败')
   checkResult.value = resp
   currentPage.value = page
@@ -1140,7 +1161,7 @@ const fetchCheckStatus = async () => {
   if (statusRequestInFlight.value) return
   statusRequestInFlight.value = true
   try {
-    const resp = await getGripperCheckStatus(taskId)
+    const resp = await getGripperCheckStatus(taskId, getViewRequestConfig())
     const statusValue = (resp?.status || '').toLowerCase()
     if (ACTIVE_TASK_STATUSES.has(statusValue)) {
       checking.value = true
@@ -1170,7 +1191,7 @@ const fetchCheckStatus = async () => {
       }
 
       try {
-        const latest = await getGripperCheckLatest(taskId)
+        const latest = await getGripperCheckLatest(taskId, getViewRequestConfig())
         if (!latest?.success) throw new Error(latest?.error || '检查失败')
         latestMeta.value = latest
         setActiveCsvSource({ filename: latest.filename, serverPath: latest.server_path })
@@ -1182,6 +1203,7 @@ const fetchCheckStatus = async () => {
       }
     }
   } catch (error) {
+    if (isAbortedRequest(error)) return
     if (error?.response?.data?.error === 'task-not-found') {
       checking.value = false
       stopStatusPolling()
@@ -1418,7 +1440,7 @@ const refreshCsvFiles = async () => {
   csvFilesLoading.value = true
   try {
     const hadSeenStorage = loadSeenCsvFiles()
-    const resp = await getGripperCheckCsvFiles()
+    const resp = await getGripperCheckCsvFiles(getViewRequestConfig())
     exportDir.value = resp?.export_dir || ''
     csvFiles.value = resp?.files || []
     if (!hadSeenStorage) {
@@ -1426,6 +1448,7 @@ const refreshCsvFiles = async () => {
       persistSeenCsvFiles()
     }
   } catch (e) {
+    if (isAbortedRequest(e)) return
     errorMessage.value = e?.message || '读取 CSV 文件列表失败'
   } finally {
     csvFilesLoading.value = false
@@ -1495,12 +1518,14 @@ onUnmounted(() => {
   document.removeEventListener('visibilitychange', handleVisibilityChange)
   stopSse()
   resetRobotSearchState()
+  abortViewRequests()
 })
 
 onDeactivated(() => {
   stopStatusPolling()
   stopSse()
   resetRobotSearchState()
+  abortViewRequests()
 })
 
 onActivated(() => {
