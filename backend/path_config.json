@@ -2,42 +2,42 @@
   "weekly_result_folders": [
     {
       "key": "weekly_1",
-      "path": "/Users/caihd/Desktop/新建文件夹",
+      "path": "\\\\172.19.106.123\\RobotData\\v206",
       "description": ""
     },
     {
       "key": "weekly_2",
-      "path": "/Users/caihd/Desktop/新建文件夹 (2)",
+      "path": "\\\\172.19.106.123\\RobotData\\V214&254",
       "description": ""
     },
     {
       "key": "weekly_3",
-      "path": "/Users/caihd/Desktop/新建文件夹 (3)",
+      "path": "\\\\172.19.106.123\\RobotData\\engine-robot",
       "description": ""
     },
     {
       "key": "weekly_4",
-      "path": "/Users/caihd/Desktop/新建文件夹 (4)",
+      "path": "\\\\172.19.106.123\\RobotData\\540",
       "description": ""
     },
     {
       "key": "weekly_5",
-      "path": "/Users/caihd/Desktop/新建文件夹 (5)",
+      "path": "\\\\172.19.106.123\\RobotData\\MFA",
       "description": ""
     },
     {
       "key": "weekly_6",
-      "path": "/Users/caihd/Desktop/新建文件夹 (6)",
+      "path": "\\\\172.19.106.123\\RobotData\\Shunyi",
       "description": ""
     },
     {
       "key": "weekly_7",
-      "path": "/Users/caihd/Desktop/新建文件夹 (7)",
+      "path": "\\\\172.19.106.123\\RobotData\\AS",
       "description": ""
     },
     {
       "key": "weekly_8",
-      "path": "P:/reuse",
+      "path": "\\\\172.19.106.123\\RobotData\\reuse",
       "description": ""
     }
   ]
