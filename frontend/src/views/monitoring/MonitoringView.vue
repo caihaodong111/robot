@@ -1058,7 +1058,6 @@ const executeCheck = async () => {
     const taskId = (resp?.task_id || '').trim()
     if (!taskId) throw new Error('未获取到任务ID')
     setPersistedTaskId(taskId)
-    startSse(taskId)
     startStatusPolling()
     await fetchCheckStatus()
   } catch (e) {
@@ -1102,7 +1101,6 @@ const handleCancelCheck = async () => {
       return
     }
 
-    stopSse()
     ElMessage.info(statusValue === 'cancelling' ? '正在取消任务...' : '已提交取消请求')
     stopStatusPolling()
     startStatusPolling()
@@ -1221,66 +1219,6 @@ const stopSse = () => {
     try { sseConnection.value.close() } catch {}
     sseConnection.value = null
   }
-}
-
-const startSse = (taskId) => {
-  if (DEMO_MODE) return
-  const id = (taskId || '').trim()
-  if (!id) return
-  stopSse()
-
-  const url = `${API_BASE_URL}/api/robots/gripper-check/events/?task_id=${encodeURIComponent(id)}`
-  const es = new EventSource(url)
-  sseConnection.value = es
-
-  es.addEventListener('status', (evt) => {
-    try {
-      const payload = JSON.parse(evt.data || '{}')
-      const statusValue = (payload?.status || '').toLowerCase()
-      if (statusValue === 'failed' && payload?.error) errorMessage.value = payload.error
-      if (statusValue === 'cancelled') {
-        checking.value = false
-        isCancelling.value = false
-        checkResult.value = null
-        latestMeta.value = null
-        setPersistedTaskId('')
-        stopStatusPolling()
-        stopSse()
-        ElMessage.info('诊断已取消')
-      }
-      if (statusValue === 'cancelling') {
-        checking.value = true
-        isCancelling.value = true
-      }
-    } catch {}
-  })
-
-  es.addEventListener('result', (evt) => {
-    try {
-      const latest = JSON.parse(evt.data || '{}')
-      if (!latest?.success) {
-        if (latest?.error) errorMessage.value = latest.error
-        return
-      }
-      latestMeta.value = latest
-      setActiveCsvSource({ filename: latest.filename, serverPath: latest.server_path })
-      markCsvFileUnread(latest.filename)
-      loadCsvPage(1).catch((e) => {
-        errorMessage.value = e?.message || '读取CSV失败'
-      })
-    } finally {
-      checking.value = false
-      isCancelling.value = false
-      stopStatusPolling()
-      stopSse()
-    }
-  })
-
-  es.addEventListener('error', () => {
-    // SSE 失败时回退到轮询
-    stopSse()
-    if (checking.value) startStatusPolling()
-  })
 }
 
 const startStatusPolling = () => {
@@ -1507,7 +1445,6 @@ onMounted(async () => {
   // 若上次诊断仍在运行/刚完成，恢复状态并在需要时拉取 latest
   if (!DEMO_MODE && activeTaskId.value) {
     checking.value = true
-    startSse(activeTaskId.value)
     startStatusPolling()
     await fetchCheckStatus()
   }
@@ -1534,7 +1471,6 @@ onActivated(() => {
   }
   if (!DEMO_MODE && activeTaskId.value) {
     checking.value = true
-    startSse(activeTaskId.value)
     startStatusPolling()
     fetchCheckStatus()
     return
