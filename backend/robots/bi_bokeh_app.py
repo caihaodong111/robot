@@ -26,6 +26,20 @@ from .bokeh_charts import AXIS_CONFIG, get_db_engine
 
 logger = logging.getLogger(__name__)
 
+
+def _render_empty_state(doc, title: str, detail: str) -> None:
+    doc.add_root(
+        column(
+            Div(
+                text=(
+                    "<div style='padding:16px;font-size:14px;'>"
+                    f"<b>{title}</b><br/>{detail}"
+                    "</div>"
+                )
+            )
+        )
+    )
+
 def _apply_axis_proxy(deft: "pd.DataFrame", q: "pd.DataFrame", axis: str) -> tuple["pd.DataFrame", "pd.DataFrame"]:
     axis_key = axis if axis in AXIS_CONFIG else "A1"
     cfg = AXIS_CONFIG[axis_key]
@@ -212,12 +226,20 @@ def _compute_agg(deft: "pd.DataFrame") -> tuple["pd.DataFrame", list[str]]:
 
 def bkapp(doc):
     # === 参数（来自 Django embed 的 querystring）===
-    default_table = os.getenv("BI_DEFAULT_TABLE", "as33_020rb_400")
-    table_arg = _get_request_arg(doc, "table") or _get_request_arg(doc, "robot") or default_table
+    table_arg = (_get_request_arg(doc, "table") or _get_request_arg(doc, "robot") or "").strip()
     program_arg = (_get_request_arg(doc, "program") or "").strip()
     axis_arg = (_get_request_arg(doc, "axis") or "").strip() or "A1"
     start_arg = (_get_request_arg(doc, "start_date") or "").strip()
     end_arg = (_get_request_arg(doc, "end_date") or "").strip()
+
+    if not table_arg:
+        logger.info("[BI LOAD] Missing table/robot parameter, render empty state")
+        _render_empty_state(
+            doc,
+            "请先选择机器人",
+            "当前未提供 table/robot 参数，BI 图表尚未加载。",
+        )
+        return doc
 
     table_name = _validate_table_name(table_arg)
 
@@ -247,19 +269,14 @@ def bkapp(doc):
     days_diff = (end_time - start_time).days
     if days_diff > max_days:
         logger.warning(f"[BI LOAD] Time range too large: {days_diff} days > {max_days} days")
-        doc.add_root(
-            column(
-                Div(
-                    text=(
-                        "<div style='padding:16px;font-size:14px;color:#e74c3c;'>"
-                        "<b>时间范围过大</b><br/>"
-                        f"当前选择: <code>{days_diff}</code> 天<br/>"
-                        f"最大支持: <code>{max_days}</code> 天<br/>"
-                        f"请缩小时间范围后重试"
-                        "</div>"
-                    )
-                )
-            )
+        _render_empty_state(
+            doc,
+            "时间范围过大",
+            (
+                f"当前选择: <code>{days_diff}</code> 天<br/>"
+                f"最大支持: <code>{max_days}</code> 天<br/>"
+                "请缩小时间范围后重试"
+            ),
         )
         return doc
 
@@ -268,19 +285,14 @@ def bkapp(doc):
     df = fetch_data_from_mysql(table_name, start_time, end_time, engine, time_column="Timestamp")
     if df is None or df.empty:
         logger.warning(f"[BI LOAD] No data found for table={table_name}")
-        doc.add_root(
-            column(
-                Div(
-                    text=(
-                        "<div style='padding:16px;font-size:14px;'>"
-                        "<b>BI 无数据</b><br/>"
-                        f"robot/table: <code>{table_name}</code><br/>"
-                        f"range: <code>{start_time.strftime('%Y-%m-%d %H:%M:%S')}</code> ~ "
-                        f"<code>{end_time.strftime('%Y-%m-%d %H:%M:%S')}</code>"
-                        "</div>"
-                    )
-                ),
-            )
+        _render_empty_state(
+            doc,
+            "BI 无数据",
+            (
+                f"robot/table: <code>{table_name}</code><br/>"
+                f"range: <code>{start_time.strftime('%Y-%m-%d %H:%M:%S')}</code> ~ "
+                f"<code>{end_time.strftime('%Y-%m-%d %H:%M:%S')}</code>"
+            ),
         )
         return
     logger.info(f"[BI LOAD] Data fetched: {len(df)} rows")
@@ -293,18 +305,13 @@ def bkapp(doc):
 
     deft = df[df["Name_C"] == default_program] if default_program else df
     if deft is None or deft.empty:
-        doc.add_root(
-            column(
-                Div(
-                    text=(
-                        "<div style='padding:16px;font-size:14px;'>"
-                        "<b>BI 无 program 数据</b><br/>"
-                        f"robot/table: <code>{table_name}</code><br/>"
-                        f"program: <code>{default_program}</code>"
-                        "</div>"
-                    )
-                ),
-            )
+        _render_empty_state(
+            doc,
+            "BI 无 program 数据",
+            (
+                f"robot/table: <code>{table_name}</code><br/>"
+                f"program: <code>{default_program}</code>"
+            ),
         )
         return
 
