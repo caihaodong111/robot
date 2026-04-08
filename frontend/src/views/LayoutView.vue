@@ -54,7 +54,7 @@
 
     <main class="app-main">
       <RouterView v-slot="{ Component }">
-        <KeepAlive :include="['Monitoring', 'Devices']">
+        <KeepAlive :include="['Devices']">
           <component v-if="route.path !== '/alerts'" :is="Component" :key="route.name" />
         </KeepAlive>
       </RouterView>

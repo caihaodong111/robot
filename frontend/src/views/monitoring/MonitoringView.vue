@@ -1494,10 +1494,13 @@ onUnmounted(() => {
   stopStatusPolling()
   document.removeEventListener('visibilitychange', handleVisibilityChange)
   stopSse()
+  resetRobotSearchState()
 })
 
 onDeactivated(() => {
   stopStatusPolling()
+  stopSse()
+  resetRobotSearchState()
 })
 
 onActivated(() => {
