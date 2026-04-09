@@ -677,6 +677,7 @@ let viewRequestController = null
 const STATUS_POLL_INTERVAL = 30000
 const CANCELLING_POLL_INTERVAL = 1000
 const statusRequestInFlight = ref(false)
+const terminalTaskHandling = ref('')
 const keywordFilter = ref('')
 const activeCsvFilename = ref('')
 const activeCsvServerPath = ref('')
@@ -793,6 +794,89 @@ const abortViewRequests = () => {
   if (!viewRequestController) return
   viewRequestController.abort()
   viewRequestController = null
+}
+
+const buildGripperCheckWebSocketUrl = (taskId) => {
+  const normalizedTaskId = (taskId || '').trim()
+  if (!normalizedTaskId) return ''
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${protocol}//${window.location.host}/ws/robots/gripper-check/${encodeURIComponent(normalizedTaskId)}/`
+}
+
+const applyLatestPayload = (latest) => {
+  if (!latest || typeof latest !== 'object') return
+  latestMeta.value = latest
+  setActiveCsvSource({ filename: latest.filename, serverPath: latest.server_path })
+  if (latest.filename) {
+    markCsvFileUnread(latest.filename)
+  }
+}
+
+const finishTaskWithLatest = async (taskId, latestOverride = null) => {
+  const normalizedTaskId = (taskId || '').trim()
+  if (!normalizedTaskId || terminalTaskHandling.value === normalizedTaskId) return
+  terminalTaskHandling.value = normalizedTaskId
+
+  try {
+    let latest = latestOverride
+    if (!latest?.success) {
+      latest = await getGripperCheckLatest(normalizedTaskId, getViewRequestConfig())
+    }
+    if (!latest?.success) {
+      throw new Error(latest?.error || '检查失败')
+    }
+    applyLatestPayload(latest)
+    await loadCsvPage(1)
+    setPersistedTaskId('')
+  } catch (error) {
+    errorMessage.value = error?.message || '检查失败'
+    throw error
+  } finally {
+    terminalTaskHandling.value = ''
+  }
+}
+
+const applyStatusPayload = async (resp) => {
+  const statusValue = (resp?.status || '').toLowerCase()
+  if (!statusValue) return
+
+  if (ACTIVE_TASK_STATUSES.has(statusValue)) {
+    checking.value = true
+    isCancelling.value = statusValue === 'cancelling'
+    startSse(activeTaskId.value)
+    if (!sseConnection.value || sseConnection.value.readyState !== WebSocket.OPEN) {
+      stopStatusPolling()
+      startStatusPolling()
+    }
+    return
+  }
+
+  checking.value = false
+  isCancelling.value = false
+  isCheckHover.value = false
+  stopStatusPolling()
+  stopSse()
+
+  if (statusValue === 'failed') {
+    errorMessage.value = resp?.error || '检查失败'
+    setPersistedTaskId('')
+    return
+  }
+
+  if (statusValue === 'cancelled') {
+    checkResult.value = null
+    latestMeta.value = null
+    setActiveCsvSource()
+    setPersistedTaskId('')
+    ElMessage.info('诊断已取消')
+    return
+  }
+
+  if (statusValue === 'idle') {
+    const activeTask = (activeTaskId.value || '').trim()
+    const latestSnapshot = latestMeta.value?.task_id === activeTask ? latestMeta.value : null
+    await finishTaskWithLatest(activeTask, latestSnapshot)
+  }
 }
 
 const loadPlantGroups = async () => {
@@ -1034,6 +1118,10 @@ const executeCheck = async () => {
     const payload = {
       start_time: timeRange.value[0].toISOString(),
       end_time: timeRange.value[1].toISOString(),
+      group_key: selectedPlant.value,
+      group_name: availablePlants.value.find(plant => plant.key === selectedPlant.value)?.name || selectedPlant.value,
+      types: [...selectedTypes.value],
+      techs: [...selectedTechs.value],
       gripper_list: selectedRobots.value,
       key_paths: sanitizedKeyPaths
     }
@@ -1058,6 +1146,7 @@ const executeCheck = async () => {
     const taskId = (resp?.task_id || '').trim()
     if (!taskId) throw new Error('未获取到任务ID')
     setPersistedTaskId(taskId)
+    startSse(taskId)
     startStatusPolling()
     await fetchCheckStatus()
   } catch (e) {
@@ -1160,51 +1249,13 @@ const fetchCheckStatus = async () => {
   statusRequestInFlight.value = true
   try {
     const resp = await getGripperCheckStatus(taskId, getViewRequestConfig())
-    const statusValue = (resp?.status || '').toLowerCase()
-    if (ACTIVE_TASK_STATUSES.has(statusValue)) {
-      checking.value = true
-      isCancelling.value = statusValue === 'cancelling'
-      if (statusValue === 'cancelling') {
-        stopStatusPolling()
-        startStatusPolling()
-      }
-      return
-    }
-    if (statusValue) {
-      checking.value = false
-      isCancelling.value = false
-      isCheckHover.value = false
-      stopStatusPolling()
-      if (statusValue === 'failed') {
-        errorMessage.value = resp?.error || '检查失败'
-        setPersistedTaskId('')
-        return
-      }
-      if (statusValue === 'cancelled') {
-        checkResult.value = null
-        latestMeta.value = null
-        setPersistedTaskId('')
-        ElMessage.info('诊断已取消')
-        return
-      }
-
-      try {
-        const latest = await getGripperCheckLatest(taskId, getViewRequestConfig())
-        if (!latest?.success) throw new Error(latest?.error || '检查失败')
-        latestMeta.value = latest
-        setActiveCsvSource({ filename: latest.filename, serverPath: latest.server_path })
-        markCsvFileUnread(latest.filename)
-
-        await loadCsvPage(1)
-      } finally {
-        checking.value = false
-      }
-    }
+    await applyStatusPayload(resp)
   } catch (error) {
     if (isAbortedRequest(error)) return
     if (error?.response?.data?.error === 'task-not-found') {
       checking.value = false
       stopStatusPolling()
+      stopSse()
       setPersistedTaskId('')
       return
     }
@@ -1216,9 +1267,77 @@ const fetchCheckStatus = async () => {
 
 const stopSse = () => {
   if (sseConnection.value) {
-    try { sseConnection.value.close() } catch {}
+    try {
+      sseConnection.value.onopen = null
+      sseConnection.value.onmessage = null
+      sseConnection.value.onerror = null
+      sseConnection.value.onclose = null
+      sseConnection.value.close()
+    } catch {}
     sseConnection.value = null
   }
+}
+
+const startSse = (taskId = activeTaskId.value) => {
+  const normalizedTaskId = (taskId || '').trim()
+  if (DEMO_MODE || !normalizedTaskId) return
+
+  const currentStream = sseConnection.value
+  if (currentStream?.__taskId === normalizedTaskId) {
+    const readyState = currentStream.readyState
+    if (readyState === WebSocket.OPEN || readyState === WebSocket.CONNECTING) return
+  }
+
+  stopSse()
+
+  const url = buildGripperCheckWebSocketUrl(normalizedTaskId)
+  if (!url) return
+
+  const ws = new WebSocket(url)
+  ws.__taskId = normalizedTaskId
+
+  ws.onopen = () => {
+    if ((activeTaskId.value || '').trim() !== normalizedTaskId) {
+      ws.close()
+      return
+    }
+    stopStatusPolling()
+    ws.send(JSON.stringify({ type: 'subscribe' }))
+  }
+
+  ws.onmessage = async (event) => {
+    if ((activeTaskId.value || '').trim() !== normalizedTaskId) return
+
+    try {
+      const payload = JSON.parse(event.data)
+      if (payload?.type === 'status') {
+        await applyStatusPayload(payload.data || {})
+        return
+      }
+      if (payload?.type === 'result') {
+        applyLatestPayload(payload.data || {})
+      }
+    } catch (error) {
+      console.error('轨迹检查 WebSocket 消息处理失败:', error)
+    }
+  }
+
+  ws.onerror = () => {
+    if ((activeTaskId.value || '').trim() !== normalizedTaskId || !checking.value) return
+    startStatusPolling()
+  }
+
+  ws.onclose = () => {
+    if (sseConnection.value === ws) {
+      sseConnection.value = null
+    }
+    if ((activeTaskId.value || '').trim() !== normalizedTaskId || !checking.value) return
+    if (document.visibilityState !== 'hidden') {
+      startStatusPolling()
+    }
+  }
+
+  sseConnection.value = ws
 }
 
 const startStatusPolling = () => {
@@ -1445,6 +1564,7 @@ onMounted(async () => {
   // 若上次诊断仍在运行/刚完成，恢复状态并在需要时拉取 latest
   if (!DEMO_MODE && activeTaskId.value) {
     checking.value = true
+    startSse(activeTaskId.value)
     startStatusPolling()
     await fetchCheckStatus()
   }
@@ -1471,6 +1591,7 @@ onActivated(() => {
   }
   if (!DEMO_MODE && activeTaskId.value) {
     checking.value = true
+    startSse(activeTaskId.value)
     startStatusPolling()
     fetchCheckStatus()
     return

@@ -26,7 +26,7 @@ class LazyWebSocketApp:
         if self.websocket_application is None:
             # 只在第一次请求时才导入路由和URLRouter
             from channels.routing import URLRouter
-            from monitoring.routing import websocket_urlpatterns
+            from iot_monitor.websocket_routing import websocket_urlpatterns
             
             # 创建WebSocket应用
             self.websocket_application = AuthMiddlewareStack(

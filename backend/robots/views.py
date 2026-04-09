@@ -7,7 +7,7 @@ import numpy as np
 from celery.result import AsyncResult
 from django.conf import settings
 from django.core.cache import cache
-from django.http import JsonResponse, StreamingHttpResponse, FileResponse
+from django.http import JsonResponse, FileResponse
 from django.shortcuts import render
 from django.db.models import Count, Q
 from django.utils import timezone
@@ -40,7 +40,6 @@ from .gripper_check_state import (
 from .error_trend_chart import generate_trend_chart, chart_exists
 from .tasks import gripper_check_csv_task, gripper_check_task
 import json
-import time
 import uuid
 
 from .bi_jobs import BiCancelledError, bi_job_registry
@@ -1478,62 +1477,24 @@ class GripperCheckViewSet(viewsets.GenericViewSet):
 @xframe_options_exempt
 def gripper_check_events(request):
     """
-    Server-Sent Events: 推送关键轨迹检查状态与最终结果
+    兼容旧 SSE 路径：返回 WebSocket 替代入口，而不再占用 Django 请求线程。
     """
-    import json as json_module
-
     task_id = (request.GET.get("task_id") or "").strip()
     if not task_id:
         return JsonResponse({"success": False, "error": "missing-task-id"}, status=400)
 
-    def stream_generator():
-        try:
-            # 立即发送初始状态
-            status_payload = get_gripper_check_status(task_id=task_id) or {"status": "queued", "task_id": task_id}
-            yield f"event: status\ndata: {json_module.dumps(status_payload, ensure_ascii=False)}\n\n"
-
-            last_status = status_payload.get("status", "idle").lower()
-
-            last_ping = 0.0
-            while True:
-                try:
-                    current_status = get_gripper_check_status(task_id=task_id) or {"status": "queued", "task_id": task_id}
-                    current_value = current_status.get("status", "idle").lower()
-
-                    # 心跳：避免代理/浏览器因长时间无数据而断开连接
-                    now = time.time()
-                    if now - last_ping >= 15:
-                        yield ": ping\n\n"
-                        last_ping = now
-
-                    # 发送状态更新
-                    if current_value != last_status:
-                        yield f"event: status\ndata: {json_module.dumps(current_status, ensure_ascii=False)}\n\n"
-                        last_status = current_value
-
-                    # 检查是否完成
-                    if current_value in ("idle", "failed", "cancelled"):
-                        if current_value == "idle":
-                            latest = get_gripper_check_latest(task_id=task_id)
-                            if latest:
-                                yield f"event: result\ndata: {json_module.dumps(latest, ensure_ascii=False)}\n\n"
-                        break
-
-                    time.sleep(1)
-
-                except Exception as e:
-                    logger.error(f"Error in SSE loop: {e}")
-                    yield f"event: error\ndata: {json_module.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
-                    break
-
-        except Exception as e:
-            logger.exception(f"Error in gripper_check_events: {e}")
-            yield f"event: error\ndata: {json_module.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
-
-    response = StreamingHttpResponse(stream_generator(), content_type="text/event-stream")
-    response["Cache-Control"] = "no-cache"
-    response["X-Accel-Buffering"] = "no"
-    return response
+    return JsonResponse(
+        {
+            "success": False,
+            "error": "sse-deprecated",
+            "message": "Use websocket stream instead of HTTP SSE.",
+            "task_id": task_id,
+            "websocket_path": f"/ws/robots/gripper-check/{task_id}/",
+            "status": get_gripper_check_status(task_id=task_id),
+            "latest": get_gripper_check_latest(task_id=task_id),
+        },
+        status=426,
+    )
 
 
 class RobotHighRiskSnapshotViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):

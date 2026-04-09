@@ -3,12 +3,62 @@ Celery 定时任务
 用于自动同步机器人数据
 """
 from pathlib import Path
+import re
 
 from celery import shared_task
 from django.utils import timezone
 import logging
 
 logger = logging.getLogger(__name__)
+
+INVALID_FILENAME_CHARS_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]+')
+WHITESPACE_RE = re.compile(r"\s+")
+
+
+def _sanitize_filename_part(value, fallback="na", max_length=48):
+    text = str(value or "").strip()
+    if not text:
+        return fallback
+    text = INVALID_FILENAME_CHARS_RE.sub("-", text)
+    text = WHITESPACE_RE.sub("-", text)
+    text = text.strip(" .-_")
+    if not text:
+        return fallback
+    if len(text) > max_length:
+        text = text[:max_length].rstrip(" .-_")
+    return text or fallback
+
+
+def _normalize_meta_values(value):
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        values = [str(item).strip() for item in value if str(item).strip()]
+    else:
+        values = [item.strip() for item in str(value).split(",") if item.strip()]
+    return values
+
+
+def _compress_meta_values(values, label, max_items=3):
+    normalized = [_sanitize_filename_part(value) for value in _normalize_meta_values(values)]
+    normalized = [value for value in normalized if value and value != "na"]
+    if not normalized:
+        return label
+    if len(normalized) > max_items:
+        return f"{'-'.join(normalized[:max_items])}-and-{len(normalized) - max_items}-more"
+    return "-".join(normalized)
+
+
+def _build_gripper_csv_filename(config_data, task_id, started_at):
+    group_part = _sanitize_filename_part(
+        config_data.get("group_name") or config_data.get("group_key") or config_data.get("group"),
+        fallback="group",
+    )
+    type_part = _compress_meta_values(config_data.get("types"), "type")
+    tech_part = _compress_meta_values(config_data.get("techs"), "tech")
+    started_part = started_at.strftime("%Y%m%d_%H%M%S")
+    task_part = _sanitize_filename_part((task_id or "")[:8], fallback="task", max_length=16)
+    return f"trajectory_report__{group_part}__{type_part}__{tech_part}__{started_part}__{task_part}.csv"
 
 def _split_reference_dict_paths(value) -> list:
     if not value:
@@ -265,6 +315,7 @@ def _run_gripper_check_task(config_data, task_id, export_csv=False):
     task_id = (task_id or "").strip()
     cancel_check = lambda: _raise_if_gripper_check_cancelled(task_id)
     server_path = None
+    started_at = timezone.now()
     total_robots = len(config_data.get("gripper_list") or [])
 
     def progress_callback(current, total, robot):
@@ -286,8 +337,7 @@ def _run_gripper_check_task(config_data, task_id, export_csv=False):
         if export_csv:
             export_dir = Path(getattr(settings, "BASE_DIR", ".")) / "exports" / "gripper_check"
             export_dir.mkdir(parents=True, exist_ok=True)
-            file_stamp = timezone.now().strftime("%Y%m%d_%H%M%S_%f")
-            filename = f"trajectory_report_{file_stamp}_{task_id[:8]}.csv"
+            filename = _build_gripper_csv_filename(config_data, task_id, started_at)
             server_path = export_dir / filename
 
             df = check_gripper_df_from_config(

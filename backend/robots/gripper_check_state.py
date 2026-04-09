@@ -1,5 +1,7 @@
 from django.core.cache import cache
 from django.utils import timezone
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 
 GRIPPER_CHECK_STATUS_PREFIX = "gripper_check_status"
 GRIPPER_CHECK_LATEST_PREFIX = "gripper_check_latest"
@@ -12,6 +14,32 @@ GRIPPER_CHECK_CANCEL_TTL = 60 * 60
 
 ACTIVE_STATUSES = {"queued", "running", "exporting", "cancelling"}
 TERMINAL_STATUSES = {"idle", "failed", "cancelled"}
+
+
+def _group_name(task_id):
+    task_id = (task_id or "").strip()
+    if not task_id:
+        return None
+    return f"gripper_check_{task_id}"
+
+
+def _broadcast_event(task_id, event_type, payload):
+    group_name = _group_name(task_id)
+    if not group_name:
+        return
+    channel_layer = get_channel_layer()
+    if channel_layer is None:
+        return
+    try:
+        async_to_sync(channel_layer.group_send)(
+            group_name,
+            {
+                "type": f"gripper_{event_type}",
+                "data": payload,
+            },
+        )
+    except Exception:
+        return
 
 
 def _task_key(prefix, task_id):
@@ -47,6 +75,7 @@ def set_gripper_check_status(status_value, error=None, task_id=None, **extra_fie
             cache.delete(GRIPPER_CHECK_ACTIVE_TASK_KEY)
         clear_gripper_check_cancel(task_id)
 
+    _broadcast_event(task_id, "status", payload)
     return payload
 
 
@@ -58,6 +87,7 @@ def set_gripper_check_latest(result, task_id=None):
     cache.set(_task_key(GRIPPER_CHECK_LATEST_PREFIX, resolved_task_id), payload, timeout=GRIPPER_CHECK_LATEST_TTL)
     if resolved_task_id:
         cache.set(GRIPPER_CHECK_LAST_TASK_KEY, resolved_task_id, timeout=GRIPPER_CHECK_LATEST_TTL)
+        _broadcast_event(resolved_task_id, "result", payload)
     return payload
 
 
