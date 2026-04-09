@@ -292,6 +292,18 @@ class GripperCheckSerializer(serializers.Serializer):
     """关键轨迹检查序列化器"""
     start_time = serializers.DateTimeField(help_text="开始时间")
     end_time = serializers.DateTimeField(help_text="结束时间")
+    group_key = serializers.CharField(required=False, allow_blank=True)
+    group_name = serializers.CharField(required=False, allow_blank=True)
+    types = serializers.ListField(
+        child=serializers.CharField(required=False, allow_blank=True),
+        required=False,
+        default=list,
+    )
+    techs = serializers.ListField(
+        child=serializers.CharField(required=False, allow_blank=True),
+        required=False,
+        default=list,
+    )
     gripper_list = serializers.ListField(
         child=serializers.CharField(),
         help_text="机器人表名列表"
@@ -340,6 +352,10 @@ class GripperCheckSerializer(serializers.Serializer):
                 continue
             normalized.append(value)
         attrs['key_paths'] = normalized
+        attrs['group_key'] = str(attrs.get('group_key') or '').strip()
+        attrs['group_name'] = str(attrs.get('group_name') or '').strip()
+        attrs['types'] = [str(item).strip() for item in (attrs.get('types') or []) if str(item).strip()]
+        attrs['techs'] = [str(item).strip() for item in (attrs.get('techs') or []) if str(item).strip()]
 
         return attrs
 
@@ -504,4 +520,3 @@ class RefreshLogSerializer(serializers.ModelSerializer):
             "error_message",
             "sync_time",
         )
-

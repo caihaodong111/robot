@@ -34,6 +34,7 @@
                 placeholder="请选择车间"
                 filterable
                 :loading="plantsLoading"
+                :disabled="selectionLocked"
                 @change="handlePlantChange"
               >
                 <el-option
@@ -65,7 +66,7 @@
                   reserve-keyword
                   :remote-method="searchRobots"
                   :loading="robotsLoading"
-                  :disabled="!canSelectRobots"
+                  :disabled="selectionLocked || !canSelectRobots"
                   @change="handleRobotsChange"
                 >
                   <template #header>
@@ -155,7 +156,7 @@
                 clearable
                 filterable
                 :loading="robotFilterLoading"
-                :disabled="!canFilterRobots"
+                :disabled="selectionLocked || !canFilterRobots"
                 @visible-change="handleRobotFilterVisibleChange"
                 @change="handleTypeFilterChange"
               >
@@ -188,7 +189,7 @@
                 clearable
                 filterable
                 :loading="robotFilterLoading"
-                :disabled="!canFilterRobots"
+                :disabled="selectionLocked || !canFilterRobots"
                 @visible-change="handleRobotFilterVisibleChange"
                 @change="handleTechFilterChange"
               >
@@ -216,7 +217,7 @@
                 <el-tag
                   v-for="tag in activePaths"
                   :key="tag"
-                  closable
+                  :closable="!selectionLocked"
                   :disable-transitions="false"
                   @close="handleClosePath(tag)"
                   class="path-tag"
@@ -229,10 +230,11 @@
                   v-model="inputValue"
                   class="new-path-input"
                   size="small"
+                  :disabled="selectionLocked"
                   @keyup.enter="handleInputConfirm"
                   @blur="handleInputConfirm"
                 />
-                <el-button v-else class="add-path-btn" size="small" @click="showInput">
+                <el-button v-else class="add-path-btn" size="small" :disabled="selectionLocked" @click="showInput">
                   + 新增路径
                 </el-button>
               </div>
@@ -533,7 +535,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, onActivated, onDeactivated, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   Download, Search, Location, Cpu, Calendar,
@@ -563,6 +565,7 @@ const layoutStore = useLayoutStore()
 // 默认时间跨度
 const DEFAULT_TIME_SPAN_DAYS = 7
 const TASK_STORAGE_KEY = 'gripper_check_task_id'
+const FORM_STORAGE_KEY = 'gripper_check_form_state'
 const CSV_READ_STORAGE_KEY = 'gripper_check_seen_csv_files'
 const ACTIVE_TASK_STATUSES = new Set(['queued', 'running', 'exporting', 'cancelling'])
 
@@ -607,11 +610,17 @@ const inputValue = ref('')
 const InputRef = ref(null)
 
 const showInput = () => {
+  if (selectionLocked.value) return
   inputVisible.value = true
   nextTick(() => InputRef.value.input.focus())
 }
 
 const handleInputConfirm = () => {
+  if (selectionLocked.value) {
+    inputVisible.value = false
+    inputValue.value = ''
+    return
+  }
   const nextValue = (inputValue.value || '').trim()
   if (nextValue && !activePaths.value.includes(nextValue)) {
     activePaths.value.push(nextValue)
@@ -621,10 +630,12 @@ const handleInputConfirm = () => {
 }
 
 const handleClosePath = (tag) => {
+  if (selectionLocked.value) return
   activePaths.value = activePaths.value.filter(t => t !== tag)
 }
 
 const handlePresetToggle = (path, checked) => {
+  if (selectionLocked.value) return
   if (checked) {
     if (!activePaths.value.includes(path)) activePaths.value.push(path)
   } else {
@@ -691,6 +702,7 @@ const hasUnreadCsvFiles = computed(() => {
   if (currentFilename && !seenCsvFiles.value.includes(currentFilename)) return true
   return csvFiles.value.some(file => !seenCsvFiles.value.includes(file.filename))
 })
+const selectionLocked = computed(() => checking.value)
 const canFilterRobots = computed(() => Boolean(selectedPlant.value))
 const canSelectRobots = computed(() => Boolean(selectedPlant.value) && selectedTypes.value.length > 0 && selectedTechs.value.length > 0)
 
@@ -721,6 +733,50 @@ const setPersistedTaskId = (taskId) => {
   } else {
     localStorage.removeItem(TASK_STORAGE_KEY)
   }
+}
+
+const persistFormState = () => {
+  try {
+    localStorage.setItem(FORM_STORAGE_KEY, JSON.stringify({
+      selectedPlant: selectedPlant.value || '',
+      selectedRobots: [...selectedRobots.value],
+      selectedTypes: [...selectedTypes.value],
+      selectedTechs: [...selectedTechs.value],
+      activePaths: [...activePaths.value],
+      timeRange: Array.isArray(timeRange.value)
+        ? timeRange.value.map(item => item instanceof Date ? item.toISOString() : '')
+        : []
+    }))
+  } catch {}
+}
+
+const loadPersistedFormState = () => {
+  try {
+    const raw = localStorage.getItem(FORM_STORAGE_KEY)
+    if (!raw) return
+    const parsed = JSON.parse(raw)
+    selectedPlant.value = typeof parsed?.selectedPlant === 'string' ? parsed.selectedPlant : ''
+    selectedRobots.value = Array.isArray(parsed?.selectedRobots) ? parsed.selectedRobots.filter(Boolean) : []
+    selectedTypes.value = Array.isArray(parsed?.selectedTypes) ? parsed.selectedTypes.filter(Boolean) : []
+    selectedTechs.value = Array.isArray(parsed?.selectedTechs) ? parsed.selectedTechs.filter(Boolean) : []
+    activePaths.value = Array.isArray(parsed?.activePaths) ? parsed.activePaths.filter(Boolean) : []
+
+    const nextTimeRange = Array.isArray(parsed?.timeRange) ? parsed.timeRange : []
+    if (nextTimeRange.length === 2) {
+      const start = new Date(nextTimeRange[0])
+      const end = new Date(nextTimeRange[1])
+      if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) {
+        timeRange.value = [start, end]
+      }
+    }
+  } catch {}
+}
+
+const restorePersistedFormState = async () => {
+  loadPersistedFormState()
+  if (!selectedPlant.value) return
+  await loadRobotFilterOptions()
+  await refreshRobotOptions()
 }
 
 const loadSeenCsvFiles = () => {
@@ -961,6 +1017,7 @@ const loadRobotFilterOptions = async ({ clearSelection = false } = {}) => {
 }
 
 const handleRobotFilterVisibleChange = async (visible) => {
+  if (selectionLocked.value) return
   if (!visible || !selectedPlant.value || robotFilterLoading.value) return
   if (availableTypes.value.length || availableTechs.value.length) return
   await loadRobotFilterOptions()
@@ -978,25 +1035,30 @@ const refreshRobotOptions = async ({ query = '', clearSelection = false } = {}) 
 }
 
 const handlePlantChange = async () => {
+  if (selectionLocked.value) return
   availableRobots.value = []
   await loadRobotFilterOptions({ clearSelection: true })
   await refreshRobotOptions({ clearSelection: true })
 }
 
 const handleTypeFilterChange = async () => {
+  if (selectionLocked.value) return
   await refreshRobotOptions()
 }
 
 const handleTechFilterChange = async () => {
+  if (selectionLocked.value) return
   await refreshRobotOptions()
 }
 
 const handleSelectAllTypes = async (val) => {
+  if (selectionLocked.value) return
   selectedTypes.value = val ? [...availableTypes.value] : []
   await refreshRobotOptions()
 }
 
 const handleSelectAllTechs = async (val) => {
+  if (selectionLocked.value) return
   selectedTechs.value = val ? [...availableTechs.value] : []
   await refreshRobotOptions()
 }
@@ -1016,6 +1078,7 @@ const robotSearchTimer = ref(null)
 const lastRobotSearchKey = ref('')
 
 const doSearchRobots = async (query) => {
+  if (selectionLocked.value) return
   robotsLoading.value = true
   try {
     const params = {}
@@ -1068,6 +1131,7 @@ const doSearchRobots = async (query) => {
 
 // el-select remote-method 触发频率很高：做防抖，避免大量请求
 const searchRobots = (query) => {
+  if (selectionLocked.value) return
   const paramsKey = JSON.stringify({
     q: (query || '').trim(),
     group: selectedPlant.value || '',
@@ -1085,6 +1149,7 @@ const searchRobots = (query) => {
 
 // 机器人选择变化，自动设置对应车间
 const handleRobotsChange = async (value) => {
+  if (selectionLocked.value) return
   if (value.length === 0) return
 
   const firstRobot = availableRobots.value.find(r => r.value === value[0])
@@ -1097,6 +1162,7 @@ const handleRobotsChange = async (value) => {
 }
 
 const handleSelectAllRobots = (val) => {
+  if (selectionLocked.value) return
   selectedRobots.value = val ? availableRobots.value.map(r => r.value) : []
 }
 
@@ -1562,9 +1628,7 @@ const goToRobotBI = (robotName) => {
 onMounted(async () => {
   loadSeenCsvFiles()
   await loadPlantGroups()
-  if (selectedPlant.value) {
-    await loadRobotFilterOptions()
-  }
+  await restorePersistedFormState()
   document.addEventListener('visibilitychange', handleVisibilityChange)
   // 若上次诊断仍在运行/刚完成，恢复状态并在需要时拉取 latest
   if (!DEMO_MODE && activeTaskId.value) {
@@ -1576,6 +1640,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  persistFormState()
   stopStatusPolling()
   document.removeEventListener('visibilitychange', handleVisibilityChange)
   stopSse()
@@ -1584,16 +1649,15 @@ onUnmounted(() => {
 })
 
 onDeactivated(() => {
+  persistFormState()
   stopStatusPolling()
   stopSse()
   resetRobotSearchState()
   abortViewRequests()
 })
 
-onActivated(() => {
-  if (selectedPlant.value && !availableTypes.value.length && !availableTechs.value.length) {
-    loadRobotFilterOptions()
-  }
+onActivated(async () => {
+  await restorePersistedFormState()
   if (!DEMO_MODE && activeTaskId.value) {
     checking.value = true
     startSse(activeTaskId.value)
@@ -1603,6 +1667,14 @@ onActivated(() => {
   }
   if (checking.value) startStatusPolling()
 })
+
+watch(
+  [selectedPlant, selectedRobots, selectedTypes, selectedTechs, activePaths, timeRange],
+  () => {
+    persistFormState()
+  },
+  { deep: true }
+)
 </script>
 
 <style scoped>
