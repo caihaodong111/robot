@@ -843,6 +843,9 @@ const applyStatusPayload = async (resp) => {
   if (ACTIVE_TASK_STATUSES.has(statusValue)) {
     checking.value = true
     isCancelling.value = statusValue === 'cancelling'
+    checkResult.value = null
+    latestMeta.value = null
+    setActiveCsvSource()
     startSse(activeTaskId.value)
     if (!sseConnection.value || sseConnection.value.readyState !== WebSocket.OPEN) {
       stopStatusPolling()
@@ -1106,7 +1109,9 @@ const executeCheck = async () => {
   isCheckHover.value = false
   stopStatusPolling()
   checkResult.value = null
+  latestMeta.value = null
   errorMessage.value = ''
+  keywordFilter.value = ''
   setPersistedTaskId('')
   setActiveCsvSource()
 
