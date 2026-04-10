@@ -238,6 +238,17 @@ export function getErrorTrendChart(robotId, axis, regenerate = false) {
   })
 }
 
+export function getHistoryErrorTrendChart(snapshotId, axis, regenerate = false) {
+  return request({
+    url: `/robots/high-risk-histories/${snapshotId}/error_trend_chart/`,
+    method: 'get',
+    params: {
+      axis,
+      regenerate: regenerate ? 1 : 0
+    }
+  })
+}
+
 // ==================== 周结果数据 API ====================
 
 // 获取周结果列表（用于机器人状态页面）

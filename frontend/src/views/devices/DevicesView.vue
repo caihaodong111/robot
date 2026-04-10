@@ -687,7 +687,7 @@ import { computed, ref, watch, nextTick, onMounted, onUnmounted, onActivated, on
 import { useRouter, useRoute } from 'vue-router'
 import { Refresh, Search, Close, Monitor, ArrowRight, ArrowLeft, Picture, Clock, Download } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { getRobotComponents, getRobotGroups, updateRobotComponent, getErrorTrendChart, importRobotComponents, getHighRiskHistories, getReferenceDict, refreshReferenceDict, getReferenceDictRefreshStatus, resolveReferenceNumber, verifyEditCredentials, getEditAuthStatus } from '@/api/robots'
+import { getRobotComponents, getRobotGroups, updateRobotComponent, getErrorTrendChart, getHistoryErrorTrendChart, importRobotComponents, getHighRiskHistories, getReferenceDict, refreshReferenceDict, getReferenceDictRefreshStatus, resolveReferenceNumber, verifyEditCredentials, getEditAuthStatus } from '@/api/robots'
 import request from '@/utils/request'
 
 defineOptions({ name: 'Devices' })
@@ -1573,7 +1573,10 @@ const openErrorTrendChart = async (robot, axisKey) => {
   chartDialogLoading.value = true
 
   try {
-    const response = await getErrorTrendChart(robot.id, axisNum)
+    const chartRequest = activeTab.value === 'history'
+      ? getHistoryErrorTrendChart(robot.id, axisNum)
+      : getErrorTrendChart(robot.id, axisNum)
+    const response = await chartRequest
     if (response.success) {
       // 将 base64 数据转换为 data URL
       chartDialogData.value.chartUrl = `data:image/png;base64,${response.chart_data}`

@@ -1580,6 +1580,57 @@ class RobotHighRiskSnapshotViewSet(mixins.ListModelMixin, viewsets.GenericViewSe
 
         return qs
 
+    @action(detail=True, methods=["get"])
+    def error_trend_chart(self, request, pk=None):
+        """
+        获取历史高风险快照对应机器人的关节错误率趋势图
+
+        说明:
+            history 列表里的主键是快照 ID，不是 RobotComponent ID。
+            因此需要单独从快照记录里取 robot 名称来生成趋势图。
+        """
+        snapshot = self.get_object()
+        axis_num = request.query_params.get("axis")
+
+        if not axis_num:
+            return Response(
+                {"success": False, "error": "缺少参数 axis，请提供关节编号 (1-7)"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            axis_num = int(axis_num)
+            if axis_num < 1 or axis_num > 7:
+                raise ValueError("关节编号必须在 1-7 之间")
+        except ValueError as e:
+            return Response(
+                {"success": False, "error": f"参数 axis 无效: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            chart_base64 = generate_trend_chart(snapshot.robot, axis_num)
+        except FileNotFoundError as e:
+            return Response(
+                {"success": False, "error": f"CSV 数据文件不存在: {str(e)}"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        except Exception as e:
+            return Response(
+                {"success": False, "error": f"生成图表失败: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return Response(
+            {
+                "success": True,
+                "chart_data": chart_base64,
+                "axis": axis_num,
+                "robot": snapshot.robot,
+                "snapshot_id": snapshot.id,
+            }
+        )
+
 
 class RobotReferenceDictViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     """机器人 reference 字典 - 从本地 CSV 刷新"""
