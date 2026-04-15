@@ -38,6 +38,7 @@ from .gripper_check_state import (
     request_gripper_check_cancel,
 )
 from .error_trend_chart import generate_trend_chart, chart_exists
+from .overview_service import load_saved_overview_snapshot, refresh_overview_snapshot
 from .tasks import gripper_check_csv_task, gripper_check_task
 import json
 import uuid
@@ -1803,6 +1804,50 @@ def get_bi_logs(request):
     )
     filtered = [line for line in lines if any(keyword in line for keyword in keywords)]
     return Response({"lines": filtered[-limit:]})
+
+
+@api_view(['GET'])
+def get_portal_overview_snapshot(request):
+    """读取门户核心数据看板最近一次快照；若不存在则即时生成。"""
+    try:
+        snapshot = load_saved_overview_snapshot()
+        source = "cache"
+        if snapshot is None:
+            snapshot, output_file = refresh_overview_snapshot()
+            source = "generated"
+        else:
+            output_file = None
+
+        payload = {
+            "snapshot": snapshot,
+            "source": source,
+        }
+        if output_file is not None:
+            payload["snapshot_file"] = str(output_file)
+        return Response(payload)
+    except FileNotFoundError as exc:
+        return Response({"error": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    except Exception as exc:
+        logger.exception("Failed to load portal overview snapshot")
+        return Response({"error": f"读取门户快照失败: {exc}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+def refresh_portal_overview_snapshot(request):
+    """重建门户核心数据看板快照并落盘。"""
+    try:
+        snapshot, output_file = refresh_overview_snapshot()
+        return Response(
+            {
+                "snapshot": snapshot,
+                "snapshot_file": str(output_file),
+            }
+        )
+    except FileNotFoundError as exc:
+        return Response({"error": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    except Exception as exc:
+        logger.exception("Failed to refresh portal overview snapshot")
+        return Response({"error": f"刷新门户快照失败: {exc}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # API 端点：获取关键路径告警数据

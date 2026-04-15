@@ -29,6 +29,24 @@ export function getRobotStatsSummary(params) {
   })
 }
 
+export function getPortalOverviewSnapshot(options = {}) {
+  return request({
+    url: '/robots/portal-overview/snapshot/',
+    method: 'get',
+    ...options
+  })
+}
+
+export function refreshPortalOverviewSnapshot(data = {}, options = {}) {
+  return request({
+    url: '/robots/portal-overview/refresh/',
+    method: 'post',
+    data,
+    timeout: 0,
+    ...options
+  })
+}
+
 // 获取单个机器人部件详情
 export function getRobotComponent(id) {
   return request({

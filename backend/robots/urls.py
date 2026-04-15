@@ -20,7 +20,9 @@ from .views import (
     get_bi_logs,
     get_refresh_logs,
     get_keypath_warnings,
+    get_portal_overview_snapshot,
     gripper_check_events,
+    refresh_portal_overview_snapshot,
 )
 from .auth_views import (
     verify_edit_credentials,
@@ -69,6 +71,8 @@ urlpatterns = [
     path("last_sync_time/", get_last_sync_time, name="last-sync-time"),
     path("bi_logs/", get_bi_logs, name="bi-logs"),
     path("refresh_logs/", get_refresh_logs, name="refresh-logs"),
+    path("portal-overview/snapshot/", get_portal_overview_snapshot, name="portal-overview-snapshot"),
+    path("portal-overview/refresh/", refresh_portal_overview_snapshot, name="portal-overview-refresh"),
     path("keypath-warnings/", get_keypath_warnings, name="keypath-warnings"),
     # 编辑认证相关接口
     path("auth/verify/", verify_edit_credentials, name="verify-edit-credentials"),

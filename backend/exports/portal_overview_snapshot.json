@@ -1,0 +1,248 @@
+{
+  "generated_at": "2026-04-15T01:54:00.333151+00:00",
+  "blocks": [
+    {
+      "key": "wam",
+      "title": "WAM",
+      "updated_at": "2026-04-13T13:31:42.305748+08:00",
+      "payload": {
+        "source_file": "/Users/caihd/Desktop/设备状态.xlsx",
+        "device_count": 9,
+        "status_counts": {
+          "Warning": 4,
+          "Fault": 3,
+          "OK": 2
+        },
+        "category_count": 1,
+        "categories": [
+          "Toe/Camber/Height"
+        ],
+        "device_preview": [
+          "140-WAM1",
+          "140-WAM2",
+          "140-WAM3",
+          "140-WAM4",
+          "240-WAM1",
+          "240-WAM2"
+        ]
+      }
+    },
+    {
+      "key": "lenze",
+      "title": "Lenze",
+      "updated_at": "2026-04-01T12:34:42.308556+08:00",
+      "payload": {
+        "source_file": "/Users/caihd/Desktop/sg5.7/temperature_min_max_results.xlsx",
+        "record_count": 175,
+        "status_counts": {
+          "OK": 172,
+          "Alarm": 2,
+          "Warning": 1
+        },
+        "temperature_summary": {
+          "device_temp_max": {
+            "min": 22.0,
+            "avg": 32.63,
+            "max": 57.0
+          },
+          "device_temp_min": {
+            "min": 14.0,
+            "avg": 30.55,
+            "max": 55.0
+          },
+          "heatsink_temp_max": {
+            "min": 24.0,
+            "avg": 32.84,
+            "max": 59.0
+          },
+          "heatsink_temp_min": {
+            "min": 22.0,
+            "avg": 31.17,
+            "max": 56.0
+          }
+        }
+      }
+    },
+    {
+      "key": "filling",
+      "title": "Filling",
+      "updated_at": "2026-04-01T12:34:42.308043+08:00",
+      "payload": {
+        "source_file": "/Users/caihd/Desktop/sg5.7/MRA1_filling_status.xlsx",
+        "record_count": 573,
+        "status_counts": {
+          "NOK": 360,
+          "OK": 213
+        },
+        "station_breakdown": [
+          {
+            "station": "MRA1_Filing1",
+            "ok": 65,
+            "nok": 125,
+            "total": 190
+          },
+          {
+            "station": "MRA1_Filing2",
+            "ok": 77,
+            "nok": 56,
+            "total": 133
+          },
+          {
+            "station": "MRA1_Filing3",
+            "ok": 48,
+            "nok": 88,
+            "total": 136
+          },
+          {
+            "station": "MRA1_Filing4",
+            "ok": 23,
+            "nok": 91,
+            "total": 114
+          }
+        ],
+        "latest_timestamp": "2026-03-23 16:55:01"
+      }
+    },
+    {
+      "key": "high_risk_distribution",
+      "title": "High-Risk Distribution",
+      "updated_at": "2026-03-26T04:01:46.638310+08:00",
+      "payload": {
+        "database": "sg",
+        "group_count": 13,
+        "total_count": 3249,
+        "total_high_risk": 0,
+        "groups": [
+          {
+            "group": "MMA",
+            "count": 773,
+            "high_risk": 0,
+            "key": "MMA"
+          },
+          {
+            "group": "MRA2",
+            "count": 610,
+            "high_risk": 0,
+            "key": "MRA2"
+          },
+          {
+            "group": "HOP",
+            "count": 597,
+            "high_risk": 0,
+            "key": "HOP"
+          },
+          {
+            "group": "Shunyi",
+            "count": 420,
+            "high_risk": 0,
+            "key": "Shunyi"
+          },
+          {
+            "group": "MRA1",
+            "count": 383,
+            "high_risk": 0,
+            "key": "MRA1"
+          },
+          {
+            "group": "214Reuse",
+            "count": 286,
+            "high_risk": 0,
+            "key": "214Reuse"
+          },
+          {
+            "group": "EATS",
+            "count": 88,
+            "high_risk": 0,
+            "key": "EATS"
+          },
+          {
+            "group": "EB5",
+            "count": 60,
+            "high_risk": 0,
+            "key": "EB5"
+          }
+        ],
+        "all_groups": [
+          {
+            "group": "MMA",
+            "count": 773,
+            "high_risk": 0,
+            "key": "MMA"
+          },
+          {
+            "group": "MRA2",
+            "count": 610,
+            "high_risk": 0,
+            "key": "MRA2"
+          },
+          {
+            "group": "HOP",
+            "count": 597,
+            "high_risk": 0,
+            "key": "HOP"
+          },
+          {
+            "group": "Shunyi",
+            "count": 420,
+            "high_risk": 0,
+            "key": "Shunyi"
+          },
+          {
+            "group": "MRA1",
+            "count": 383,
+            "high_risk": 0,
+            "key": "MRA1"
+          },
+          {
+            "group": "214Reuse",
+            "count": 286,
+            "high_risk": 0,
+            "key": "214Reuse"
+          },
+          {
+            "group": "EATS",
+            "count": 88,
+            "high_risk": 0,
+            "key": "EATS"
+          },
+          {
+            "group": "EB5",
+            "count": 60,
+            "high_risk": 0,
+            "key": "EB5"
+          },
+          {
+            "group": "AS",
+            "count": 16,
+            "high_risk": 0,
+            "key": "AS"
+          },
+          {
+            "group": "PT",
+            "count": 16,
+            "high_risk": 0,
+            "key": "PT"
+          },
+          {
+            "group": "540",
+            "count": 0,
+            "high_risk": 0,
+            "key": "540"
+          },
+          {
+            "group": "AS2",
+            "count": 0,
+            "high_risk": 0,
+            "key": "AS2"
+          },
+          {
+            "group": "SA1",
+            "count": 0,
+            "high_risk": 0,
+            "key": "SA1"
+          }
+        ]
+      }
+    }
+  ]
+}

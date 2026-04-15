@@ -1,16 +1,17 @@
 """
 关键轨迹检查服务模块
 完全基于 check_gripper_withmax.py 的核心逻辑实现
-使用 .env 的 PROGRAM CYCLE SYNC 数据库配置
+使用 env 的 PROGRAM CYCLE SYNC 数据库配置
 """
-import os
 import logging
-import pandas as pd
-import numpy as np
-from datetime import datetime
-from sqlalchemy import create_engine
-from dotenv import load_dotenv
+import os
 import traceback
+from datetime import datetime
+
+import numpy as np
+import pandas as pd
+from dotenv import load_dotenv
+from sqlalchemy import create_engine
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -22,7 +23,7 @@ class GripperCheckCancelledError(Exception):
 
 def get_db_engine():
     """
-    从 .env 获取 PROGRAM CYCLE SYNC 数据库配置
+    从 env 获取 PROGRAM CYCLE SYNC 数据库配置
     """
     user = os.getenv('SG_DB_USER', 'root')
     password = os.getenv('SG_DB_PASSWORD', '123456')

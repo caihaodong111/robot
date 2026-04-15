@@ -282,6 +282,29 @@ def refresh_reference_dict_task():
 
 
 @shared_task
+def refresh_portal_overview_snapshot_task():
+    """定时刷新门户核心数据看板快照。"""
+    try:
+        from .overview_service import refresh_overview_snapshot
+
+        snapshot, output_file = refresh_overview_snapshot()
+        logger.info(
+            "门户核心数据看板快照刷新完成: generated_at=%s file=%s",
+            snapshot.get("generated_at"),
+            output_file,
+        )
+        return {
+            "success": True,
+            "generated_at": snapshot.get("generated_at"),
+            "snapshot_file": str(output_file),
+            "block_count": len(snapshot.get("blocks", [])),
+        }
+    except Exception as exc:
+        logger.exception("门户核心数据看板快照刷新失败")
+        return {"success": False, "error": str(exc)}
+
+
+@shared_task
 def import_robot_components_csv_task(file_path=None, folder_path=None, project=None, use_mysql_load_data=None):
     from .weekly_result_service import import_robot_components_csv
 

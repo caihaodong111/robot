@@ -239,6 +239,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'robots.tasks.auto_sync_robot_data',
         'schedule': crontab(hour=0, minute=0),  # 每天凌晨 00:00 执行
     },
+    'refresh-portal-overview-snapshot': {
+        'task': 'robots.tasks.refresh_portal_overview_snapshot_task',
+        'schedule': crontab(hour=0, minute=0),  # 每天凌晨 00:00 执行
+    },
 }
 
 
@@ -298,7 +302,7 @@ import os
 os.makedirs(BASE_DIR / 'logs', exist_ok=True)
 
 
-# ==================== 本地路径配置（可通过 .env 覆盖）====================
+# ==================== 本地路径配置（可通过 env 覆盖）====================
 # 路径配置文件（用于同步 weeklyresult 路径到数据库）
 PATH_CONFIG_FILE = os.getenv(
     "PATH_CONFIG_FILE",

@@ -4,12 +4,12 @@
       ref="heroImage"
       :src="heroImageUrl"
       alt="Benz Robotics Factory"
-      class="absolute inset-0 h-full w-full object-cover object-center opacity-60"
+      class="absolute inset-0 h-full w-full transform-gpu object-cover object-center opacity-60 will-change-transform"
     />
 
     <div
       ref="heroCard"
-      class="relative flex h-full w-full flex-col items-center justify-center overflow-hidden bg-benz-black/45 px-6 pb-8 pt-28 text-center backdrop-blur-sm sm:pt-32 lg:pt-36"
+      class="relative flex h-full w-full transform-gpu flex-col items-center justify-center overflow-hidden bg-benz-black/45 px-6 pb-8 pt-28 text-center backdrop-blur-sm will-change-transform sm:pt-32 lg:pt-36"
     >
       <div
         class="absolute inset-0 bg-portal-grid bg-[size:38px_38px] opacity-[0.08]"
@@ -89,11 +89,9 @@ onMounted(() => {
     timeline.to(
       heroCard.value,
       {
-        width: '92%',
-        height: '86%',
-        borderRadius: 42,
+        scale: 0.92,
         y: '6vh',
-        backgroundColor: '#1D1D1F',
+        force3D: true,
         ease: 'none'
       },
       0

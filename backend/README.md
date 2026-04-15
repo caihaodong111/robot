@@ -92,7 +92,7 @@ pip install -r requirements.txt
 复制示例配置文件并根据需要修改：
 
 ```bash
-cp .env.example .env
+cp env.example env
 ```
 
 编辑 `.env` 文件，配置以下关键参数：

@@ -1,13 +1,13 @@
 <template>
   <section
-    id="people"
-    ref="peopleSection"
+    id="apps"
+    ref="appsSection"
     class="relative z-30 -mt-[10vh] overflow-hidden pt-[18vh] pb-16 sm:pt-[20vh] sm:pb-20 lg:pt-[22vh] lg:pb-24"
     style="perspective: 1200px;"
   >
     <img
-      ref="peopleBackgroundRef"
-      :src="peopleBackgroundUrl"
+      ref="appsBackgroundRef"
+      :src="appsBackgroundUrl"
       alt=""
       aria-hidden="true"
       class="absolute inset-0 h-full w-full object-cover object-center opacity-[0.34]"
@@ -18,94 +18,101 @@
     ></div>
 
     <div class="relative z-10 mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-10">
-      <article
-        ref="bridgeRef"
-        class="mx-auto mb-14 max-w-[980px] rounded-[32px] border border-benz-blue/18 bg-[linear-gradient(180deg,rgba(0,113,227,0.16),rgba(8,12,18,0.9)_24%,rgba(5,7,10,0.96))] p-6 shadow-[0_28px_90px_rgba(0,0,0,0.42)] backdrop-blur-2xl"
-      >
-        <div class="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-          <div class="max-w-2xl">
-            <p class="text-xs font-semibold uppercase tracking-[0.3em] text-benz-cyan">Layer Transition</p>
-            <h3 class="mt-3 text-2xl font-semibold tracking-[-0.04em] text-white sm:text-3xl">
-              从系统能力切换到负责人入口，用角色视角接住页面入口。
-            </h3>
-            <p class="mt-3 text-sm leading-7 text-white/[0.58] sm:text-base">
-              上一层讲的是模块，这一层讲的是谁负责进入什么页面，让门户内容从功能结构自然过渡到日常使用路径。
-            </p>
-          </div>
-          <div class="grid grid-cols-3 gap-3 text-left">
-            <div class="rounded-[20px] border border-benz-blue/16 bg-[linear-gradient(180deg,rgba(0,48,105,0.12),rgba(5,8,12,0.92))] px-4 py-3">
-              <p class="text-xs uppercase tracking-[0.2em] text-benz-gray">Pulse</p>
-              <p class="mt-2 text-xl font-semibold text-white">Live</p>
-            </div>
-            <div class="rounded-[20px] border border-benz-cyan/22 bg-[linear-gradient(180deg,rgba(0,113,227,0.24),rgba(5,8,12,0.94))] px-4 py-3">
-              <p class="text-xs uppercase tracking-[0.2em] text-benz-gray">Bridge</p>
-              <p class="mt-2 text-xl font-semibold text-benz-cyan">Shift</p>
-            </div>
-            <div class="rounded-[20px] border border-benz-blue/16 bg-[linear-gradient(180deg,rgba(0,48,105,0.12),rgba(5,8,12,0.92))] px-4 py-3">
-              <p class="text-xs uppercase tracking-[0.2em] text-benz-gray">People</p>
-              <p class="mt-2 text-xl font-semibold text-white">Entry</p>
-            </div>
-          </div>
-        </div>
-      </article>
-
-      <div ref="headingRef" class="mb-16 max-w-3xl">
-        <p class="text-sm font-semibold uppercase tracking-[0.3em] text-benz-blue">People Entry</p>
+      <div ref="headingRef" class="mb-16 max-w-4xl">
+        <p class="text-sm font-semibold uppercase tracking-[0.3em] text-benz-blue">Application Entry</p>
         <h2 class="mt-4 text-4xl font-semibold tracking-[-0.05em] text-white sm:text-5xl lg:text-6xl">
-          负责人入口与常用页面
+          应用入口与常用链接
         </h2>
-        <p class="mt-4 text-base leading-8 text-benz-gray sm:text-lg">
-          不再按系统名平铺入口，而是按当前项目里的负责人和使用场景，把 Dashboard、Monitoring、Devices、Alerts、DevOps 串起来。
-        </p>
       </div>
 
-      <div class="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+      <div class="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
         <article
-          v-for="person in people"
-          :key="person.name"
-          :ref="setCardRef"
-          class="interactive-glow people-card group rounded-[32px] border border-benz-blue/16 bg-[linear-gradient(180deg,rgba(0,52,114,0.12),rgba(9,13,18,0.92)_22%,rgba(6,8,10,0.98))] p-7 shadow-panel transition-colors duration-300 hover:border-benz-cyan/24"
+          v-for="group in appGroups"
+          :key="group.key"
+          :ref="setInteractiveCardRef"
+          class="interactive-glow app-card group h-full rounded-[32px] border border-benz-blue/16 bg-[linear-gradient(180deg,rgba(0,52,114,0.12),rgba(9,13,18,0.92)_22%,rgba(6,8,10,0.98))] p-5 shadow-panel transition-colors duration-300"
+          :class="group.links.length === 1 ? 'cursor-pointer hover:border-benz-cyan/28' : 'hover:border-benz-cyan/20'"
+          :role="group.links.length === 1 ? 'link' : undefined"
+          :tabindex="group.links.length === 1 ? 0 : undefined"
+          :aria-label="group.links.length === 1 ? `打开 ${group.name}` : undefined"
+          @click="handleCardOpen(group)"
+          @keydown.enter.prevent="handleCardOpen(group)"
+          @keydown.space.prevent="handleCardOpen(group)"
         >
-          <div :ref="setCardInnerRef" class="people-card-inner">
-            <div class="flex items-start gap-5">
-              <div class="h-20 w-20 shrink-0 overflow-hidden rounded-[24px] border border-benz-blue/18 bg-[linear-gradient(180deg,rgba(0,113,227,0.12),rgba(5,8,12,0.96))]">
-                <img
-                  :src="person.image"
-                  :alt="`${person.name} 头像`"
-                  class="h-full w-full object-cover grayscale transition-all duration-500 group-hover:grayscale-0"
-                />
-              </div>
-
-              <div class="min-w-0 flex-1">
-                <p class="text-xs font-bold uppercase tracking-[0.28em] text-benz-blue">{{ person.title }}</p>
-                <h3 class="mt-2 text-3xl font-bold tracking-tight text-white">{{ person.name }}</h3>
-                <p class="mt-3 text-sm leading-7 text-benz-gray">{{ person.summary }}</p>
-
-                <div class="mt-6 flex flex-wrap gap-2">
-                  <button
-                    v-for="app in person.apps"
-                    :key="app.label"
-                    type="button"
-                    :ref="bindGlow"
-                    class="interactive-glow portal-chip"
-                    @click="router.push(app.to)"
-                  >
-                    {{ app.label }}
-                  </button>
+          <div :ref="setCardInnerRef" class="app-card-inner grid h-full grid-rows-[auto_1fr_auto] gap-5">
+            <div class="relative aspect-[1066/700] overflow-hidden rounded-[26px] border border-benz-blue/16 bg-black/30">
+              <img
+                v-if="group.image"
+                :src="group.image"
+                :alt="`${group.name} 封面图`"
+                class="absolute inset-0 block h-full w-full object-cover transition-transform duration-700 ease-apple-ease group-hover:scale-[1.04]"
+              />
+              <div
+                v-else
+                class="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_top,rgba(0,255,255,0.18),transparent_34%),linear-gradient(180deg,rgba(0,113,227,0.24),rgba(8,12,18,0.96))]"
+              >
+                <div class="text-center">
+                  <p class="text-xs font-semibold uppercase tracking-[0.28em] text-benz-cyan">Coming Soon</p>
+                  <p class="mt-3 text-3xl font-semibold tracking-tight text-white">敬请期待</p>
                 </div>
+              </div>
+              <div
+                class="absolute inset-0 bg-[linear-gradient(180deg,rgba(4,8,14,0.08)_0%,rgba(4,8,14,0.16)_35%,rgba(4,8,14,0.92)_100%)]"
+                aria-hidden="true"
+              ></div>
+              <div class="absolute inset-x-0 bottom-0 p-5">
+                <p class="text-xs font-bold uppercase tracking-[0.28em] text-benz-cyan">{{ group.title }}</p>
+                <h3 class="mt-2 text-2xl font-semibold tracking-tight text-white sm:text-[1.75rem]">{{ group.name }}</h3>
               </div>
             </div>
 
-            <div class="mt-7 rounded-[24px] border border-benz-blue/14 bg-[linear-gradient(180deg,rgba(0,48,105,0.1),rgba(5,8,12,0.92))] p-4">
-              <div class="mb-3 flex items-center justify-between gap-4">
-                <span class="text-xs font-semibold uppercase tracking-[0.22em] text-benz-gray">负责范围</span>
+            <div class="flex-1 rounded-[24px] border border-benz-blue/14 bg-[linear-gradient(180deg,rgba(0,48,105,0.08),rgba(5,8,12,0.92))] p-5">
+              <div class="flex items-start justify-between gap-4">
+                <div>
+                  <p class="text-xs font-semibold uppercase tracking-[0.24em] text-benz-gray">应用范围</p>
+                  <p class="mt-2 text-sm font-semibold text-white">{{ group.scope }}</p>
+                </div>
                 <span class="rounded-[16px] border border-benz-cyan/22 bg-benz-blue/12 px-3 py-1 text-xs font-semibold text-benz-cyan">
-                  {{ person.scope }}
+                  {{ group.pending ? '筹备中' : group.links.length === 1 ? '单入口' : '多入口' }}
                 </span>
               </div>
-              <ul class="space-y-2 text-sm leading-6 text-white/[0.62]">
-                <li v-for="item in person.highlights" :key="item">{{ item }}</li>
-              </ul>
+
+              <p class="mt-4 text-sm leading-7 text-benz-gray">
+                {{ group.summary }}
+              </p>
+
+              <div class="mt-4 flex flex-wrap gap-2">
+                <span
+                  v-for="tag in group.tags"
+                  :key="tag"
+                  class="rounded-[14px] border border-white/8 bg-white/[0.03] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-white/72"
+                >
+                  {{ tag }}
+                </span>
+              </div>
+            </div>
+
+            <div
+              class="gap-2"
+              :class="group.links.length === 3 ? 'grid grid-cols-3' : 'flex flex-wrap'"
+            >
+              <button
+                v-for="link in group.links"
+                :key="link.label"
+                type="button"
+                :ref="bindGlow"
+                class="interactive-glow portal-chip justify-center"
+                :class="group.links.length === 3 ? 'min-w-0 px-2.5 text-[12px] whitespace-nowrap' : ''"
+                @click.stop="openUrl(link.url)"
+              >
+                {{ link.label }}
+              </button>
+              <span
+                v-if="group.pending"
+                class="rounded-[16px] border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-white/72"
+              >
+                敬请期待
+              </span>
             </div>
           </div>
         </article>
@@ -116,7 +123,6 @@
 
 <script setup>
 import { onMounted, onUnmounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
 import { gsap } from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { useMouseMoveGlow } from '@/utils/useMouseMoveGlow'
@@ -124,20 +130,26 @@ import { useMouseMoveGlow } from '@/utils/useMouseMoveGlow'
 gsap.registerPlugin(ScrollTrigger)
 
 const { bindGlow } = useMouseMoveGlow()
-const router = useRouter()
-const peopleSection = ref(null)
-const peopleBackgroundRef = ref(null)
-const bridgeRef = ref(null)
+const appsSection = ref(null)
+const appsBackgroundRef = ref(null)
 const headingRef = ref(null)
 const cardRefs = ref([])
 const cardInnerRefs = ref([])
-const peopleBackgroundUrl = `${import.meta.env.BASE_URL}portal-people-bg.jpg`
+const appsBackgroundUrl = `${import.meta.env.BASE_URL}portal-people-bg.jpg`
+const appImageBase = `${import.meta.env.BASE_URL}portal-apps`
+const desktopColumns = 4
 let ctx
+let mediaMatcher
 
 const setCardRef = (el) => {
   if (el && !cardRefs.value.includes(el)) {
     cardRefs.value.push(el)
   }
+}
+
+const setInteractiveCardRef = (el) => {
+  setCardRef(el)
+  bindGlow(el)
 }
 
 const setCardInnerRef = (el) => {
@@ -146,101 +158,178 @@ const setCardInnerRef = (el) => {
   }
 }
 
-const people = [
+const chunkRows = (items, size) => {
+  const rows = []
+  for (let index = 0; index < items.length; index += size) {
+    rows.push(items.slice(index, index + size))
+  }
+  return rows
+}
+
+const appGroups = [
   {
-    name: '张妍',
-    title: 'KUKA Lead',
-    image: `${import.meta.env.BASE_URL}portal-people/zhang-yan.svg`,
-    summary: '更适合承接机器人总览和关键轨迹检查相关入口，覆盖调试、联调和班次巡检视角。',
-    scope: '总览 / 监控',
-    highlights: ['Dashboard 总览入口', 'Monitoring 诊断巡检', '机器人调试联动'],
-    apps: [
-      { label: '机器人总览', to: '/dashboard' },
-      { label: '轨迹检查', to: '/monitoring' }
+    key: 'durr-suite',
+    title: 'Shared Station',
+    name: 'Durr / Lenze / 高温升降机',
+    scope: 'PS2 NVU / PS2+MFA',
+    summary: '同一台监控主机下的三类现场入口，覆盖扭矩、Lenze 告警和高温升降机电流查看。',
+    tags: ['172.16.29.103', '扭矩', '告警', '电流'],
+    image: `${appImageBase}/durr-suite.jpg`,
+    links: [
+      { label: 'Durr 扭矩', url: 'http://172.16.29.103:500/get_torque' },
+      { label: 'Lenze 告警', url: 'http://172.16.29.103:500/PS3lenze-alert' },
+      { label: '高温升降机', url: 'http://172.16.29.103:500/PS2HTconveyorcurrent' }
     ]
   },
   {
-    name: '钟鸣',
-    title: 'Production Systems',
-    image: `${import.meta.env.BASE_URL}portal-people/zhong-ming.svg`,
-    summary: '更偏向入口整合和结构梳理，适合连接门户首页、机器人状态和综合页面编排。',
-    scope: '入口 / 状态',
-    highlights: ['门户入口编排', 'Devices 页面收口', '场景路径整理'],
-    apps: [
-      { label: '门户总览', to: '/dashboard' },
-      { label: '机器人状态', to: '/devices' }
+    key: 'wheel-alignment',
+    title: 'PDM Application',
+    name: '四轮定位',
+    scope: 'BDA AS',
+    summary: '四轮定位看板入口，适合直接进入现场状态查看与分析。',
+    tags: ['BDA AS', 'WAM', '现场看板'],
+    image: `${appImageBase}/wheel-alignment.jpg`,
+    links: [
+      { label: '打开应用', url: 'http://172.16.17.173:8050/' }
     ]
   },
   {
-    name: '赵洋',
-    title: 'Operations Enablement',
-    image: `${import.meta.env.BASE_URL}portal-people/zhao-yang.svg`,
-    summary: '围绕值班和支持使用场景，适合快速进入监控、告警和处理链路。',
-    scope: '支持 / 值班',
-    highlights: ['支持路径整理', '告警处理入口', '值班巡检视角'],
-    apps: [
-      { label: '监控中心', to: '/monitoring' },
-      { label: '周期同步', to: '/alerts' }
+    key: 'lenze',
+    title: 'PDM Application',
+    name: 'LENZE',
+    scope: 'AS',
+    summary: 'Lenze Power BI 报表入口，用于查看相关设备与运行状态。',
+    tags: ['Power BI', 'AS', 'LENZE'],
+    image: `${appImageBase}/lenze-powerbi.jpg`,
+    links: [
+      { label: '打开应用', url: 'https://app.powerbi.cn/groups/4c00eb1e-18cd-4dd0-a41c-baceff07900e/reports/88fd389c-4681-4997-b8e5-30bedbdd1252' }
     ]
   },
   {
-    name: '闫宇灿',
-    title: 'Energy Expert',
-    image: `${import.meta.env.BASE_URL}portal-people/yan-yucan.svg`,
-    summary: '当前门户里更适合落在设备状态、风险观察和偏工艺诊断的使用路径上。',
-    scope: '设备 / 风险',
-    highlights: ['设备状态查看', '高风险列表关注', '诊断入口协同'],
-    apps: [
-      { label: '设备状态', to: '/devices' },
-      { label: '轨迹诊断', to: '/monitoring' }
+    key: 'hems',
+    title: 'PDM Application',
+    name: 'HEMS',
+    scope: 'AS',
+    summary: 'HEMS 监控入口，承接能源与相关运行状态查看。',
+    tags: ['Power BI', 'AS', 'HEMS'],
+    image: `${appImageBase}/hems.jpg`,
+    links: [
+      { label: '打开应用', url: 'https://app.powerbi.cn/groups/4c00eb1e-18cd-4dd0-a41c-baceff07900e/reports/7cccc504-eb44-4211-b756-fc35fb351e1f' }
     ]
   },
   {
-    name: '刘飞',
-    title: 'Process Eng.',
-    image: `${import.meta.env.BASE_URL}portal-people/liu-fei.svg`,
-    summary: '更贴近程序周期同步和技术管理，适合从分析结果继续进入维护和发布处理。',
-    scope: '告警 / 技术',
-    highlights: ['PROGRAM CYCLE SYNC 入口', '技术管理协同', '分析结果落地'],
-    apps: [
-      { label: '周期同步', to: '/alerts' },
-      { label: 'DevOps', to: '/devops' }
+    key: 'filling-machine',
+    title: 'PDM Application',
+    name: '加注机',
+    scope: 'AS',
+    summary: '加注机报表入口，适合继续查看灌注相关结果和状态分布。',
+    tags: ['Power BI', 'AS', 'Filling'],
+    image: `${appImageBase}/filling-machine.jpg`,
+    links: [
+      { label: '打开应用', url: 'https://app.powerbi.cn/groups/4c00eb1e-18cd-4dd0-a41c-baceff07900e/reports/93f1e6ed-6378-41c3-8cb4-0372af3960a6' }
     ]
+  },
+  {
+    key: 'agv',
+    title: 'PDM Application',
+    name: 'AGV',
+    scope: 'Shunyi AS',
+    summary: 'AGV 入口，收口顺义 AS 相关报表与运转信息。',
+    tags: ['Power BI', 'Shunyi AS', 'AGV'],
+    image: `${appImageBase}/agv.jpg`,
+    links: [
+      { label: '打开应用', url: 'https://app.powerbi.cn/groups/4c00eb1e-18cd-4dd0-a41c-baceff07900e/reports/b83184fa-cff9-45fc-b527-af281a15eb0e' }
+    ]
+  },
+  {
+    key: 'digital-lubrication',
+    title: 'PDM Application',
+    name: '转毂数字化加油',
+    scope: 'MRA1 AS',
+    summary: 'SKF 系统入口，用于进入转毂数字化加油相关页面。',
+    tags: ['SKF', 'MRA1 AS', '数字化加油'],
+    image: `${appImageBase}/digital-lubrication.jpg`,
+    links: [
+      { label: '打开应用', url: 'https://lcp.skf.com.cn/#/home' }
+    ]
+  },
+  {
+    key: 'interior-cadence',
+    title: 'PDM Application',
+    name: '内饰线节拍监控',
+    scope: 'AS',
+    summary: '内饰线节拍监控报表入口，适合直接查看生产节拍与状态。',
+    tags: ['Power BI', 'AS', '节拍监控'],
+    image: `${appImageBase}/interior-cadence.jpg`,
+    links: [
+      { label: '打开应用', url: 'https://app.powerbi.cn/groups/4c00eb1e-18cd-4dd0-a41c-baceff07900e/reports/6131f262-5937-48b1-8450-b7c496da9529' }
+    ]
+  },
+  {
+    key: 'ect-tool',
+    title: 'PDM Application',
+    name: 'ECT工具',
+    scope: 'BDA AS',
+    summary: '简道云 ECT 工具入口，用于查看和操作相关业务面板。',
+    tags: ['简道云', 'BDA AS', '工具页'],
+    image: `${appImageBase}/ect-tool.jpg`,
+    links: [
+      { label: '打开应用', url: 'https://somi0rkqn2.jiandaoyun.com/dash/63183797899d360008ed0461' }
+    ]
+  },
+  {
+    key: 'cylinder',
+    title: 'PDM Application',
+    name: '气缸',
+    scope: 'MRA2 AS',
+    summary: '气缸相关报表入口，适合进入 MRA2 AS 的设备与过程视图。',
+    tags: ['Power BI', 'MRA2 AS', '气缸'],
+    image: `${appImageBase}/cylinder.jpg`,
+    links: [
+      { label: '打开应用', url: 'https://app.powerbi.cn/groups/me/reports/5ea5eafb-c369-4806-a91d-64f34a728269' }
+    ]
+  },
+  {
+    key: 'abb-robot',
+    title: 'PDM Application',
+    name: 'ABB 机器人',
+    scope: 'PS1 Primer',
+    summary: '当前处于接入筹备阶段，后续会补充正式入口和相关页面。',
+    tags: ['PS1 Primer', 'ABB', '筹备中'],
+    image: '',
+    pending: true,
+    links: []
+  },
+  {
+    key: 'intec-gluing',
+    title: 'PDM Application',
+    name: 'Intec 涂胶',
+    scope: 'MRA2 AS',
+    summary: '当前处于接入筹备阶段，后续会补充正式入口和相关页面。',
+    tags: ['MRA2 AS', 'Intec', '筹备中'],
+    image: '',
+    pending: true,
+    links: []
   }
 ]
 
+const openUrl = (url) => {
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
+
+const handleCardOpen = (group) => {
+  if (group.pending) {
+    return
+  }
+
+  if (group.links.length === 1) {
+    openUrl(group.links[0].url)
+  }
+}
+
 onMounted(() => {
   ctx = gsap.context(() => {
-    gsap.set(bridgeRef.value, {
-      opacity: 0,
-      y: 90,
-      scale: 0.92,
-      filter: 'blur(10px)'
-    })
     gsap.set(headingRef.value, { opacity: 0, y: 26 })
-    gsap.set(cardRefs.value, {
-      y: 100,
-      rotationX: 15,
-      opacity: 0,
-      transformOrigin: 'top center',
-      filter: 'blur(8px)'
-    })
-
-    gsap.to(bridgeRef.value, {
-      opacity: 1,
-      y: 0,
-      scale: 1,
-      filter: 'blur(0px)',
-      duration: 1,
-      ease: 'power3.out',
-      scrollTrigger: {
-        trigger: peopleSection.value,
-        start: 'top 92%',
-        end: 'top 58%',
-        scrub: 1,
-        invalidateOnRefresh: true
-      }
-    })
 
     gsap.to(headingRef.value, {
       opacity: 1,
@@ -248,19 +337,19 @@ onMounted(() => {
       duration: 0.8,
       ease: 'power3.out',
       scrollTrigger: {
-        trigger: peopleSection.value,
+        trigger: appsSection.value,
         start: 'top 82%',
         toggleActions: 'play none none reverse',
         invalidateOnRefresh: true
       }
     })
 
-    gsap.to(peopleBackgroundRef.value, {
+    gsap.to(appsBackgroundRef.value, {
       yPercent: 10,
       scale: 1.06,
       ease: 'none',
       scrollTrigger: {
-        trigger: peopleSection.value,
+        trigger: appsSection.value,
         start: 'top bottom',
         end: 'bottom top',
         scrub: 1,
@@ -268,39 +357,61 @@ onMounted(() => {
       }
     })
 
-    gsap.to(cardRefs.value, {
-      y: 0,
-      rotationX: 0,
-      opacity: 1,
-      filter: 'blur(0px)',
-      duration: 0.85,
-      stagger: 0.14,
-      ease: 'power2.out',
-      scrollTrigger: {
-        trigger: peopleSection.value,
-        start: 'top 74%',
-        toggleActions: 'play none none reverse',
-        invalidateOnRefresh: true
-      }
+    mediaMatcher = gsap.matchMedia()
+
+    mediaMatcher.add('(min-width: 1280px)', () => {
+      const rows = chunkRows(cardRefs.value, desktopColumns)
+
+      rows.forEach((rowCards, rowIndex) => {
+        const fromX = rowIndex % 2 === 0 ? -160 : 160
+
+        gsap.fromTo(
+          rowCards,
+          {
+            x: fromX,
+            y: 42,
+            opacity: 0.18
+          },
+          {
+            x: 0,
+            y: 0,
+            opacity: 1,
+            ease: 'none',
+            scrollTrigger: {
+              trigger: appsSection.value,
+              start: 'top 88%',
+              end: 'top 36%',
+              scrub: 1,
+              invalidateOnRefresh: true
+            }
+          }
+        )
+      })
     })
 
-    gsap.to(cardInnerRefs.value, {
-      y: (index) => {
-        const offset = index % 3
-        if (offset === 0) return -22
-        if (offset === 1) return 10
-        return -10
-      },
-      ease: 'none',
-      scrollTrigger: {
-        trigger: peopleSection.value,
-        start: 'top bottom',
-        end: 'bottom top',
-        scrub: 1,
-        invalidateOnRefresh: true
-      }
+    mediaMatcher.add('(max-width: 1279px)', () => {
+      gsap.set(cardRefs.value, {
+        y: 48,
+        opacity: 0
+      })
+
+      gsap.to(cardRefs.value, {
+        y: 0,
+        opacity: 1,
+        duration: 0.8,
+        stagger: 0.08,
+        ease: 'power2.out',
+        scrollTrigger: {
+          trigger: appsSection.value,
+          start: 'top 80%',
+          toggleActions: 'play none none reverse',
+          invalidateOnRefresh: true
+        }
+      })
     })
-  }, peopleSection.value)
+
+    gsap.set(cardInnerRefs.value, { y: 0 })
+  }, appsSection.value)
 
   requestAnimationFrame(() => {
     ScrollTrigger.refresh()
@@ -308,24 +419,25 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  mediaMatcher?.revert()
   ctx?.revert()
 })
 </script>
 
 <style scoped>
-.people-card {
+.app-card {
   transform-style: preserve-3d;
 }
 
-.people-card-inner {
+.app-card-inner {
   transition:
     transform 0.45s cubic-bezier(0.28, 0.11, 0.32, 1),
     filter 0.45s cubic-bezier(0.28, 0.11, 0.32, 1);
   will-change: transform;
 }
 
-.people-card:hover .people-card-inner,
-.people-card:focus-within .people-card-inner {
+.app-card:hover .app-card-inner,
+.app-card:focus-within .app-card-inner {
   transform: translateY(-6px) translateZ(18px) scale(1.01);
   filter: drop-shadow(0 18px 28px rgba(0, 0, 0, 0.24));
 }

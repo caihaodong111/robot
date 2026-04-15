@@ -5,12 +5,18 @@
     <transition name="slide-fade">
       <aside v-show="isSidebarVisible" class="app-sidebar" @mouseenter="handleMouseEnter" @mouseleave="handleMouseLeave">
         <div class="sidebar-content">
-          <div class="logo">
+          <router-link to="/" class="logo" aria-label="返回门户首页">
             <div class="logo-icon-wrapper">
-              <el-icon :size="24"><Cpu /></el-icon>
+              <svg viewBox="0 0 64 64" aria-hidden="true" class="logo-star">
+                <circle cx="32" cy="32" r="25" fill="none" stroke="currentColor" stroke-width="2.6" />
+                <circle cx="32" cy="32" r="4.2" fill="currentColor" />
+                <path d="M32 12.5v19.8" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" />
+                <path d="M32 32 17.4 49.3" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" />
+                <path d="M32 32 46.6 49.3" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" />
+              </svg>
             </div>
-            <span>RobotOps <small>AIGC</small></span>
-          </div>
+            <span>Robotics Portal</span>
+          </router-link>
 
           <nav class="sidebar-nav">
             <router-link to="/dashboard" class="nav-item" :class="{ active: route.path === '/dashboard' }">
@@ -161,11 +167,25 @@ const handleMouseLeave = () => {
   gap: 12px;
   padding: 0 24px 30px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  text-decoration: none;
+  cursor: pointer;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.logo:hover {
+  opacity: 0.92;
+  transform: translateX(2px);
 }
 
 .logo-icon-wrapper {
   color: #00c3ff;
   filter: drop-shadow(0 0 10px rgba(0, 195, 255, 0.6));
+}
+
+.logo-star {
+  width: 28px;
+  height: 28px;
+  display: block;
 }
 
 .logo span {
@@ -175,12 +195,6 @@ const handleMouseLeave = () => {
   background: linear-gradient(180deg, #fff 0%, #a0a0a0 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-}
-
-.logo small {
-  font-size: 10px;
-  color: #00c3ff;
-  margin-left: 4px;
 }
 
 /* === 导航项交互逻辑 === */
