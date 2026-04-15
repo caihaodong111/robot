@@ -7,6 +7,10 @@ __pycache__/
 build/
 develop-eggs/
 dist/
+!/frontend-vue 2/public/static/bootstrap-5.1.3/dist/
+!/frontend-vue 2/public/static/bootstrap-5.1.3/dist/**
+!/frontend-vue 2/public/static/chart.js-3.7.0/package/dist/
+!/frontend-vue 2/public/static/chart.js-3.7.0/package/dist/**
 downloads/
 eggs/
 .eggs/
@@ -86,7 +90,6 @@ coverage.xml
 
 # sg1 directory
 sg1/
-/frontend-vue 2/public/static/doc/breakdown/robot/MFA2/20190828-Robot_Ethercat network Error,Cabinet Interface Board(CIB)[Ping failed.pdf
 /DevOps/DevOps/__init__.py
 /DevOps/DevOps/asgi.py
 /DevOps/DevOps/settings.py
